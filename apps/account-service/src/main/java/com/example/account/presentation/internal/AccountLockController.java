@@ -1,17 +1,21 @@
 package com.example.account.presentation.internal;
 
 import com.example.account.application.command.ChangeStatusCommand;
+import com.example.account.application.result.DeleteAccountResult;
 import com.example.account.application.result.StatusChangeResult;
 import com.example.account.application.service.AccountStatusUseCase;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.presentation.dto.request.InternalDeleteAccountRequest;
 import com.example.account.presentation.dto.request.LockAccountRequest;
 import com.example.account.presentation.dto.request.UnlockAccountRequest;
+import com.example.account.presentation.dto.response.DeleteAccountResponse;
 import com.example.account.presentation.dto.response.StatusChangeResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -73,6 +77,23 @@ public class AccountLockController {
 
         StatusChangeResult result = accountStatusUseCase.changeStatus(command);
         return ResponseEntity.ok(StatusChangeResponse.from(result));
+    }
+
+    @PostMapping("/{accountId}/delete")
+    public ResponseEntity<DeleteAccountResponse> deleteAccount(
+            @PathVariable String accountId,
+            @Valid @RequestBody InternalDeleteAccountRequest request) {
+        StatusChangeReason reason = StatusChangeReason.valueOf(request.reason());
+
+        DeleteAccountResult result = accountStatusUseCase.deleteAccount(
+                accountId,
+                reason,
+                "operator",
+                request.operatorId()
+        );
+
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(DeleteAccountResponse.from(result));
     }
 
     private String resolveActorType(StatusChangeReason reason) {

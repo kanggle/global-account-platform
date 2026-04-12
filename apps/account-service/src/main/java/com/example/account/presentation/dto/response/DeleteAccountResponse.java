@@ -6,16 +6,16 @@ import java.time.Instant;
 
 public record DeleteAccountResponse(
         String accountId,
-        String status,
-        Instant gracePeriodEndsAt,
-        String message
+        String previousStatus,
+        String currentStatus,
+        Instant gracePeriodEndsAt
 ) {
     public static DeleteAccountResponse from(DeleteAccountResult result) {
         return new DeleteAccountResponse(
                 result.accountId(),
-                result.status(),
-                result.gracePeriodEndsAt(),
-                result.message()
+                result.previousStatus(),
+                result.currentStatus(),
+                result.gracePeriodEndsAt()
         );
     }
 }

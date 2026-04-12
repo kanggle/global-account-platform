@@ -33,7 +33,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(StateTransitionException.class)
     public ResponseEntity<ErrorResponse> handleStateTransitionInvalid(StateTransitionException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("STATE_TRANSITION_INVALID", e.getMessage()));
     }
 

@@ -57,7 +57,10 @@ class AccountSignupIntegrationTest {
         registry.add("spring.datasource.username", mysql::getUsername);
         registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("internal.api.token", () -> "test-internal-token");
     }
+
+    private static final String INTERNAL_TOKEN = "test-internal-token";
 
     @Autowired
     private MockMvc mockMvc;
@@ -141,6 +144,7 @@ class AccountSignupIntegrationTest {
 
         // Lock account
         mockMvc.perform(post("/internal/accounts/" + accountId + "/lock")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -164,8 +168,8 @@ class AccountSignupIntegrationTest {
     }
 
     @Test
-    @DisplayName("DELETED 계정에 대한 LOCK 요청이 400을 반환한다")
-    void lockDeletedAccount_returns400() throws Exception {
+    @DisplayName("DELETED 계정에 대한 LOCK 요청이 409를 반환한다")
+    void lockDeletedAccount_returns409() throws Exception {
         String uniqueEmail = "del-lock-" + UUID.randomUUID() + "@example.com";
 
         // Signup
@@ -196,6 +200,7 @@ class AccountSignupIntegrationTest {
 
         // Try to lock deleted account
         mockMvc.perform(post("/internal/accounts/" + accountId + "/lock")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -203,7 +208,7 @@ class AccountSignupIntegrationTest {
                                   "operatorId": "op-admin"
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("STATE_TRANSITION_INVALID"));
     }
 }
