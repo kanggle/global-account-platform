@@ -37,7 +37,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class AuthIntegrationTest {
+
+    static boolean isDockerAvailable() {
+        try {
+            org.testcontainers.DockerClientFactory.instance().client();
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
 
     @Container
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")

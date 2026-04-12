@@ -31,7 +31,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @AutoConfigureMockMvc
 @DisplayName("Account 가입/상태변경/이력 통합 테스트")
+@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class AccountSignupIntegrationTest {
+
+    static boolean isDockerAvailable() {
+        try {
+            org.testcontainers.DockerClientFactory.instance().client();
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
 
     @SuppressWarnings("resource")
     @Container
