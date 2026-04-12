@@ -4,40 +4,41 @@
   "tags": ["admin"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
   "panels": [
-    { "id": 1, "title": "Operator Actions", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+    { "id": 1, "title": "Operator Commands", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "sum(rate(admin_actions_performed_total[5m])) by (action)", "legendFormat": "{{action}}", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(admin_command_total[5m])) by (action_code)", "legendFormat": "{{action_code}}", "refId": "A" }]
     },
     { "id": 2, "title": "Lock / Unlock Count", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
-        { "expr": "rate(admin_lock_total[5m])", "refId": "A", "legendFormat": "lock" },
-        { "expr": "rate(admin_unlock_total[5m])", "refId": "B", "legendFormat": "unlock" }
+        { "expr": "rate(admin_command_total{action_code=\"LOCK\"}[5m])", "refId": "A", "legendFormat": "lock" },
+        { "expr": "rate(admin_command_total{action_code=\"UNLOCK\"}[5m])", "refId": "B", "legendFormat": "unlock" }
       ]
     },
     { "id": 3, "title": "Audit Queries", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(admin_audit_queries_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "rate(admin_audit_query_total[5m])", "refId": "A" }]
     },
-    { "id": 4, "title": "Downstream Failures", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
+    { "id": 4, "title": "Downstream Duration p99", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(admin_downstream_failures_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "histogram_quantile(0.99, sum(rate(admin_downstream_duration_seconds_bucket[5m])) by (le, target_service))", "legendFormat": "{{target_service}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
     },
-    { "id": 5, "title": "Audit Trail Rate", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 },
+    { "id": 5, "title": "Audit Write Rate", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(admin_audit_trail_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(admin_audit_write_total[5m])) by (result)", "legendFormat": "{{result}}", "refId": "A" }]
     },
-    { "id": 6, "title": "Role Breakdown", "type": "piechart", "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
+    { "id": 6, "title": "Command Outcome Breakdown", "type": "piechart", "gridPos": { "h": 6, "w": 8, "x": 16, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "sum(rate(admin_actions_performed_total[5m])) by (role)", "legendFormat": "{{role}}", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(admin_command_total[5m])) by (outcome)", "legendFormat": "{{outcome}}", "refId": "A" }]
     },
-    { "id": 7, "title": "Reason-Required Rejections", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 12 },
+    { "id": 7, "title": "Failed Commands", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(admin_reason_required_rejected_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(admin_command_total{outcome=\"failure\"}[5m])) by (action_code)", "legendFormat": "{{action_code}}", "refId": "A" }]
     },
     { "id": 8, "title": "4xx / 5xx", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 8, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },

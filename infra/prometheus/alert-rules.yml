@@ -130,7 +130,7 @@ groups:
         expr: kafka_consumer_fetch_manager_records_lag_max{service="security-service"} > 10000
         for: 10m
         labels:
-          severity: warning
+          severity: critical
           service: security-service
         annotations:
           summary: "Security consumer lag > 10000"
@@ -160,7 +160,7 @@ groups:
     interval: 30s
     rules:
       - alert: AdminActionSpike
-        expr: rate(admin_actions_performed_total[5m]) > 5
+        expr: rate(admin_command_total[5m]) > 5
         for: 10m
         labels:
           severity: warning
@@ -169,12 +169,16 @@ groups:
           summary: "Admin action rate unusually high"
           runbook: "docs/runbooks/admin-action-spike.md"
 
-      - alert: AdminDownstreamFailures
-        expr: rate(admin_downstream_failures_total[5m]) > 0.5
-        for: 5m
+      - alert: AdminCommandFailureHigh
+        expr: |
+          sum(rate(admin_command_total{outcome="failure"}[10m]))
+            /
+          sum(rate(admin_command_total[10m]))
+            > 0.2
+        for: 10m
         labels:
-          severity: warning
+          severity: critical
           service: admin-service
         annotations:
-          summary: "Admin-service downstream failures elevated"
-          runbook: "docs/runbooks/admin-downstream-failures.md"
+          summary: "Admin-service command failure ratio > 20%"
+          runbook: "docs/runbooks/admin-command-failure-high.md"

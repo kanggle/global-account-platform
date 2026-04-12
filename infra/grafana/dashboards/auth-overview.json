@@ -4,13 +4,13 @@
   "tags": ["auth"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
   "panels": [
     { "id": 1, "title": "Login Success Rate", "type": "timeseries", "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(auth_login_success_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "rate(auth_login_total{result=\"success\"}[5m])", "refId": "A" }]
     },
     { "id": 2, "title": "Login Failure Rate", "type": "timeseries", "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
@@ -23,7 +23,7 @@
     },
     { "id": 4, "title": "Refresh Token Rotation", "type": "timeseries", "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(auth_refresh_rotation_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(auth_token_refresh_total[5m])) by (result)", "legendFormat": "{{result}}", "refId": "A" }]
     },
     { "id": 5, "title": "Refresh Token Reuse Detected", "type": "stat", "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
@@ -33,15 +33,14 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [{ "expr": "auth_outbox_lag_seconds", "refId": "A" }]
     },
-    { "id": 7, "title": "JWKS Refresh", "type": "timeseries", "gridPos": { "h": 6, "w": 6, "x": 12, "y": 12 },
+    { "id": 7, "title": "Tokens Issued", "type": "timeseries", "gridPos": { "h": 6, "w": 6, "x": 12, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(auth_jwks_refresh_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(auth_token_issued_total[5m])) by (type)", "legendFormat": "{{type}}", "refId": "A" }]
     },
-    { "id": 8, "title": "Tokens Issued / Circuit Breaker State", "type": "timeseries", "gridPos": { "h": 6, "w": 6, "x": 18, "y": 12 },
+    { "id": 8, "title": "Account-Service Circuit Breaker", "type": "timeseries", "gridPos": { "h": 6, "w": 6, "x": 18, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
-        { "expr": "rate(auth_tokens_issued_total[5m])", "refId": "A", "legendFormat": "issued/s" },
-        { "expr": "resilience4j_circuitbreaker_state{name=\"account-service\"}", "refId": "B", "legendFormat": "cb {{state}}" }
+        { "expr": "auth_circuit_breaker_state", "refId": "A", "legendFormat": "cb {{target}}" }
       ]
     }
   ]
