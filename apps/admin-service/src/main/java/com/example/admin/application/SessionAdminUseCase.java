@@ -24,8 +24,15 @@ public class SessionAdminUseCase {
             throw new PermissionDeniedException("operator lacks role ACCOUNT_ADMIN");
         }
 
-        String auditId = auditor.reserveAuditId();
+        String auditId = auditor.newAuditId();
         Instant startedAt = Instant.now();
+
+        auditor.recordStart(new AdminActionAuditor.StartRecord(
+                auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
+                "account", cmd.accountId(),
+                cmd.reason(), null, cmd.idempotencyKey(),
+                startedAt));
+
         AuthServiceClient.ForceLogoutResponse downstream;
         try {
             downstream = authServiceClient.forceLogout(
@@ -34,7 +41,7 @@ public class SessionAdminUseCase {
                     cmd.reason(),
                     cmd.idempotencyKey());
         } catch (DownstreamFailureException ex) {
-            auditor.record(new AdminActionAuditor.AuditRecord(
+            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
                     "account", cmd.accountId(),
                     cmd.reason(), null, cmd.idempotencyKey(),
@@ -44,7 +51,7 @@ public class SessionAdminUseCase {
         }
 
         Instant completedAt = Instant.now();
-        auditor.record(new AdminActionAuditor.AuditRecord(
+        auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                 auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
                 "account", cmd.accountId(),
                 cmd.reason(), null, cmd.idempotencyKey(),

@@ -13,12 +13,12 @@ import java.time.Instant;
 /**
  * Orchestrates lock/unlock operator commands. Each command:
  *   1. validates operator role + reason
- *   2. reserves an audit id
+ *   2. INSERTs an IN_PROGRESS audit row BEFORE the downstream call (A10 fail-closed)
  *   3. calls account-service internal HTTP (with Idempotency-Key)
- *   4. records audit row + outbox event in a single transaction (SUCCESS or FAILURE)
+ *   4. finalizes the audit row (SUCCESS or FAILURE) and emits the outbox event
  *
- * fail-closed: if the audit write fails, {@link com.example.admin.application.exception.AuditFailureException}
- * propagates and the controller returns 500.
+ * If the IN_PROGRESS insert fails {@link com.example.admin.application.exception.AuditFailureException}
+ * propagates and no downstream call is made.
  */
 @Slf4j
 @Service
@@ -32,8 +32,15 @@ public class AccountAdminUseCase {
         requireReason(cmd.reason());
         requireRole(cmd.operator(), OperatorRole.ACCOUNT_ADMIN);
 
-        String auditId = auditor.reserveAuditId();
+        String auditId = auditor.newAuditId();
         Instant startedAt = Instant.now();
+
+        auditor.recordStart(new AdminActionAuditor.StartRecord(
+                auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
+                "account", cmd.accountId(),
+                cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                startedAt));
+
         AccountServiceClient.LockResponse downstream;
         try {
             downstream = accountServiceClient.lock(
@@ -43,7 +50,7 @@ public class AccountAdminUseCase {
                     cmd.ticketId(),
                     cmd.idempotencyKey());
         } catch (DownstreamFailureException ex) {
-            auditor.record(new AdminActionAuditor.AuditRecord(
+            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
                     "account", cmd.accountId(),
                     cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
@@ -53,7 +60,7 @@ public class AccountAdminUseCase {
         }
 
         Instant completedAt = Instant.now();
-        auditor.record(new AdminActionAuditor.AuditRecord(
+        auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                 auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
                 "account", cmd.accountId(),
                 cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
@@ -72,8 +79,15 @@ public class AccountAdminUseCase {
         requireReason(cmd.reason());
         requireRole(cmd.operator(), OperatorRole.ACCOUNT_ADMIN);
 
-        String auditId = auditor.reserveAuditId();
+        String auditId = auditor.newAuditId();
         Instant startedAt = Instant.now();
+
+        auditor.recordStart(new AdminActionAuditor.StartRecord(
+                auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
+                "account", cmd.accountId(),
+                cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                startedAt));
+
         AccountServiceClient.LockResponse downstream;
         try {
             downstream = accountServiceClient.unlock(
@@ -83,7 +97,7 @@ public class AccountAdminUseCase {
                     cmd.ticketId(),
                     cmd.idempotencyKey());
         } catch (DownstreamFailureException ex) {
-            auditor.record(new AdminActionAuditor.AuditRecord(
+            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
                     "account", cmd.accountId(),
                     cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
@@ -93,7 +107,7 @@ public class AccountAdminUseCase {
         }
 
         Instant completedAt = Instant.now();
-        auditor.record(new AdminActionAuditor.AuditRecord(
+        auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                 auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
                 "account", cmd.accountId(),
                 cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),

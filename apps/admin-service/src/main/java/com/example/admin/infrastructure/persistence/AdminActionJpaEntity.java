@@ -85,4 +85,15 @@ public class AdminActionJpaEntity {
         e.completedAt = completedAt;
         return e;
     }
+
+    /**
+     * Finalizes an IN_PROGRESS row by setting a terminal outcome, the downstream
+     * detail, and the completion timestamp. Only these three fields may change —
+     * the DB trigger {@code trg_admin_actions_finalize_only} enforces this invariant.
+     */
+    public void finalizeOutcome(String outcome, String downstreamDetail, Instant completedAt) {
+        this.outcome = outcome;
+        this.downstreamDetail = downstreamDetail;
+        this.completedAt = completedAt;
+    }
 }

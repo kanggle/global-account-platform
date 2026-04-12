@@ -15,6 +15,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import java.time.Instant;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -44,13 +46,15 @@ public class SecurityConfig {
                             resp.setStatus(HttpStatus.UNAUTHORIZED.value());
                             resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             resp.getWriter().write(
-                                    "{\"code\":\"TOKEN_INVALID\",\"message\":\"Authentication required\"}");
+                                    "{\"code\":\"TOKEN_INVALID\",\"message\":\"Authentication required\""
+                                            + ",\"timestamp\":\"" + Instant.now().toString() + "\"}");
                         })
                         .accessDeniedHandler((req, resp, e) -> {
                             resp.setStatus(HttpStatus.FORBIDDEN.value());
                             resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             resp.getWriter().write(
-                                    "{\"code\":\"PERMISSION_DENIED\",\"message\":\"Operator role insufficient\"}");
+                                    "{\"code\":\"PERMISSION_DENIED\",\"message\":\"Operator role insufficient\""
+                                            + ",\"timestamp\":\"" + Instant.now().toString() + "\"}");
                         })
                 );
 

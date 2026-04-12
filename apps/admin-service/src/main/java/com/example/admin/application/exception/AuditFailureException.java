@@ -8,4 +8,8 @@ public class AuditFailureException extends RuntimeException {
     public AuditFailureException(String message, Throwable cause) {
         super(message, cause);
     }
+
+    public AuditFailureException(String message) {
+        super(message);
+    }
 }

@@ -50,7 +50,7 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDownstream(DownstreamFailureException e) {
         log.warn("downstream failure: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-                .body(ErrorResponse.of("DOWNSTREAM_FAILURE", "Downstream service unavailable"));
+                .body(ErrorResponse.of("DOWNSTREAM_ERROR", "Downstream service unavailable"));
     }
 
     @ExceptionHandler(AuditFailureException.class)

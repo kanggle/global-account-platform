@@ -1,6 +1,9 @@
 package com.example.admin.infrastructure.client;
 
 import com.example.admin.application.exception.DownstreamFailureException;
+import com.example.admin.application.exception.NonRetryableDownstreamException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
@@ -8,6 +11,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -32,6 +36,7 @@ public class AccountServiceClient {
             @Value("${admin.downstream.read-timeout-ms:10000}") int readTimeoutMs,
             @Value("${admin.downstream.internal-token:}") String internalToken) {
         HttpClient httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(connectTimeoutMs))
                 .build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
@@ -43,6 +48,8 @@ public class AccountServiceClient {
         this.internalToken = internalToken;
     }
 
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
     public LockResponse lock(String accountId,
                              String operatorId,
                              String reason,
@@ -57,6 +64,8 @@ public class AccountServiceClient {
                 body, operatorId, idempotencyKey, LockResponse.class);
     }
 
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
     public LockResponse unlock(String accountId,
                                String operatorId,
                                String reason,
@@ -92,8 +101,12 @@ public class AccountServiceClient {
                                 resp.getHeaders(), resp.getBody().readAllBytes(), null);
                     })
                     .body(responseType);
-        } catch (HttpClientErrorException e) {
+        } catch (RestClientResponseException e) {
             log.warn("account-service returned {} on {}: {}", e.getStatusCode(), path, e.getMessage());
+            if (e.getStatusCode().is4xxClientError()) {
+                throw new NonRetryableDownstreamException(
+                        "account-service error " + e.getStatusCode().value(), e);
+            }
             throw new DownstreamFailureException(
                     "account-service error " + e.getStatusCode().value(), e);
         } catch (Exception e) {

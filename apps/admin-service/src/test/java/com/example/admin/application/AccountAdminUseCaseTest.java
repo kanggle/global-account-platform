@@ -7,6 +7,7 @@ import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AccountServiceClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -48,8 +50,8 @@ class AccountAdminUseCaseTest {
     }
 
     @Test
-    void lock_success_records_success_audit() {
-        when(auditor.reserveAuditId()).thenReturn("audit-1");
+    void lock_success_records_in_progress_then_success_completion() {
+        when(auditor.newAuditId()).thenReturn("audit-1");
         when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
                 .thenReturn(new AccountServiceClient.LockResponse(
                         "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
@@ -59,12 +61,17 @@ class AccountAdminUseCaseTest {
 
         assertThat(r.auditId()).isEqualTo("audit-1");
         assertThat(r.currentStatus()).isEqualTo("LOCKED");
-        verify(auditor, times(1)).record(any());
+
+        // Critical: recordStart must run BEFORE downstream call, then recordCompletion after.
+        InOrder order = inOrder(auditor, accountServiceClient);
+        order.verify(auditor).recordStart(any());
+        order.verify(accountServiceClient).lock(anyString(), anyString(), anyString(), any(), anyString());
+        order.verify(auditor).recordCompletion(any());
     }
 
     @Test
-    void lock_downstream_failure_records_failure_audit_and_throws() {
-        when(auditor.reserveAuditId()).thenReturn("audit-2");
+    void lock_downstream_failure_records_failure_completion_and_throws() {
+        when(auditor.newAuditId()).thenReturn("audit-2");
         doThrow(new DownstreamFailureException("boom"))
                 .when(accountServiceClient).lock(anyString(), anyString(), anyString(), any(), anyString());
 
@@ -72,45 +79,47 @@ class AccountAdminUseCaseTest {
                 "acc-1", "fraud", null, "idemp-2", accountAdmin())))
                 .isInstanceOf(DownstreamFailureException.class);
 
-        verify(auditor, times(1)).record(any());
+        verify(auditor, times(1)).recordStart(any());
+        verify(auditor, times(1)).recordCompletion(any());
     }
 
     @Test
-    void lock_missing_reason_throws_reason_required() {
+    void lock_missing_reason_throws_reason_required_before_any_audit() {
         assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
                 "acc-1", "", null, "idemp-3", accountAdmin())))
                 .isInstanceOf(ReasonRequiredException.class);
 
-        verify(auditor, never()).record(any());
+        verify(auditor, never()).recordStart(any());
+        verify(auditor, never()).recordCompletion(any());
     }
 
     @Test
-    void lock_auditor_role_is_forbidden() {
+    void lock_auditor_role_is_forbidden_and_skips_audit() {
         assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
                 "acc-1", "fraud", null, "idemp-4", auditorOnly())))
                 .isInstanceOf(PermissionDeniedException.class);
 
-        verify(auditor, never()).record(any());
+        verify(auditor, never()).recordStart(any());
     }
 
     @Test
-    void lock_audit_failure_is_propagated_as_fail_closed() {
-        when(auditor.reserveAuditId()).thenReturn("audit-5");
-        when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
-                .thenReturn(new AccountServiceClient.LockResponse(
-                        "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
+    void lock_audit_start_failure_aborts_before_downstream() {
+        when(auditor.newAuditId()).thenReturn("audit-5");
         doThrow(new AuditFailureException("db down", new RuntimeException()))
-                .when(auditor).record(any());
+                .when(auditor).recordStart(any());
 
         assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
                 "acc-1", "fraud", null, "idemp-5", accountAdmin())))
                 .isInstanceOf(AuditFailureException.class);
+
+        // A10 fail-closed: downstream must NOT be called when audit INSERT fails.
+        verify(accountServiceClient, never()).lock(anyString(), anyString(), anyString(), any(), anyString());
     }
 
     @Test
     void super_admin_can_lock() {
         OperatorContext superAdmin = new OperatorContext("op-9", Set.of(OperatorRole.SUPER_ADMIN));
-        when(auditor.reserveAuditId()).thenReturn("audit-10");
+        when(auditor.newAuditId()).thenReturn("audit-10");
         when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
                 .thenReturn(new AccountServiceClient.LockResponse(
                         "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));

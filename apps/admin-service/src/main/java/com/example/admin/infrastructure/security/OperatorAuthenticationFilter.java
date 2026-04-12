@@ -17,6 +17,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
@@ -129,7 +130,8 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write(
-                "{\"code\":\"" + code + "\",\"message\":\"" + message + "\"}");
+                "{\"code\":\"" + code + "\",\"message\":\"" + message
+                        + "\",\"timestamp\":\"" + Instant.now().toString() + "\"}");
     }
 
     public static class OperatorAuthenticationToken extends AbstractAuthenticationToken {
