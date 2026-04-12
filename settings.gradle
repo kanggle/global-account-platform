@@ -6,5 +6,6 @@ include(
     'libs:java-observability',
     'libs:java-security',
     'libs:java-test-support',
-    'libs:java-web'
+    'libs:java-web',
+    'apps:account-service'
 )
