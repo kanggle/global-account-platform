@@ -35,8 +35,11 @@ public final class Argon2idPasswordHasher implements PasswordHasher {
      */
     public Argon2idPasswordHasher(int memoryKb, int iterations, int parallelism,
                                    int outputLength, int saltLength) {
+        if (saltLength <= 0) {
+            throw new IllegalArgumentException("saltLength must be positive");
+        }
         this.argon2Function = Argon2Function.getInstance(
-                memoryKb, iterations, parallelism, outputLength, Argon2.ID);
+                memoryKb, iterations, parallelism, outputLength, Argon2.ID, saltLength);
     }
 
     /**

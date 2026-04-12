@@ -73,4 +73,38 @@ class PasswordHasherTest {
         assertThatThrownBy(() -> hasher.hash(""))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("explicit saltLength constructor produces verifiable hash")
+    void explicitSaltLengthConstructorProducesVerifiableHash() {
+        PasswordHasher customHasher = new Argon2idPasswordHasher(4096, 1, 1, 32, 16);
+        String plain = "testPassword!1";
+        String hashed = customHasher.hash(plain);
+
+        assertThat(hashed).startsWith("$argon2id$");
+        assertThat(customHasher.verify(plain, hashed)).isTrue();
+    }
+
+    @Test
+    @DisplayName("constructor throws on non-positive saltLength")
+    void constructorThrowsOnNonPositiveSaltLength() {
+        assertThatThrownBy(() -> new Argon2idPasswordHasher(4096, 1, 1, 32, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("saltLength");
+
+        assertThatThrownBy(() -> new Argon2idPasswordHasher(4096, 1, 1, 32, -1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("saltLength");
+    }
+
+    @Test
+    @DisplayName("default constructor uses spec-compliant parameters")
+    void defaultConstructorUsesSpecCompliantParameters() {
+        PasswordHasher defaultHasher = new Argon2idPasswordHasher();
+        String plain = "specTest!1";
+        String hashed = defaultHasher.hash(plain);
+
+        assertThat(hashed).startsWith("$argon2id$");
+        assertThat(defaultHasher.verify(plain, hashed)).isTrue();
+    }
 }
