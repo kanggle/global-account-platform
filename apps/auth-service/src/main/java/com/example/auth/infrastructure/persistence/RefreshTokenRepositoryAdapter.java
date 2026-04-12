@@ -30,7 +30,12 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
     }
 
     @Override
-    public void revokeAllByAccountId(String accountId) {
-        refreshTokenJpaRepository.revokeAllByAccountId(accountId);
+    public int revokeAllByAccountId(String accountId) {
+        return refreshTokenJpaRepository.revokeAllByAccountId(accountId);
+    }
+
+    @Override
+    public Optional<RefreshToken> findByRotatedFrom(String jti) {
+        return refreshTokenJpaRepository.findByRotatedFrom(jti).map(RefreshTokenJpaEntity::toDomain);
     }
 }

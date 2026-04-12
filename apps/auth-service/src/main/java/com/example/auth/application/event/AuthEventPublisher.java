@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,6 +32,7 @@ public class AuthEventPublisher {
         payload.put("ipMasked", ctx.ipMasked());
         payload.put("userAgentFamily", ctx.userAgentFamily());
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
+        payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("timestamp", Instant.now().toString());
 
         writeEvent("auth.login.attempted", accountId != null ? accountId : emailHash, payload);
@@ -46,6 +48,7 @@ public class AuthEventPublisher {
         payload.put("ipMasked", ctx.ipMasked());
         payload.put("userAgentFamily", ctx.userAgentFamily());
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
+        payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("timestamp", Instant.now().toString());
 
         writeEvent("auth.login.failed", accountId != null ? accountId : emailHash, payload);
@@ -57,6 +60,7 @@ public class AuthEventPublisher {
         payload.put("ipMasked", ctx.ipMasked());
         payload.put("userAgentFamily", ctx.userAgentFamily());
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
+        payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("sessionJti", sessionJti);
         payload.put("timestamp", Instant.now().toString());
 
@@ -74,6 +78,46 @@ public class AuthEventPublisher {
         payload.put("timestamp", Instant.now().toString());
 
         writeEvent("auth.token.refreshed", accountId, payload);
+    }
+
+    /**
+     * Publishes auth.token.reuse.detected event when a previously rotated refresh token
+     * is used again. This is a security-critical event.
+     */
+    public void publishTokenReuseDetected(String accountId, String reusedJti,
+                                           Instant originalRotationAt, Instant reuseAttemptAt,
+                                           String ipMasked, String deviceFingerprint,
+                                           boolean sessionsRevoked, int revokedCount) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("reusedJti", reusedJti);
+        payload.put("originalRotationAt", originalRotationAt != null ? originalRotationAt.toString() : null);
+        payload.put("reuseAttemptAt", reuseAttemptAt.toString());
+        payload.put("ipMasked", ipMasked);
+        payload.put("deviceFingerprint", deviceFingerprint);
+        payload.put("sessionsRevoked", sessionsRevoked);
+        payload.put("revokedCount", revokedCount);
+
+        writeEvent("auth.token.reuse.detected", accountId, payload);
+    }
+
+    /**
+     * Publishes session.revoked event when sessions are explicitly invalidated.
+     */
+    public void publishSessionRevoked(String accountId, List<String> revokedJtis,
+                                       String revokeReason, String actorType,
+                                       String actorId, Instant revokedAt,
+                                       int totalRevoked) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("revokedJtis", revokedJtis);
+        payload.put("revokeReason", revokeReason);
+        payload.put("actorType", actorType);
+        payload.put("actorId", actorId);
+        payload.put("revokedAt", revokedAt.toString());
+        payload.put("totalRevoked", totalRevoked);
+
+        writeEvent("session.revoked", accountId, payload);
     }
 
     private void writeEvent(String eventType, String aggregateId, Map<String, Object> payload) {

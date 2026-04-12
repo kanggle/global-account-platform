@@ -63,11 +63,31 @@ public class RefreshTokenUseCase {
         }
 
         // Check for reuse: if this token has already been rotated (a child token exists),
-        // this is a reuse attempt. For now, just reject. Full reuse detection is TASK-BE-009.
+        // this is a reuse attempt. Revoke all tokens and publish security event.
         if (refreshTokenRepository.existsByRotatedFrom(jti)) {
             log.warn("Refresh token reuse detected for account={}, jti={}", accountId, jti);
+
+            // Find the child token to determine originalRotationAt
+            Instant originalRotationAt = refreshTokenRepository.findByRotatedFrom(jti)
+                    .map(RefreshToken::getIssuedAt)
+                    .orElse(null);
+
             // Revoke all tokens for this account
-            refreshTokenRepository.revokeAllByAccountId(accountId);
+            int revokedCount = refreshTokenRepository.revokeAllByAccountId(accountId);
+
+            // Publish reuse detection event (within @Transactional boundary for outbox)
+            Instant reuseAttemptAt = Instant.now();
+            authEventPublisher.publishTokenReuseDetected(
+                    accountId,
+                    jti,
+                    originalRotationAt,
+                    reuseAttemptAt,
+                    ctx.ipMasked(),
+                    ctx.deviceFingerprint(),
+                    true,
+                    revokedCount
+            );
+
             throw new SessionRevokedException();
         }
 
