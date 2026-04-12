@@ -22,7 +22,7 @@
     },
     { "id": 4, "title": "Outbox Pending", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "account_outbox_pending_count", "refId": "A" }]
+      "targets": [{ "expr": "account_outbox_lag_seconds", "refId": "A" }]
     },
     { "id": 5, "title": "DB Query Latency p99", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },

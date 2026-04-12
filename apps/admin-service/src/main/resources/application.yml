@@ -58,6 +58,9 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      service: ${spring.application.name}
 
 admin:
   jwt:
@@ -73,3 +76,43 @@ admin:
     base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8082}
   security-service:
     base-url: ${SECURITY_SERVICE_URL:http://localhost:8084}
+
+resilience4j:
+  retry:
+    instances:
+      accountService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
+      authService:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
+  circuitbreaker:
+    instances:
+      accountService:
+        failure-rate-threshold: 50
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
+      authService:
+        failure-rate-threshold: 50
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException

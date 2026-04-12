@@ -74,6 +74,9 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      service: ${spring.application.name}
 
 security-service:
   dedup:

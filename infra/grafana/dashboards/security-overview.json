@@ -22,7 +22,7 @@
     },
     { "id": 4, "title": "Auto-lock Count", "type": "timeseries", "gridPos": { "h": 6, "w": 8, "x": 0, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "targets": [{ "expr": "rate(security_auto_lock_triggered_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "rate(security_auto_lock_issued_total[5m])", "refId": "A" }]
     },
     { "id": 5, "title": "Risk Score Distribution", "type": "heatmap", "gridPos": { "h": 6, "w": 8, "x": 8, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },

@@ -64,6 +64,9 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    tags:
+      service: ${spring.application.name}
 
 auth:
   jwt:
