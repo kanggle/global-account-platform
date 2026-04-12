@@ -3,6 +3,7 @@ package com.example.auth.presentation;
 import com.example.auth.application.RefreshTokenUseCase;
 import com.example.auth.application.exception.SessionRevokedException;
 import com.example.auth.application.exception.TokenExpiredException;
+import com.example.auth.application.exception.TokenReuseDetectedException;
 import com.example.auth.application.result.RefreshTokenResult;
 import com.example.auth.infrastructure.config.SecurityConfig;
 import com.example.auth.presentation.exception.AuthExceptionHandler;
@@ -69,6 +70,18 @@ class RefreshControllerTest {
                         .content("{\"refreshToken\":\"revoked-token\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("SESSION_REVOKED"));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/refresh returns 401 TOKEN_REUSE_DETECTED on reuse")
+    void refreshTokenReuseDetected() throws Exception {
+        when(refreshTokenUseCase.execute(any())).thenThrow(new TokenReuseDetectedException());
+
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"reused-token\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("TOKEN_REUSE_DETECTED"));
     }
 
     @Test

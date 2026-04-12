@@ -4,13 +4,16 @@ import com.example.auth.application.command.RefreshTokenCommand;
 import com.example.auth.application.event.AuthEventPublisher;
 import com.example.auth.application.exception.SessionRevokedException;
 import com.example.auth.application.exception.TokenExpiredException;
+import com.example.auth.application.exception.TokenReuseDetectedException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.RefreshTokenResult;
+import com.example.auth.domain.repository.BulkInvalidationStore;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.repository.TokenBlacklist;
 import com.example.auth.domain.session.SessionContext;
 import com.example.auth.domain.token.RefreshToken;
 import com.example.auth.domain.token.TokenPair;
+import com.example.auth.domain.token.TokenReuseDetector;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +39,10 @@ class RefreshTokenUseCaseTest {
     @Mock
     private TokenBlacklist tokenBlacklist;
     @Mock
+    private TokenReuseDetector tokenReuseDetector;
+    @Mock
+    private BulkInvalidationStore bulkInvalidationStore;
+    @Mock
     private AuthEventPublisher authEventPublisher;
 
     @InjectMocks
@@ -59,7 +66,7 @@ class RefreshTokenUseCaseTest {
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
                 null, false, "fp-123");
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
-        when(refreshTokenRepository.existsByRotatedFrom(OLD_JTI)).thenReturn(false);
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
         when(tokenGeneratorPort.generateTokenPair(ACCOUNT_ID, "user"))
                 .thenReturn(new TokenPair("new-access", "new-refresh", 1800));
         when(tokenGeneratorPort.extractJti("new-refresh")).thenReturn(NEW_JTI);
@@ -75,6 +82,7 @@ class RefreshTokenUseCaseTest {
         assertThat(result.refreshToken()).isEqualTo("new-refresh");
         verify(tokenBlacklist).blacklist(eq(OLD_JTI), anyLong());
         verify(authEventPublisher).publishTokenRefreshed(ACCOUNT_ID, OLD_JTI, NEW_JTI, CTX);
+        verify(bulkInvalidationStore, never()).invalidateAll(anyString(), anyLong());
     }
 
     @Test
@@ -105,7 +113,7 @@ class RefreshTokenUseCaseTest {
     }
 
     @Test
-    @DisplayName("Refresh fails when token has been revoked")
+    @DisplayName("Refresh fails when token has been revoked but no reuse chain")
     void refreshFailsRevoked() {
         String refreshTokenStr = "revoked-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
@@ -116,6 +124,7 @@ class RefreshTokenUseCaseTest {
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
                 null, true, "fp-123");
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(revokedToken));
+        when(tokenReuseDetector.isReuse(revokedToken)).thenReturn(false);
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
                 new RefreshTokenCommand(refreshTokenStr, CTX)))
@@ -123,7 +132,7 @@ class RefreshTokenUseCaseTest {
     }
 
     @Test
-    @DisplayName("Refresh fails on token reuse detection")
+    @DisplayName("Reuse detected: throws TokenReuseDetectedException, bulk revokes, emits both events, sets Redis marker")
     void refreshFailsReuseDetected() {
         String refreshTokenStr = "reused-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
@@ -134,17 +143,51 @@ class RefreshTokenUseCaseTest {
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
                 null, false, "fp-123");
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
-        when(refreshTokenRepository.existsByRotatedFrom(OLD_JTI)).thenReturn(true); // already rotated!
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
+        when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(3);
+        when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
                 new RefreshTokenCommand(refreshTokenStr, CTX)))
-                .isInstanceOf(SessionRevokedException.class);
+                .isInstanceOf(TokenReuseDetectedException.class);
 
         verify(refreshTokenRepository).revokeAllByAccountId(ACCOUNT_ID);
+        verify(bulkInvalidationStore).invalidateAll(ACCOUNT_ID, 604800L);
         verify(authEventPublisher).publishTokenReuseDetected(
                 eq(ACCOUNT_ID), eq(OLD_JTI), any(), any(Instant.class),
                 eq(CTX.ipMasked()), eq(CTX.deviceFingerprint()),
-                eq(true), anyInt()
+                eq(true), eq(3)
         );
+        verify(authEventPublisher).publishSessionRevoked(
+                eq(ACCOUNT_ID), anyList(), eq("TOKEN_REUSE_DETECTED"),
+                eq("SYSTEM"), isNull(), any(Instant.class), eq(3)
+        );
+    }
+
+    @Test
+    @DisplayName("Reuse on already-revoked chain is idempotent: throws 401 but does not re-emit events")
+    void refreshReuseIdempotentOnAlreadyRevoked() {
+        String refreshTokenStr = "reused-revoked-token";
+        when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
+        when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+
+        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
+                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
+                null, true, "fp-123"); // already revoked
+        when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
+        when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(0);
+        when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
+
+        assertThatThrownBy(() -> refreshTokenUseCase.execute(
+                new RefreshTokenCommand(refreshTokenStr, CTX)))
+                .isInstanceOf(TokenReuseDetectedException.class);
+
+        verify(bulkInvalidationStore).invalidateAll(ACCOUNT_ID, 604800L);
+        verify(authEventPublisher, never()).publishTokenReuseDetected(
+                anyString(), anyString(), any(), any(), any(), any(), anyBoolean(), anyInt());
+        verify(authEventPublisher, never()).publishSessionRevoked(
+                anyString(), anyList(), anyString(), anyString(), any(), any(Instant.class), anyInt());
     }
 }

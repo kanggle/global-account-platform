@@ -50,6 +50,14 @@ public class AuthExceptionHandler {
                 .body(ErrorResponse.of("SESSION_REVOKED", "Session has been revoked"));
     }
 
+    @ExceptionHandler(TokenReuseDetectedException.class)
+    public ResponseEntity<ErrorResponse> handleTokenReuseDetected(TokenReuseDetectedException e) {
+        log.warn("Refresh token reuse detected, all sessions revoked");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("TOKEN_REUSE_DETECTED",
+                        "Refresh token reuse detected; all sessions have been revoked"));
+    }
+
     @ExceptionHandler(AccountServiceUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleAccountServiceUnavailable(AccountServiceUnavailableException e) {
         log.error("Account service unavailable: {}", e.getMessage());

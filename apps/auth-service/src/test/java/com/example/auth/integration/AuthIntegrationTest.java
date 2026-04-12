@@ -276,6 +276,43 @@ class AuthIntegrationTest {
     }
 
     @Test
+    @Order(65)
+    @DisplayName("Refresh token reuse → 401 TOKEN_REUSE_DETECTED, all sessions revoked, Redis marker set")
+    void refreshTokenReuseDetected() throws Exception {
+        // Login
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s"}
+                                """.formatted(TEST_EMAIL, TEST_PASSWORD)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String originalRefresh = objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                .get("refreshToken").asText();
+
+        // First refresh (legitimate rotation)
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken":"%s"}
+                                """.formatted(originalRefresh)))
+                .andExpect(status().isOk());
+
+        // Replay the original refresh token → reuse detection path
+        mockMvc.perform(post("/api/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"refreshToken":"%s"}
+                                """.formatted(originalRefresh)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("TOKEN_REUSE_DETECTED"));
+
+        // Redis bulk-invalidation marker must be set for this account
+        Boolean hasMarker = redisTemplate.hasKey("refresh:invalidate-all:" + ACCOUNT_ID);
+        assertThat(hasMarker).isTrue();
+    }
+
+    @Test
     @Order(7)
     @DisplayName("JWKS endpoint returns valid JWKS")
     void jwksEndpoint() throws Exception {
