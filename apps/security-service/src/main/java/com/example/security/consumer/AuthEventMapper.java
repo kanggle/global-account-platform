@@ -1,0 +1,86 @@
+package com.example.security.consumer;
+
+import com.example.security.domain.history.LoginHistoryEntry;
+import com.example.security.domain.history.LoginOutcome;
+import com.fasterxml.jackson.databind.JsonNode;
+
+import java.time.Instant;
+
+/**
+ * Maps auth event envelope JSON to LoginHistoryEntry domain objects.
+ * Stateless utility - all methods are static.
+ */
+public final class AuthEventMapper {
+
+    private AuthEventMapper() {
+    }
+
+    public static LoginHistoryEntry toLoginHistoryEntry(JsonNode envelope, LoginOutcome outcome) {
+        String eventId = envelope.path("eventId").asText();
+        JsonNode payload = envelope.path("payload");
+
+        String accountId = nullableText(payload, "accountId");
+        String ipMasked = nullableText(payload, "ipMasked");
+        String userAgentFamily = nullableText(payload, "userAgentFamily");
+        String deviceFingerprint = truncateFingerprint(nullableText(payload, "deviceFingerprint"));
+        String geoCountry = nullableText(payload, "geoCountry");
+
+        String timestampStr = nullableText(payload, "timestamp");
+        Instant occurredAt;
+        if (timestampStr != null) {
+            occurredAt = Instant.parse(timestampStr);
+        } else {
+            occurredAt = Instant.parse(envelope.path("occurredAt").asText());
+        }
+
+        return new LoginHistoryEntry(
+                eventId, accountId, outcome,
+                ipMasked, userAgentFamily, deviceFingerprint, geoCountry,
+                occurredAt
+        );
+    }
+
+    /**
+     * Determine outcome from auth.login.failed payload.
+     */
+    public static LoginOutcome resolveFailureOutcome(JsonNode payload) {
+        String reason = nullableText(payload, "failureReason");
+        if ("RATE_LIMITED".equals(reason)) {
+            return LoginOutcome.RATE_LIMITED;
+        }
+        return LoginOutcome.FAILURE;
+    }
+
+    /**
+     * Mask IP address: replace last octet with '***'.
+     * Input may already be masked from the producer; this ensures consistent format.
+     */
+    public static String maskIp(String ip) {
+        if (ip == null || ip.isBlank()) {
+            return ip;
+        }
+        int lastDot = ip.lastIndexOf('.');
+        if (lastDot < 0) {
+            return ip;
+        }
+        return ip.substring(0, lastDot + 1) + "***";
+    }
+
+    /**
+     * Truncate device fingerprint to first 12 characters for PII protection.
+     */
+    public static String truncateFingerprint(String fingerprint) {
+        if (fingerprint == null || fingerprint.length() <= 12) {
+            return fingerprint;
+        }
+        return fingerprint.substring(0, 12);
+    }
+
+    private static String nullableText(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        if (value.isMissingNode() || value.isNull()) {
+            return null;
+        }
+        return value.asText();
+    }
+}
