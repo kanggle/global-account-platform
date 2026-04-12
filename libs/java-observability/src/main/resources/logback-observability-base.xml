@@ -27,6 +27,8 @@
             </fieldNames>
             <customFields>{"service":"${SERVICE_NAME}"}</customFields>
             <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
             <includeMdcKeyName>eventId</includeMdcKeyName>
             <includeMdcKeyName>eventType</includeMdcKeyName>
             <timeZone>UTC</timeZone>

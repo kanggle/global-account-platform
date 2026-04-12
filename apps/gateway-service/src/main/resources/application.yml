@@ -39,10 +39,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       show-details: never
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      service: ${spring.application.name}
 
 gateway:
   jwt:
