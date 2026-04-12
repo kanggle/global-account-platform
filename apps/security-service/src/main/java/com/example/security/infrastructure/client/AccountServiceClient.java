@@ -3,6 +3,7 @@ package com.example.security.infrastructure.client;
 import com.example.security.domain.detection.AccountLockClient;
 import com.example.security.domain.suspicious.SuspiciousEvent;
 import com.example.security.infrastructure.config.DetectionProperties;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
@@ -86,7 +87,16 @@ public class AccountServiceClient implements AccountLockClient {
                 int code = resp.statusCode();
                 if (code == 200) {
                     String bodyStr = resp.body() == null ? "" : resp.body();
-                    boolean alreadyLocked = bodyStr.contains("\"previousStatus\":\"LOCKED\"");
+                    boolean alreadyLocked = false;
+                    if (!bodyStr.isBlank()) {
+                        try {
+                            LockResponse parsed = objectMapper.readValue(bodyStr, LockResponse.class);
+                            alreadyLocked = "LOCKED".equals(parsed.previousStatus());
+                        } catch (JsonProcessingException e) {
+                            log.warn("Unable to parse account-service lock response as JSON; treating as SUCCESS. suspiciousEventId={}, body={}",
+                                    event.getId(), bodyStr, e);
+                        }
+                    }
                     return new LockResult(alreadyLocked ? Status.ALREADY_LOCKED : Status.SUCCESS, code, bodyStr);
                 }
                 if (code == 409) {
@@ -131,6 +141,18 @@ public class AccountServiceClient implements AccountLockClient {
         p.put("detectedAt", event.getDetectedAt().toString());
         return p;
     }
+
+    /**
+     * Typed view of the account-service lock response (see
+     * {@code specs/contracts/http/internal/security-to-account.md}). Unknown
+     * fields are ignored so the contract can evolve additively without breaking
+     * this client.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record LockResponse(String accountId,
+                                String previousStatus,
+                                String currentStatus,
+                                String lockedAt) {}
 
     private static void sleepWithJitter(long baseMs) {
         long jitter = (long) (Math.random() * (baseMs / 2.0 + 1));

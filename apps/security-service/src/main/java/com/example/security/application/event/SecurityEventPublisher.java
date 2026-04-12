@@ -72,6 +72,12 @@ public class SecurityEventPublisher {
         writeEnvelope(TOPIC_AUTO_LOCK_PENDING, event.getAccountId(), payload);
     }
 
+    /**
+     * Maps the client-side status enum to the normalized contract vocabulary
+     * (SUCCESS | ALREADY_LOCKED | FAILURE). This MUST match the value persisted
+     * to {@code suspicious_events.lock_request_result} — see
+     * {@code DetectSuspiciousActivityUseCase#triggerAutoLock}.
+     */
     private String mapStatus(AccountLockClient.Status status) {
         return switch (status) {
             case SUCCESS -> "SUCCESS";

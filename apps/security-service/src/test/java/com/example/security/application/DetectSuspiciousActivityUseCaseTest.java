@@ -2,7 +2,6 @@ package com.example.security.application;
 
 import com.example.security.application.event.SecurityEventPublisher;
 import com.example.security.domain.detection.*;
-import com.example.security.domain.repository.SuspiciousEventRepository;
 import com.example.security.domain.suspicious.SuspiciousEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class DetectSuspiciousActivityUseCaseTest {
 
-    @Mock SuspiciousEventRepository repository;
+    @Mock SuspiciousEventPersistenceService persistenceService;
     @Mock SecurityEventPublisher publisher;
     @Mock AccountLockClient lockClient;
     @Mock SuspiciousActivityRule alertRule;
@@ -34,16 +34,35 @@ class DetectSuspiciousActivityUseCaseTest {
                 "1.2.3.***", "fp-1", "US", Instant.now(), null);
     }
 
+    private void stubPersistenceToEchoEvent() {
+        when(persistenceService.recordSuspiciousEvent(any(), any(), any()))
+                .thenAnswer(inv -> {
+                    EvaluationContext c = inv.getArgument(0);
+                    RiskScoreAggregator.Aggregated agg = inv.getArgument(1);
+                    RiskLevel level = inv.getArgument(2);
+                    DetectionResult w = agg.winner();
+                    return SuspiciousEvent.create(
+                            UUID.randomUUID().toString(),
+                            c.accountId(),
+                            w.ruleCode(),
+                            w.riskScore(),
+                            level,
+                            w.evidence(),
+                            c.eventId(),
+                            Instant.now());
+                });
+    }
+
     @Test
     @DisplayName("No rule fires → returns null, no persistence, no events")
     void noFire() {
         when(quietRule.evaluate(any())).thenReturn(DetectionResult.NONE);
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(quietRule), repository, publisher, lockClient);
+                List.of(quietRule), persistenceService, publisher, lockClient);
 
         SuspiciousEvent result = useCase.detect(ctx());
         assertThat(result).isNull();
-        verifyNoInteractions(repository, publisher, lockClient);
+        verifyNoInteractions(persistenceService, publisher, lockClient);
     }
 
     @Test
@@ -51,15 +70,17 @@ class DetectSuspiciousActivityUseCaseTest {
     void alertLevel() {
         when(alertRule.evaluate(any()))
                 .thenReturn(new DetectionResult("DEVICE_CHANGE", 50, Map.of("k", "v")));
+        stubPersistenceToEchoEvent();
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(alertRule), repository, publisher, lockClient);
+                List.of(alertRule), persistenceService, publisher, lockClient);
 
         SuspiciousEvent result = useCase.detect(ctx());
         assertThat(result).isNotNull();
         assertThat(result.getActionTaken()).isEqualTo(RiskLevel.ALERT);
         assertThat(result.getRiskScore()).isEqualTo(50);
         assertThat(result.getRuleCode()).isEqualTo("DEVICE_CHANGE");
-        verify(repository, times(1)).save(any());
+        verify(persistenceService).recordSuspiciousEvent(any(), any(), any());
+        verify(persistenceService, never()).updateLockResult(any());
         verify(publisher).publishSuspiciousDetected(any());
         verify(publisher, never()).publishAutoLockTriggered(any(), any());
         verifyNoInteractions(lockClient);
@@ -72,9 +93,10 @@ class DetectSuspiciousActivityUseCaseTest {
                 .thenReturn(new DetectionResult("GEO_ANOMALY", 92, Map.of("d", "x")));
         when(lockClient.lock(any()))
                 .thenReturn(new AccountLockClient.LockResult(AccountLockClient.Status.SUCCESS, 200, "{}"));
+        stubPersistenceToEchoEvent();
 
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(autoLockRule), repository, publisher, lockClient);
+                List.of(autoLockRule), persistenceService, publisher, lockClient);
 
         SuspiciousEvent result = useCase.detect(ctx());
         assertThat(result).isNotNull();
@@ -83,7 +105,8 @@ class DetectSuspiciousActivityUseCaseTest {
         verify(publisher).publishSuspiciousDetected(any());
         verify(publisher).publishAutoLockTriggered(any(), eq(AccountLockClient.Status.SUCCESS));
         verify(publisher, never()).publishAutoLockPending(any());
-        verify(repository, times(2)).save(any()); // initial + lockRequestResult update
+        verify(persistenceService).recordSuspiciousEvent(any(), any(), any());
+        verify(persistenceService).updateLockResult(any());
     }
 
     @Test
@@ -93,15 +116,35 @@ class DetectSuspiciousActivityUseCaseTest {
                 .thenReturn(new DetectionResult("TOKEN_REUSE", 100, Map.of()));
         when(lockClient.lock(any()))
                 .thenReturn(new AccountLockClient.LockResult(AccountLockClient.Status.FAILURE, 0, "timeout"));
+        stubPersistenceToEchoEvent();
 
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(autoLockRule), repository, publisher, lockClient);
+                List.of(autoLockRule), persistenceService, publisher, lockClient);
 
         useCase.detect(ctx());
 
         verify(publisher).publishSuspiciousDetected(any());
         verify(publisher).publishAutoLockTriggered(any(), eq(AccountLockClient.Status.FAILURE));
         verify(publisher).publishAutoLockPending(any());
+    }
+
+    @Test
+    @DisplayName("AUTO_LOCK: INVALID_TRANSITION normalized to FAILURE in persisted row")
+    void autoLockInvalidTransitionNormalizedToFailure() {
+        when(autoLockRule.evaluate(any()))
+                .thenReturn(new DetectionResult("GEO_ANOMALY", 95, Map.of()));
+        when(lockClient.lock(any()))
+                .thenReturn(new AccountLockClient.LockResult(AccountLockClient.Status.INVALID_TRANSITION, 409, "{}"));
+        stubPersistenceToEchoEvent();
+
+        DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
+                List.of(autoLockRule), persistenceService, publisher, lockClient);
+
+        useCase.detect(ctx());
+
+        ArgumentCaptor<SuspiciousEvent> captor = ArgumentCaptor.forClass(SuspiciousEvent.class);
+        verify(persistenceService).updateLockResult(captor.capture());
+        assertThat(captor.getValue().getLockRequestResult()).isEqualTo("FAILURE");
     }
 
     @Test
@@ -113,9 +156,10 @@ class DetectSuspiciousActivityUseCaseTest {
                 .thenReturn(new DetectionResult("GEO_ANOMALY", 92, Map.of()));
         when(lockClient.lock(any()))
                 .thenReturn(new AccountLockClient.LockResult(AccountLockClient.Status.SUCCESS, 200, "{}"));
+        stubPersistenceToEchoEvent();
 
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(alertRule, autoLockRule), repository, publisher, lockClient);
+                List.of(alertRule, autoLockRule), persistenceService, publisher, lockClient);
 
         SuspiciousEvent result = useCase.detect(ctx());
         assertThat(result.getRuleCode()).isEqualTo("GEO_ANOMALY");
@@ -128,9 +172,10 @@ class DetectSuspiciousActivityUseCaseTest {
         when(quietRule.evaluate(any())).thenThrow(new RuntimeException("boom"));
         when(alertRule.evaluate(any()))
                 .thenReturn(new DetectionResult("DEVICE_CHANGE", 50, Map.of()));
+        stubPersistenceToEchoEvent();
 
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(quietRule, alertRule), repository, publisher, lockClient);
+                List.of(quietRule, alertRule), persistenceService, publisher, lockClient);
 
         SuspiciousEvent result = useCase.detect(ctx());
         assertThat(result).isNotNull();
@@ -144,15 +189,15 @@ class DetectSuspiciousActivityUseCaseTest {
                 .thenReturn(new DetectionResult("VELOCITY", 96, Map.of()));
         when(lockClient.lock(any()))
                 .thenReturn(new AccountLockClient.LockResult(AccountLockClient.Status.ALREADY_LOCKED, 200, "{}"));
+        stubPersistenceToEchoEvent();
 
         DetectSuspiciousActivityUseCase useCase = new DetectSuspiciousActivityUseCase(
-                List.of(autoLockRule), repository, publisher, lockClient);
+                List.of(autoLockRule), persistenceService, publisher, lockClient);
 
         useCase.detect(ctx());
 
         ArgumentCaptor<SuspiciousEvent> captor = ArgumentCaptor.forClass(SuspiciousEvent.class);
-        verify(repository, times(2)).save(captor.capture());
-        SuspiciousEvent last = captor.getAllValues().get(captor.getAllValues().size() - 1);
-        assertThat(last.getLockRequestResult()).isEqualTo("ALREADY_LOCKED");
+        verify(persistenceService).updateLockResult(captor.capture());
+        assertThat(captor.getValue().getLockRequestResult()).isEqualTo("ALREADY_LOCKED");
     }
 }

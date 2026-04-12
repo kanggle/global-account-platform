@@ -7,16 +7,12 @@ import com.example.security.domain.detection.EvaluationContext;
 import com.example.security.domain.detection.RiskLevel;
 import com.example.security.domain.detection.RiskScoreAggregator;
 import com.example.security.domain.detection.SuspiciousActivityRule;
-import com.example.security.domain.repository.SuspiciousEventRepository;
 import com.example.security.domain.suspicious.SuspiciousEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Orchestrates the detection pipeline for a single consumed auth event:
@@ -27,32 +23,30 @@ import java.util.UUID;
  *     <ul>
  *       <li>NONE → no-op</li>
  *       <li>ALERT → persist suspicious_events + publish {@code suspicious.detected}</li>
- *       <li>AUTO_LOCK → persist + publish + call account-service lock (outside tx)</li>
+ *       <li>AUTO_LOCK → persist + publish + call account-service lock</li>
  *     </ul>
  *   </li>
  * </ol>
  *
- * <p>The account-service call and the {@code auto.lock.triggered} event are
- * performed <em>after</em> the DB transaction commits so that a network failure
- * in the HTTP call does not block or roll back the suspicious record. The record
- * is updated with the final {@code lockRequestResult} in a second short
- * transaction. This mirrors the outbox pattern for side effects.</p>
+ * <p>Persistence is delegated to {@link SuspiciousEventPersistenceService} so that
+ * {@link org.springframework.transaction.annotation.Transactional} boundaries are
+ * enforced by the Spring AOP proxy (external call) instead of self-invocation.</p>
  */
 @Slf4j
 @Service
 public class DetectSuspiciousActivityUseCase {
 
     private final List<SuspiciousActivityRule> rules;
-    private final SuspiciousEventRepository suspiciousEventRepository;
+    private final SuspiciousEventPersistenceService persistenceService;
     private final SecurityEventPublisher publisher;
     private final AccountLockClient accountLockClient;
 
     public DetectSuspiciousActivityUseCase(List<SuspiciousActivityRule> rules,
-                                            SuspiciousEventRepository suspiciousEventRepository,
+                                            SuspiciousEventPersistenceService persistenceService,
                                             SecurityEventPublisher publisher,
                                             AccountLockClient accountLockClient) {
         this.rules = List.copyOf(rules);
-        this.suspiciousEventRepository = suspiciousEventRepository;
+        this.persistenceService = persistenceService;
         this.publisher = publisher;
         this.accountLockClient = accountLockClient;
     }
@@ -84,7 +78,7 @@ public class DetectSuspiciousActivityUseCase {
             return null;
         }
 
-        SuspiciousEvent persisted = recordSuspiciousEvent(ctx, aggregated, level);
+        SuspiciousEvent persisted = persistenceService.recordSuspiciousEvent(ctx, aggregated, level);
         publisher.publishSuspiciousDetected(persisted);
 
         if (level == RiskLevel.AUTO_LOCK) {
@@ -93,37 +87,18 @@ public class DetectSuspiciousActivityUseCase {
         return persisted;
     }
 
-    @Transactional
-    protected SuspiciousEvent recordSuspiciousEvent(EvaluationContext ctx,
-                                                     RiskScoreAggregator.Aggregated aggregated,
-                                                     RiskLevel level) {
-        DetectionResult winner = aggregated.winner();
-        SuspiciousEvent event = SuspiciousEvent.create(
-                UUID.randomUUID().toString(),
-                ctx.accountId(),
-                winner.ruleCode(),
-                winner.riskScore(),
-                level,
-                winner.evidence(),
-                ctx.eventId(),
-                Instant.now()
-        );
-        suspiciousEventRepository.save(event);
-        log.info("Persisted suspicious event: id={}, accountId={}, ruleCode={}, score={}, action={}",
-                event.getId(), event.getAccountId(), event.getRuleCode(), event.getRiskScore(), level);
-        return event;
-    }
-
     private void triggerAutoLock(SuspiciousEvent event) {
         AccountLockClient.LockResult result = accountLockClient.lock(event);
+        // Normalized vocabulary: SUCCESS | ALREADY_LOCKED | FAILURE.
+        // INVALID_TRANSITION is a failure mode from the caller's perspective —
+        // mapped to FAILURE so the DB column and event payload share identical values.
         String code = switch (result.status()) {
             case SUCCESS -> "SUCCESS";
             case ALREADY_LOCKED -> "ALREADY_LOCKED";
-            case INVALID_TRANSITION -> "INVALID_TRANSITION";
-            case FAILURE -> "FAILURE";
+            case INVALID_TRANSITION, FAILURE -> "FAILURE";
         };
         SuspiciousEvent updated = event.withLockRequestResult(code);
-        updateLockResult(updated);
+        persistenceService.updateLockResult(updated);
         publisher.publishAutoLockTriggered(updated, result.status());
 
         if (result.status() == AccountLockClient.Status.FAILURE) {
@@ -131,10 +106,5 @@ public class DetectSuspiciousActivityUseCase {
             log.warn("Auto-lock FAILURE — emitted pending event; suspiciousEventId={}, accountId={}",
                     updated.getId(), updated.getAccountId());
         }
-    }
-
-    @Transactional
-    protected void updateLockResult(SuspiciousEvent event) {
-        suspiciousEventRepository.save(event);
     }
 }
