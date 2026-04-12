@@ -1,0 +1,10 @@
+rootProject.name = 'global-account-platform'
+
+include(
+    'libs:java-common',
+    'libs:java-messaging',
+    'libs:java-observability',
+    'libs:java-security',
+    'libs:java-test-support',
+    'libs:java-web'
+)
