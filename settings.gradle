@@ -10,5 +10,6 @@ include(
     'apps:account-service',
     'apps:auth-service',
     'apps:gateway-service',
-    'apps:security-service'
+    'apps:security-service',
+    'apps:admin-service'
 )

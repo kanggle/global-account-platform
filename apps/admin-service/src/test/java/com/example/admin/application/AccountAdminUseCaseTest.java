@@ -1,0 +1,123 @@
+package com.example.admin.application;
+
+import com.example.admin.application.exception.AuditFailureException;
+import com.example.admin.application.exception.DownstreamFailureException;
+import com.example.admin.application.exception.PermissionDeniedException;
+import com.example.admin.application.exception.ReasonRequiredException;
+import com.example.admin.infrastructure.client.AccountServiceClient;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+
+import java.time.Instant;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.STRICT_STUBS)
+class AccountAdminUseCaseTest {
+
+    @Mock
+    AccountServiceClient accountServiceClient;
+
+    @Mock
+    AdminActionAuditor auditor;
+
+    @InjectMocks
+    AccountAdminUseCase useCase;
+
+    private OperatorContext accountAdmin() {
+        return new OperatorContext("op-1", Set.of(OperatorRole.ACCOUNT_ADMIN));
+    }
+
+    private OperatorContext auditorOnly() {
+        return new OperatorContext("op-1", Set.of(OperatorRole.AUDITOR));
+    }
+
+    @Test
+    void lock_success_records_success_audit() {
+        when(auditor.reserveAuditId()).thenReturn("audit-1");
+        when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
+                .thenReturn(new AccountServiceClient.LockResponse(
+                        "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
+
+        LockAccountResult r = useCase.lock(new LockAccountCommand(
+                "acc-1", "fraud", "T-1", "idemp-1", accountAdmin()));
+
+        assertThat(r.auditId()).isEqualTo("audit-1");
+        assertThat(r.currentStatus()).isEqualTo("LOCKED");
+        verify(auditor, times(1)).record(any());
+    }
+
+    @Test
+    void lock_downstream_failure_records_failure_audit_and_throws() {
+        when(auditor.reserveAuditId()).thenReturn("audit-2");
+        doThrow(new DownstreamFailureException("boom"))
+                .when(accountServiceClient).lock(anyString(), anyString(), anyString(), any(), anyString());
+
+        assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
+                "acc-1", "fraud", null, "idemp-2", accountAdmin())))
+                .isInstanceOf(DownstreamFailureException.class);
+
+        verify(auditor, times(1)).record(any());
+    }
+
+    @Test
+    void lock_missing_reason_throws_reason_required() {
+        assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
+                "acc-1", "", null, "idemp-3", accountAdmin())))
+                .isInstanceOf(ReasonRequiredException.class);
+
+        verify(auditor, never()).record(any());
+    }
+
+    @Test
+    void lock_auditor_role_is_forbidden() {
+        assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
+                "acc-1", "fraud", null, "idemp-4", auditorOnly())))
+                .isInstanceOf(PermissionDeniedException.class);
+
+        verify(auditor, never()).record(any());
+    }
+
+    @Test
+    void lock_audit_failure_is_propagated_as_fail_closed() {
+        when(auditor.reserveAuditId()).thenReturn("audit-5");
+        when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
+                .thenReturn(new AccountServiceClient.LockResponse(
+                        "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
+        doThrow(new AuditFailureException("db down", new RuntimeException()))
+                .when(auditor).record(any());
+
+        assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
+                "acc-1", "fraud", null, "idemp-5", accountAdmin())))
+                .isInstanceOf(AuditFailureException.class);
+    }
+
+    @Test
+    void super_admin_can_lock() {
+        OperatorContext superAdmin = new OperatorContext("op-9", Set.of(OperatorRole.SUPER_ADMIN));
+        when(auditor.reserveAuditId()).thenReturn("audit-10");
+        when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
+                .thenReturn(new AccountServiceClient.LockResponse(
+                        "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
+
+        LockAccountResult r = useCase.lock(new LockAccountCommand(
+                "acc-1", "fraud", null, "idemp-sa", superAdmin));
+
+        assertThat(r.currentStatus()).isEqualTo("LOCKED");
+    }
+}

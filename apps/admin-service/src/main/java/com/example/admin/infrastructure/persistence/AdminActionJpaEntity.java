@@ -1,0 +1,88 @@
+package com.example.admin.infrastructure.persistence;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.Instant;
+
+@Entity
+@Table(name = "admin_actions")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class AdminActionJpaEntity {
+
+    @Id
+    @Column(name = "id", length = 36, nullable = false)
+    private String id;
+
+    @Column(name = "action_code", length = 50, nullable = false)
+    private String actionCode;
+
+    @Column(name = "actor_id", length = 100, nullable = false)
+    private String actorId;
+
+    @Column(name = "actor_role", length = 30, nullable = false)
+    private String actorRole;
+
+    @Column(name = "target_type", length = 30, nullable = false)
+    private String targetType;
+
+    @Column(name = "target_id", length = 100, nullable = false)
+    private String targetId;
+
+    @Column(name = "reason", length = 1000, nullable = false)
+    private String reason;
+
+    @Column(name = "ticket_id", length = 100)
+    private String ticketId;
+
+    @Column(name = "idempotency_key", length = 100, nullable = false)
+    private String idempotencyKey;
+
+    @Column(name = "outcome", length = 20, nullable = false)
+    private String outcome;
+
+    @Column(name = "downstream_detail", columnDefinition = "TEXT")
+    private String downstreamDetail;
+
+    @Column(name = "started_at", nullable = false)
+    private Instant startedAt;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
+
+    public static AdminActionJpaEntity create(String id,
+                                              String actionCode,
+                                              String actorId,
+                                              String actorRole,
+                                              String targetType,
+                                              String targetId,
+                                              String reason,
+                                              String ticketId,
+                                              String idempotencyKey,
+                                              String outcome,
+                                              String downstreamDetail,
+                                              Instant startedAt,
+                                              Instant completedAt) {
+        AdminActionJpaEntity e = new AdminActionJpaEntity();
+        e.id = id;
+        e.actionCode = actionCode;
+        e.actorId = actorId;
+        e.actorRole = actorRole;
+        e.targetType = targetType;
+        e.targetId = targetId;
+        e.reason = reason;
+        e.ticketId = ticketId;
+        e.idempotencyKey = idempotencyKey;
+        e.outcome = outcome;
+        e.downstreamDetail = downstreamDetail;
+        e.startedAt = startedAt;
+        e.completedAt = completedAt;
+        return e;
+    }
+}
