@@ -1,6 +1,7 @@
 # Environment variables (secrets)
 .env
 .env.*
+!.env.example
 
 # Local H2 database files
 /data/
