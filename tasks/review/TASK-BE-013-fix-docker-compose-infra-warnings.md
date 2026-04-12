@@ -8,7 +8,7 @@ Docker Compose 인프라 개선 — init.sql 패스워드 파라미터화 및 Ka
 
 # Status
 
-ready
+review
 
 # Owner
 

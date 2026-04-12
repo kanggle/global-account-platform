@@ -25,9 +25,13 @@ services:
       - "${MYSQL_PORT:-3306}:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_pass}
+      ACCOUNT_DB_PASSWORD: ${ACCOUNT_DB_PASSWORD:-account_pass}
+      SECURITY_DB_PASSWORD: ${SECURITY_DB_PASSWORD:-security_pass}
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-admin_pass}
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./docker/mysql/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
       interval: 10s
@@ -175,7 +179,7 @@ services:
   # Kafka UI (provectuslabs/kafka-ui)
   # ---------------------------------------------------------------------------
   kafka-ui:
-    image: provectuslabs/kafka-ui:latest
+    image: provectuslabs/kafka-ui:v0.7.2
     container_name: gap-kafka-ui
     restart: unless-stopped
     ports:
