@@ -2,7 +2,7 @@
 name: global-account-platform
 domain: saas
 traits: [transactional, regulated, audit-heavy, integration-heavy]
-service_types: [rest-api, event-consumer]
+service_types: [rest-api, event-consumer, frontend-app]
 compliance: [gdpr, pipa]
 data_sensitivity: pii-sensitive
 scale_tier: startup
