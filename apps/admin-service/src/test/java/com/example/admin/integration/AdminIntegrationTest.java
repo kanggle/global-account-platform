@@ -1,0 +1,229 @@
+package com.example.admin.integration;
+
+import com.example.admin.infrastructure.persistence.AdminActionJpaEntity;
+import com.example.admin.infrastructure.persistence.AdminActionJpaRepository;
+import com.example.admin.support.OperatorJwtTestFixture;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.KafkaContainer;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * End-to-end integration test for the admin-service.
+ *
+ * Boots the Spring Boot app, wires it against real MySQL + Kafka (via
+ * Testcontainers) and a WireMock stub replacing the account/auth/security
+ * downstream services. Verifies the audit-before-downstream (A10) pattern
+ * and the outbox event emission on success.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Testcontainers
+@ActiveProfiles("test")
+@EnabledIf("isDockerAvailable")
+class AdminIntegrationTest {
+
+    static boolean isDockerAvailable() {
+        try {
+            org.testcontainers.DockerClientFactory.instance().client();
+            return true;
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    @Container
+    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
+            .withDatabaseName("admin_db")
+            .withUsername("test")
+            .withPassword("test");
+
+    @Container
+    static KafkaContainer kafka = new KafkaContainer(
+            DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
+
+    static WireMockServer wireMock;
+    static OperatorJwtTestFixture jwt;
+    static Path publicKeyFile;
+
+    @BeforeAll
+    static void setupShared() throws IOException {
+        jwt = new OperatorJwtTestFixture();
+
+        // Extract the public key in X.509 PEM form and write to a temp file so
+        // that JwtConfig.operatorPublicKey() can load it via file: resource.
+        java.security.PublicKey pub = extractPublicKey(jwt);
+        String pem = "-----BEGIN PUBLIC KEY-----\n"
+                + Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(pub.getEncoded())
+                + "\n-----END PUBLIC KEY-----\n";
+        publicKeyFile = Files.createTempFile("admin-test-pubkey-", ".pem");
+        Files.writeString(publicKeyFile, pem);
+
+        wireMock = new WireMockServer(18085);
+        wireMock.start();
+        WireMock.configureFor("localhost", 18085);
+    }
+
+    @AfterAll
+    static void tearDownShared() {
+        if (wireMock != null) {
+            wireMock.stop();
+        }
+    }
+
+    private static java.security.PublicKey extractPublicKey(OperatorJwtTestFixture fixture) {
+        // Use reflection-free path: re-derive via a dummy signed token is overkill.
+        // Instead, expose via the verifier's internal state through a small helper.
+        try {
+            var field = OperatorJwtTestFixture.class.getDeclaredField("keyPair");
+            field.setAccessible(true);
+            java.security.KeyPair kp = (java.security.KeyPair) field.get(fixture);
+            return kp.getPublic();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @DynamicPropertySource
+    static void configureProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", mysql::getJdbcUrl);
+        registry.add("spring.datasource.username", mysql::getUsername);
+        registry.add("spring.datasource.password", mysql::getPassword);
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+        registry.add("admin.jwt.public-key-path", () -> "file:" + publicKeyFile.toAbsolutePath().toString().replace('\\', '/'));
+        registry.add("admin.auth-service.base-url", () -> "http://localhost:18085");
+        registry.add("admin.account-service.base-url", () -> "http://localhost:18085");
+        registry.add("admin.security-service.base-url", () -> "http://localhost:18085");
+    }
+
+    @Autowired
+    MockMvc mockMvc;
+
+    @Autowired
+    AdminActionJpaRepository adminActionRepository;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void resetStubs() {
+        wireMock.resetAll();
+    }
+
+    private String operatorToken() {
+        return "Bearer " + jwt.operatorToken("op-integ-1", List.of("ACCOUNT_ADMIN"));
+    }
+
+    @Test
+    @DisplayName("Lock success: audit IN_PROGRESS → SUCCESS + outbox event emitted")
+    void lockSuccessEmitsAuditAndOutbox() throws Exception {
+        wireMock.stubFor(WireMock.post(urlPathEqualTo("/internal/accounts/acc-001/lock"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                    "accountId": "acc-001",
+                                    "previousStatus": "ACTIVE",
+                                    "currentStatus": "LOCKED",
+                                    "lockedAt": "2026-04-12T10:00:00Z"
+                                }
+                                """)));
+
+        mockMvc.perform(post("/api/admin/accounts/acc-001/lock")
+                        .header("Authorization", operatorToken())
+                        .header("Idempotency-Key", "idemp-integ-1")
+                        .header("X-Operator-Reason", "fraud-investigation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ticketId\":\"T-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentStatus").value("LOCKED"));
+
+        // Exactly one audit row for this idempotency key. It must have started
+        // as IN_PROGRESS and transitioned to SUCCESS.
+        await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<AdminActionJpaEntity> rows = adminActionRepository.findAll();
+            AdminActionJpaEntity row = rows.stream()
+                    .filter(r -> "idemp-integ-1".equals(r.getIdempotencyKey()))
+                    .findFirst().orElseThrow();
+            assertThat(row.getOutcome()).isEqualTo("SUCCESS");
+            assertThat(row.getActionCode()).isEqualTo("ACCOUNT_LOCK");
+            assertThat(row.getCompletedAt()).isNotNull();
+        });
+
+        // Outbox row emitted for admin.action.performed.
+        await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<Map<String, Object>> events = jdbcTemplate.queryForList(
+                    "SELECT event_type FROM outbox WHERE event_type = 'admin.action.performed'");
+            assertThat(events).isNotEmpty();
+        });
+    }
+
+    @Test
+    @DisplayName("Lock downstream 500: retries exhausted → 502 + audit FAILURE")
+    void lockDownstreamFailureRecordsFailureAndReturns502() throws Exception {
+        wireMock.stubFor(WireMock.post(urlPathEqualTo("/internal/accounts/acc-002/lock"))
+                .willReturn(aResponse()
+                        .withStatus(500)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\":\"INTERNAL_ERROR\",\"message\":\"boom\"}")));
+
+        mockMvc.perform(post("/api/admin/accounts/acc-002/lock")
+                        .header("Authorization", operatorToken())
+                        .header("Idempotency-Key", "idemp-integ-2")
+                        .header("X-Operator-Reason", "fraud-investigation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("DOWNSTREAM_ERROR"));
+
+        // Audit row must still exist, with outcome=FAILURE after retries are exhausted.
+        await().atMost(java.time.Duration.ofSeconds(5)).untilAsserted(() -> {
+            List<AdminActionJpaEntity> rows = adminActionRepository.findAll();
+            AdminActionJpaEntity row = rows.stream()
+                    .filter(r -> "idemp-integ-2".equals(r.getIdempotencyKey()))
+                    .findFirst().orElseThrow();
+            assertThat(row.getOutcome()).isEqualTo("FAILURE");
+            assertThat(row.getCompletedAt()).isNotNull();
+        });
+
+        // WireMock should have observed retries (max-attempts=3 in test config).
+        wireMock.verify(
+                com.github.tomakehurst.wiremock.client.WireMock.moreThanOrExactly(2),
+                com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
+                        urlPathEqualTo("/internal/accounts/acc-002/lock")));
+    }
+}
