@@ -141,5 +141,10 @@ class RefreshTokenUseCaseTest {
                 .isInstanceOf(SessionRevokedException.class);
 
         verify(refreshTokenRepository).revokeAllByAccountId(ACCOUNT_ID);
+        verify(authEventPublisher).publishTokenReuseDetected(
+                eq(ACCOUNT_ID), eq(OLD_JTI), any(), any(Instant.class),
+                eq(CTX.ipMasked()), eq(CTX.deviceFingerprint()),
+                eq(true), anyInt()
+        );
     }
 }
