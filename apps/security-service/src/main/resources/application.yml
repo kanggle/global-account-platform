@@ -78,3 +78,4 @@ management:
 security-service:
   dedup:
     redis-ttl-seconds: ${DEDUP_REDIS_TTL:86400}
+  internal-token: ${INTERNAL_SERVICE_TOKEN:}

@@ -53,11 +53,11 @@ class EventDedupServiceTest {
     }
 
     @Test
-    @DisplayName("markProcessed saves to both Redis and MySQL")
-    void markProcessedSavesBoth() {
-        dedupService.markProcessed("evt-004", "auth.login.succeeded");
+    @DisplayName("markProcessedInRedis saves to Redis only")
+    void markProcessedInRedis() {
+        dedupService.markProcessedInRedis("evt-004");
 
         verify(redisStore).markProcessed("evt-004");
-        verify(processedEventRepository).save(any());
+        verifyNoInteractions(processedEventRepository);
     }
 }

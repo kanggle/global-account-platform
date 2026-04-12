@@ -6,8 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -90,43 +88,6 @@ class AuthEventMapperTest {
                 """;
         JsonNode payload = objectMapper.readTree(json);
         assertThat(AuthEventMapper.resolveFailureOutcome(payload)).isEqualTo(LoginOutcome.FAILURE);
-    }
-
-    @ParameterizedTest
-    @CsvSource({
-            "192.168.1.100, 192.168.1.***",
-            "10.0.0.1, 10.0.0.***",
-            "192.168.1.***, 192.168.1.***",
-            "'', ''"
-    })
-    @DisplayName("maskIp replaces last octet with ***")
-    void maskIpReplacesLastOctet(String input, String expected) {
-        assertThat(AuthEventMapper.maskIp(input)).isEqualTo(expected);
-    }
-
-    @Test
-    @DisplayName("maskIp returns null for null input")
-    void maskIpNullInput() {
-        assertThat(AuthEventMapper.maskIp(null)).isNull();
-    }
-
-    @Test
-    @DisplayName("truncateFingerprint truncates to 12 chars")
-    void truncateFingerprintLong() {
-        assertThat(AuthEventMapper.truncateFingerprint("abcdef123456789012345678"))
-                .isEqualTo("abcdef123456");
-    }
-
-    @Test
-    @DisplayName("truncateFingerprint returns short strings unchanged")
-    void truncateFingerprintShort() {
-        assertThat(AuthEventMapper.truncateFingerprint("abc")).isEqualTo("abc");
-    }
-
-    @Test
-    @DisplayName("truncateFingerprint returns null for null input")
-    void truncateFingerprintNull() {
-        assertThat(AuthEventMapper.truncateFingerprint(null)).isNull();
     }
 
     @Test

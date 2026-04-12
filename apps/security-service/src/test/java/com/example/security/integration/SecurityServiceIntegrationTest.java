@@ -154,6 +154,7 @@ class SecurityServiceIntegrationTest {
         });
 
         mockMvc.perform(get("/internal/security/login-history")
+                        .header("X-Internal-Token", "test-internal-token")
                         .param("accountId", accountId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isArray())
@@ -167,6 +168,7 @@ class SecurityServiceIntegrationTest {
     @DisplayName("Suspicious events endpoint returns empty placeholder")
     void suspiciousEventsPlaceholder() throws Exception {
         mockMvc.perform(get("/internal/security/suspicious-events")
+                        .header("X-Internal-Token", "test-internal-token")
                         .param("accountId", "acc-001"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").isEmpty())
