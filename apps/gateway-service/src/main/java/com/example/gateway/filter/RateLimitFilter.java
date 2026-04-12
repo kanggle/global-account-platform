@@ -22,6 +22,7 @@ import reactor.core.publisher.Mono;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 /**
  * Global rate limit filter using Redis token bucket.
@@ -97,16 +98,45 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         return switch (scope) {
             case "login" -> extractSubnet(clientIp);
             case "signup" -> clientIp;
-            case "refresh" -> {
-                // Try to extract account_id from JWT for refresh scope
-                String authHeader = request.getHeaders().getFirst("Authorization");
-                if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                    yield clientIp; // Simplified: use IP since token may not be decoded yet
-                }
-                yield clientIp;
-            }
+            case "refresh" -> extractAccountIdFromJwt(request, clientIp);
             default -> clientIp;
         };
+    }
+
+    /**
+     * Extracts account_id from JWT sub claim for refresh scope rate limiting.
+     * Falls back to client IP if Authorization header is absent or JWT is unparseable.
+     * Only decodes the payload to read the sub claim -- does NOT verify the signature
+     * (signature verification is handled by JwtAuthenticationFilter).
+     */
+    private String extractAccountIdFromJwt(ServerHttpRequest request, String clientIp) {
+        String authHeader = request.getHeaders().getFirst("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            log.warn("refresh rate-limit: Authorization header absent, falling back to IP={}", clientIp);
+            return clientIp;
+        }
+
+        String token = authHeader.substring(7);
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                log.warn("refresh rate-limit: malformed JWT (less than 2 parts), falling back to IP={}", clientIp);
+                return clientIp;
+            }
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            // Minimal JSON parsing for sub claim without pulling in full JWT library
+            com.fasterxml.jackson.databind.JsonNode payload =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(payloadJson);
+            com.fasterxml.jackson.databind.JsonNode sub = payload.get("sub");
+            if (sub != null && !sub.asText().isBlank()) {
+                return sub.asText();
+            }
+            log.warn("refresh rate-limit: JWT has no sub claim, falling back to IP={}", clientIp);
+            return clientIp;
+        } catch (Exception e) {
+            log.warn("refresh rate-limit: failed to parse JWT for account_id, falling back to IP={}", clientIp, e);
+            return clientIp;
+        }
     }
 
     /**
