@@ -125,8 +125,7 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
             }
             String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
             // Minimal JSON parsing for sub claim without pulling in full JWT library
-            com.fasterxml.jackson.databind.JsonNode payload =
-                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(payloadJson);
+            com.fasterxml.jackson.databind.JsonNode payload = objectMapper.readTree(payloadJson);
             com.fasterxml.jackson.databind.JsonNode sub = payload.get("sub");
             if (sub != null && !sub.asText().isBlank()) {
                 return sub.asText();

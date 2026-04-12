@@ -17,11 +17,15 @@ import org.springframework.mock.web.server.MockServerWebExchange;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RateLimitFilter 단위 테스트")
@@ -99,5 +103,35 @@ class RateLimitFilterTest {
                 .verifyComplete();
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    @Test
+    @DisplayName("refresh scope는 JWT sub 클레임의 account_id를 rate-limit 식별자로 사용")
+    void filter_refreshScope_extractsAccountIdFromJwtSub() {
+        // Build a minimal JWT with sub = "account-42" (header.payload.signature)
+        String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"RS256\"}".getBytes(StandardCharsets.UTF_8));
+        String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"sub\":\"account-42\",\"exp\":9999999999}".getBytes(StandardCharsets.UTF_8));
+        String fakeJwt = header + "." + payload + ".fake-signature";
+
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/refresh")
+                .header("Authorization", "Bearer " + fakeJwt)
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 12345))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/refresh")).willReturn("refresh");
+        given(rateLimiter.isAllowed(eq("refresh"), eq("account-42")))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        // Verify the rate limiter was called with account_id from JWT sub, not client IP
+        verify(rateLimiter).isAllowed("refresh", "account-42");
     }
 }

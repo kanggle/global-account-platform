@@ -29,6 +29,10 @@ import java.util.Date;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
+// Note: @EnabledIf is used instead of Assumptions.assumeTrue in @BeforeAll because
+// @Testcontainers initializes containers before @BeforeAll runs, causing
+// IllegalStateException when Docker is unavailable. @EnabledIf evaluates before
+// container initialization, cleanly skipping the entire test class.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
 @EnabledIf("isDockerAvailable")
@@ -61,6 +65,7 @@ class GatewayIntegrationTest {
 
     @BeforeAll
     static void beforeAll() throws Exception {
+
         // Generate RSA key pair
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
         keyGen.initialize(2048);
