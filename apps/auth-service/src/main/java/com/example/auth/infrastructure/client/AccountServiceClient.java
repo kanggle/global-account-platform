@@ -65,9 +65,8 @@ public class AccountServiceClient implements AccountServicePort {
         // Retry: 2 retries, exponential backoff + jitter, no retry on 4xx
         RetryConfig retryConfig = RetryConfig.custom()
                 .maxAttempts(3) // 1 initial + 2 retries
-                .waitDuration(Duration.ofMillis(500))
-                .enableExponentialBackoff()
-                .enableRandomizedWait()
+                .intervalFunction(io.github.resilience4j.core.IntervalFunction
+                        .ofExponentialRandomBackoff(Duration.ofMillis(500)))
                 .ignoreExceptions(HttpClientErrorException.class)
                 .retryExceptions(Exception.class)
                 .build();
