@@ -9,11 +9,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.header.Header;
-import org.slf4j.MDC;
 
-import java.nio.charset.StandardCharsets;
-
+/**
+ * Base class for auth event consumers. Handles dedup, mapping, and delegation to use-case.
+ *
+ * Trace propagation is handled by {@code EventContextRecordInterceptor} from
+ * libs/java-observability, which is auto-configured via
+ * {@code KafkaEventContextAutoConfiguration}. No manual MDC manipulation needed here.
+ */
 @Slf4j
 public abstract class AbstractAuthEventConsumer {
 
@@ -30,8 +33,6 @@ public abstract class AbstractAuthEventConsumer {
     }
 
     protected void processEvent(ConsumerRecord<String, String> record, LoginOutcome defaultOutcome) {
-        propagateTrace(record);
-
         try {
             JsonNode envelope = objectMapper.readTree(record.value());
             String eventId = envelope.path("eventId").asText();
@@ -42,39 +43,33 @@ public abstract class AbstractAuthEventConsumer {
                 return;
             }
 
+            // Fast-path: Redis dedup check (optimization only, not authoritative)
             if (dedupService.isDuplicate(eventId)) {
-                log.info("Duplicate event skipped: eventId={}, topic={}", eventId, record.topic());
+                log.info("Duplicate event skipped (Redis fast-path): eventId={}, topic={}", eventId, record.topic());
                 return;
             }
 
             LoginOutcome outcome = resolveOutcome(envelope, defaultOutcome);
             LoginHistoryEntry entry = AuthEventMapper.toLoginHistoryEntry(envelope, outcome);
 
-            recordLoginHistoryUseCase.execute(entry);
-            dedupService.markProcessed(eventId, eventType);
+            // Atomic: save + mark processed in single @Transactional method.
+            // MySQL UNIQUE constraint on processed_events is the ultimate guard.
+            boolean processed = recordLoginHistoryUseCase.execute(entry, eventType);
 
-            log.info("Processed event: eventId={}, topic={}, outcome={}", eventId, record.topic(), outcome);
+            if (processed) {
+                // Update Redis cache after successful DB commit
+                dedupService.markProcessedInRedis(eventId);
+                log.info("Processed event: eventId={}, topic={}, outcome={}", eventId, record.topic(), outcome);
+            } else {
+                log.info("Duplicate event skipped (DB constraint): eventId={}, topic={}", eventId, record.topic());
+            }
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize event from topic={}", record.topic(), e);
             throw new RuntimeException("Deserialization failed", e);
-        } finally {
-            MDC.remove("traceId");
         }
     }
 
     protected LoginOutcome resolveOutcome(JsonNode envelope, LoginOutcome defaultOutcome) {
         return defaultOutcome;
-    }
-
-    private void propagateTrace(ConsumerRecord<String, String> record) {
-        Header traceparent = record.headers().lastHeader("traceparent");
-        if (traceparent != null) {
-            String traceValue = new String(traceparent.value(), StandardCharsets.UTF_8);
-            // traceparent format: version-traceId-spanId-flags
-            String[] parts = traceValue.split("-");
-            if (parts.length >= 2) {
-                MDC.put("traceId", parts[1]);
-            }
-        }
     }
 }

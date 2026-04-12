@@ -1,6 +1,5 @@
 package com.example.security.query;
 
-import com.example.security.consumer.AuthEventMapper;
 import com.example.security.infrastructure.persistence.LoginHistoryJpaEntity;
 import com.example.security.infrastructure.persistence.LoginHistoryJpaRepository;
 import com.example.security.query.dto.LoginHistoryView;
@@ -32,9 +31,9 @@ public class SecurityQueryService {
                 entity.getEventId(),
                 entity.getAccountId(),
                 entity.getOutcome(),
-                AuthEventMapper.maskIp(entity.getIpMasked()),
+                PiiMaskingUtils.maskIp(entity.getIpMasked()),
                 entity.getUserAgentFamily(),
-                AuthEventMapper.truncateFingerprint(entity.getDeviceFingerprint()),
+                PiiMaskingUtils.truncateFingerprint(entity.getDeviceFingerprint()),
                 entity.getGeoCountry(),
                 entity.getOccurredAt()
         );

@@ -44,3 +44,4 @@ management:
 security-service:
   dedup:
     redis-ttl-seconds: 60
+  internal-token: test-internal-token

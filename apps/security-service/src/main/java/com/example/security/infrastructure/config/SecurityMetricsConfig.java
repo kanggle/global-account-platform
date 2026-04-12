@@ -3,14 +3,20 @@ package com.example.security.infrastructure.config;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.ListOffsetsResult;
+import org.apache.kafka.clients.admin.OffsetSpec;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.common.TopicPartition;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.listener.MessageListenerContainer;
-import org.springframework.scheduling.annotation.Scheduled;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Configuration
@@ -18,6 +24,7 @@ public class SecurityMetricsConfig {
 
     private final MeterRegistry meterRegistry;
     private final KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
+    private final AdminClient adminClient;
 
     private static final List<String> DLQ_TOPICS = List.of(
             "auth.login.attempted.dlq",
@@ -28,9 +35,11 @@ public class SecurityMetricsConfig {
     );
 
     public SecurityMetricsConfig(MeterRegistry meterRegistry,
-                                  KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry) {
+                                  KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry,
+                                  KafkaProperties kafkaProperties) {
         this.meterRegistry = meterRegistry;
         this.kafkaListenerEndpointRegistry = kafkaListenerEndpointRegistry;
+        this.adminClient = AdminClient.create(kafkaProperties.buildAdminProperties(null));
 
         Gauge.builder("security_consumer_lag", this, SecurityMetricsConfig::computeConsumerLag)
                 .description("Total consumer lag across all partitions")
@@ -39,6 +48,15 @@ public class SecurityMetricsConfig {
         Gauge.builder("security_dlq_depth", this, SecurityMetricsConfig::computeDlqDepth)
                 .description("Total DLQ depth across all DLQ topics")
                 .register(meterRegistry);
+    }
+
+    @PreDestroy
+    void closeAdminClient() {
+        try {
+            adminClient.close(java.time.Duration.ofSeconds(5));
+        } catch (Exception e) {
+            log.debug("Error closing AdminClient", e);
+        }
     }
 
     private double computeConsumerLag() {
@@ -67,10 +85,60 @@ public class SecurityMetricsConfig {
         }
     }
 
+    /**
+     * Computes actual DLQ depth by querying Kafka topic offsets via AdminClient.
+     * DLQ depth = sum of latest offsets across all partitions of all DLQ topics.
+     * Returns 0 on failure with a warning log (graceful degradation).
+     */
     private double computeDlqDepth() {
-        // DLQ depth is tracked via the DLQ consumer or external monitoring.
-        // This is a placeholder that returns 0; real DLQ depth monitoring
-        // requires a separate admin client query or consumer group offset check.
-        return 0;
+        try {
+            // First, discover which DLQ topics actually exist
+            Set<String> existingTopics = adminClient.listTopics()
+                    .names()
+                    .get(5, TimeUnit.SECONDS);
+
+            Map<TopicPartition, OffsetSpec> offsetRequests = new HashMap<>();
+
+            for (String dlqTopic : DLQ_TOPICS) {
+                if (!existingTopics.contains(dlqTopic)) {
+                    continue;
+                }
+                // Get partition info for this topic
+                adminClient.describeTopics(List.of(dlqTopic))
+                        .topicNameValues()
+                        .get(dlqTopic)
+                        .get(5, TimeUnit.SECONDS)
+                        .partitions()
+                        .forEach(partitionInfo ->
+                                offsetRequests.put(
+                                        new TopicPartition(dlqTopic, partitionInfo.partition()),
+                                        OffsetSpec.latest()
+                                )
+                        );
+            }
+
+            if (offsetRequests.isEmpty()) {
+                return 0;
+            }
+
+            ListOffsetsResult offsetsResult = adminClient.listOffsets(offsetRequests);
+            long totalDepth = 0;
+
+            for (Map.Entry<TopicPartition, OffsetSpec> entry : offsetRequests.entrySet()) {
+                try {
+                    long offset = offsetsResult.partitionResult(entry.getKey())
+                            .get(5, TimeUnit.SECONDS)
+                            .offset();
+                    totalDepth += offset;
+                } catch (Exception e) {
+                    log.debug("Failed to get offset for partition {}", entry.getKey(), e);
+                }
+            }
+
+            return totalDepth;
+        } catch (Exception e) {
+            log.warn("Failed to compute DLQ depth metric, returning 0", e);
+            return 0;
+        }
     }
 }
