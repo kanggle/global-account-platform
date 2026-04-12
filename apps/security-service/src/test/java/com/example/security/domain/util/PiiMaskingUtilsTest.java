@@ -1,4 +1,4 @@
-package com.example.security.query;
+package com.example.security.domain.util;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

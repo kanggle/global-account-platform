@@ -1,8 +1,9 @@
-package com.example.security.query;
+package com.example.security.domain.util;
 
 /**
- * PII masking utilities for query responses.
- * Used by both SecurityQueryService and consumer/AuthEventMapper.
+ * PII masking utilities for domain and query layers.
+ * Placed in domain layer so both query and consumer layers can depend on it
+ * without violating layer dependency rules.
  */
 public final class PiiMaskingUtils {
 

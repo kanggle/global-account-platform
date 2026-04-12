@@ -2,7 +2,7 @@ package com.example.security.consumer;
 
 import com.example.security.domain.history.LoginHistoryEntry;
 import com.example.security.domain.history.LoginOutcome;
-import com.example.security.query.PiiMaskingUtils;
+import com.example.security.domain.util.PiiMaskingUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Instant;

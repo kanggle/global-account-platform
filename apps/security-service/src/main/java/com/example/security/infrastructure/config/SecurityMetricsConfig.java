@@ -6,17 +6,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ListOffsetsResult;
 import org.apache.kafka.clients.admin.OffsetSpec;
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.listener.MessageListenerContainer;
+import org.springframework.scheduling.annotation.Scheduled;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @Configuration
@@ -25,6 +25,7 @@ public class SecurityMetricsConfig {
     private final MeterRegistry meterRegistry;
     private final KafkaListenerEndpointRegistry kafkaListenerEndpointRegistry;
     private final AdminClient adminClient;
+    private final AtomicLong dlqDepthCache = new AtomicLong(0);
 
     private static final List<String> DLQ_TOPICS = List.of(
             "auth.login.attempted.dlq",
@@ -45,7 +46,7 @@ public class SecurityMetricsConfig {
                 .description("Total consumer lag across all partitions")
                 .register(meterRegistry);
 
-        Gauge.builder("security_dlq_depth", this, SecurityMetricsConfig::computeDlqDepth)
+        Gauge.builder("security_dlq_depth", this, config -> (double) config.dlqDepthCache.get())
                 .description("Total DLQ depth across all DLQ topics")
                 .register(meterRegistry);
     }
@@ -86,11 +87,21 @@ public class SecurityMetricsConfig {
     }
 
     /**
+     * Periodically computes DLQ depth by querying Kafka topic offsets via AdminClient.
+     * Updates the cached value so that Prometheus scrapes read from the cache
+     * instead of making blocking Kafka calls on the scrape thread.
+     */
+    @Scheduled(fixedDelay = 30_000)
+    void refreshDlqDepth() {
+        dlqDepthCache.set(computeDlqDepth());
+    }
+
+    /**
      * Computes actual DLQ depth by querying Kafka topic offsets via AdminClient.
      * DLQ depth = sum of latest offsets across all partitions of all DLQ topics.
      * Returns 0 on failure with a warning log (graceful degradation).
      */
-    private double computeDlqDepth() {
+    private long computeDlqDepth() {
         try {
             // First, discover which DLQ topics actually exist
             Set<String> existingTopics = adminClient.listTopics()
