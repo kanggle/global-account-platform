@@ -38,7 +38,7 @@ public abstract class AbstractAuthEventConsumer {
             String eventId = envelope.path("eventId").asText();
             String eventType = envelope.path("eventType").asText();
 
-            if (eventId == null || eventId.isBlank()) {
+            if (eventId.isBlank()) {
                 log.warn("Event missing eventId, skipping. topic={}", record.topic());
                 return;
             }
