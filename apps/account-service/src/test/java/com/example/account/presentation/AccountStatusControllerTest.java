@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AccountStatusController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
-@DisplayName("AccountStatusController 슬라이스 테스트")
+@DisplayName("AccountStatusController slice tests")
 class AccountStatusControllerTest {
 
     @Autowired
@@ -39,7 +39,7 @@ class AccountStatusControllerTest {
     private AccountStatusUseCase accountStatusUseCase;
 
     @Test
-    @DisplayName("GET /api/accounts/me/status 성공 시 200 반환")
+    @DisplayName("GET /api/accounts/me/status returns 200")
     void getStatus_validRequest_returns200() throws Exception {
         given(accountStatusUseCase.getStatus(eq("acc-123")))
                 .willReturn(new AccountStatusResult("acc-123", "ACTIVE", Instant.now(), null));
@@ -52,12 +52,11 @@ class AccountStatusControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/accounts/me 성공 시 202 반환")
+    @DisplayName("DELETE /api/accounts/me returns 202")
     void deleteAccount_validRequest_returns202() throws Exception {
+        Instant gracePeriodEndsAt = Instant.now().plusSeconds(86400L * 30);
         given(accountStatusUseCase.deleteAccount(eq("acc-123"), any(), any(), any()))
-                .willReturn(new DeleteAccountResult("acc-123", "DELETED",
-                        Instant.now().plusSeconds(86400 * 30),
-                        "Account scheduled for deletion. You can recover within the grace period."));
+                .willReturn(new DeleteAccountResult("acc-123", "ACTIVE", "DELETED", gracePeriodEndsAt));
 
         mockMvc.perform(delete("/api/accounts/me")
                         .header("X-Account-Id", "acc-123")
@@ -69,13 +68,14 @@ class AccountStatusControllerTest {
                                 }
                                 """))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("DELETED"))
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(jsonPath("$.currentStatus").value("DELETED"))
+                .andExpect(jsonPath("$.previousStatus").value("ACTIVE"))
+                .andExpect(jsonPath("$.gracePeriodEndsAt").exists());
     }
 
     @Test
-    @DisplayName("이미 DELETED 상태에서 삭제 요청 시 400 STATE_TRANSITION_INVALID 반환")
-    void deleteAccount_alreadyDeleted_returns400() throws Exception {
+    @DisplayName("DELETE /api/accounts/me already DELETED returns 409")
+    void deleteAccount_alreadyDeleted_returns409() throws Exception {
         given(accountStatusUseCase.deleteAccount(eq("acc-123"), any(), any(), any()))
                 .willThrow(new StateTransitionException(AccountStatus.DELETED, AccountStatus.DELETED,
                         StatusChangeReason.USER_REQUEST));
@@ -88,7 +88,7 @@ class AccountStatusControllerTest {
                                   "password": "MyPassword1!"
                                 }
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("STATE_TRANSITION_INVALID"));
     }
 }

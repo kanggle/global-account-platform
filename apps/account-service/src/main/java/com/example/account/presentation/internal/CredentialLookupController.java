@@ -1,5 +1,6 @@
 package com.example.account.presentation.internal;
 
+import com.example.account.application.result.CredentialLookupResult;
 import com.example.account.application.service.AccountStatusUseCase;
 import com.example.account.presentation.dto.response.CredentialLookupResponse;
 import lombok.RequiredArgsConstructor;
@@ -19,9 +20,11 @@ public class CredentialLookupController {
     @GetMapping("/credentials")
     public ResponseEntity<CredentialLookupResponse> lookupCredentials(
             @RequestParam("email") String email) {
-        var result = accountStatusUseCase.lookupByEmail(email);
+        CredentialLookupResult result = accountStatusUseCase.lookupByEmail(email);
         return ResponseEntity.ok(new CredentialLookupResponse(
                 result.accountId(),
+                result.credentialHash(),
+                result.hashAlgorithm(),
                 result.accountStatus()
         ));
     }

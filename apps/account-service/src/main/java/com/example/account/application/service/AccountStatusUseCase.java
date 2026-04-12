@@ -4,6 +4,7 @@ import com.example.account.application.command.ChangeStatusCommand;
 import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.application.exception.AccountNotFoundException;
 import com.example.account.application.result.AccountStatusResult;
+import com.example.account.application.result.CredentialLookupResult;
 import com.example.account.application.result.DeleteAccountResult;
 import com.example.account.application.result.StatusChangeResult;
 import com.example.account.domain.account.Account;
@@ -11,7 +12,6 @@ import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.*;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,16 +20,25 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Service
-@RequiredArgsConstructor
 public class AccountStatusUseCase {
 
     private final AccountRepository accountRepository;
     private final AccountStatusHistoryRepository historyRepository;
     private final AccountStatusMachine statusMachine;
     private final AccountEventPublisher eventPublisher;
+    private final int gracePeriodDays;
 
-    @Value("${account.deletion.grace-period-days:30}")
-    private int gracePeriodDays;
+    public AccountStatusUseCase(AccountRepository accountRepository,
+                                 AccountStatusHistoryRepository historyRepository,
+                                 AccountStatusMachine statusMachine,
+                                 AccountEventPublisher eventPublisher,
+                                 @Value("${account.deletion.grace-period-days:30}") int gracePeriodDays) {
+        this.accountRepository = accountRepository;
+        this.historyRepository = historyRepository;
+        this.statusMachine = statusMachine;
+        this.eventPublisher = eventPublisher;
+        this.gracePeriodDays = gracePeriodDays;
+    }
 
     @Transactional(readOnly = true)
     public AccountStatusResult getStatus(String accountId) {
@@ -54,6 +63,8 @@ public class AccountStatusUseCase {
         AccountStatus previousStatus = account.getStatus();
         StatusTransition transition = account.changeStatus(
                 statusMachine, command.targetStatus(), command.reason());
+
+        accountRepository.save(account);
 
         // Record history
         AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
@@ -111,6 +122,8 @@ public class AccountStatusUseCase {
         AccountStatus previousStatus = account.getStatus();
         account.changeStatus(statusMachine, AccountStatus.DELETED, reason);
 
+        accountRepository.save(account);
+
         AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
                 account.getId(),
                 previousStatus,
@@ -135,23 +148,25 @@ public class AccountStatusUseCase {
 
         return new DeleteAccountResult(
                 account.getId(),
+                previousStatus.name(),
                 AccountStatus.DELETED.name(),
-                gracePeriodEndsAt,
-                "Account scheduled for deletion. You can recover within the grace period."
+                gracePeriodEndsAt
         );
     }
 
     @Transactional(readOnly = true)
     public CredentialLookupResult lookupByEmail(String email) {
         Account account = accountRepository.findByEmail(email.trim().toLowerCase())
-                .orElseThrow(() -> new AccountNotFoundException(email));
+                .orElseThrow(() -> new AccountNotFoundException("email"));
 
-        return new CredentialLookupResult(account.getId(), account.getStatus().name());
-    }
-
-    /**
-     * Internal result for credential lookup. Not part of the public API result layer.
-     */
-    public record CredentialLookupResult(String accountId, String accountStatus) {
+        // account-service does not own credentials (auth-service owns them).
+        // Return null/none stubs for credentialHash and hashAlgorithm.
+        // TODO: integrate with auth-service when credential lookup is implemented
+        return new CredentialLookupResult(
+                account.getId(),
+                null,
+                "none",
+                account.getStatus().name()
+        );
     }
 }

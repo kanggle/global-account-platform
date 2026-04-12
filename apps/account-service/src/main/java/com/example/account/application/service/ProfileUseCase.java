@@ -46,6 +46,8 @@ public class ProfileUseCase {
                 command.preferences()
         );
 
+        profileRepository.save(profile);
+
         return ProfileUpdateResult.from(profile);
     }
 }

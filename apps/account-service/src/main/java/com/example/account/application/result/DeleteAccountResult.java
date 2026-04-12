@@ -4,8 +4,8 @@ import java.time.Instant;
 
 public record DeleteAccountResult(
         String accountId,
-        String status,
-        Instant gracePeriodEndsAt,
-        String message
+        String previousStatus,
+        String currentStatus,
+        Instant gracePeriodEndsAt
 ) {
 }
