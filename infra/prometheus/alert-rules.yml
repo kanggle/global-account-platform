@@ -1,0 +1,165 @@
+groups:
+  - name: platform.availability
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is DOWN"
+          description: "Prometheus target {{ $labels.job }} ({{ $labels.instance }}) has been down for 2 minutes."
+
+      - alert: HighErrorRate5xx
+        expr: |
+          sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (service)
+            /
+          sum(rate(http_server_requests_seconds_count[5m])) by (service)
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} 5xx error rate > 5%"
+          description: "5xx error rate for {{ $labels.service }} exceeded 5% for 5 minutes."
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (le, service)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} p99 latency > 1s"
+          description: "p99 latency for {{ $labels.service }} exceeded 1 second for 5 minutes."
+
+  - name: gateway.rules
+    interval: 30s
+    rules:
+      - alert: GatewayJwtFailureSpike
+        expr: rate(gateway_jwt_validation_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway-service
+        annotations:
+          summary: "Gateway JWT validation failure spike"
+          description: "More than 5 JWT validation failures per second over 5 minutes."
+
+      - alert: GatewayRateLimitExceeded
+        expr: rate(gateway_rate_limit_rejections_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: gateway-service
+        annotations:
+          summary: "Gateway rate limit rejections elevated"
+
+  - name: auth.rules
+    interval: 30s
+    rules:
+      - alert: AuthLoginFailureSpike
+        expr: rate(auth_login_failures_total[5m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: auth-service
+        annotations:
+          summary: "Login failure rate spike"
+
+      - alert: AuthRefreshTokenReuseDetected
+        expr: increase(auth_refresh_reuse_detected_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: auth-service
+        annotations:
+          summary: "Refresh token reuse detected"
+          description: "Potential token theft. Investigate immediately."
+
+      - alert: AuthOutboxLagHigh
+        expr: auth_outbox_pending_count > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: auth-service
+        annotations:
+          summary: "Auth outbox backlog exceeds 1000 messages"
+
+  - name: account.rules
+    interval: 30s
+    rules:
+      - alert: AccountOutboxLagHigh
+        expr: account_outbox_pending_count > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: account-service
+        annotations:
+          summary: "Account outbox backlog exceeds 1000"
+
+      - alert: AccountDbSlowQueries
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(hibernate_query_execution_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: account-service
+        annotations:
+          summary: "Account DB p99 query latency > 500ms"
+
+  - name: security.rules
+    interval: 30s
+    rules:
+      - alert: SecurityConsumerLagHigh
+        expr: kafka_consumer_fetch_manager_records_lag_max{service="security-service"} > 10000
+        for: 10m
+        labels:
+          severity: warning
+          service: security-service
+        annotations:
+          summary: "Security consumer lag > 10000"
+
+      - alert: SecurityDlqDepthHigh
+        expr: security_dlq_depth > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: security-service
+        annotations:
+          summary: "Security DLQ depth exceeds 100"
+
+      - alert: SecurityAutoLockSpike
+        expr: rate(security_auto_lock_triggered_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: security-service
+        annotations:
+          summary: "Auto-lock rate elevated"
+
+  - name: admin.rules
+    interval: 30s
+    rules:
+      - alert: AdminActionSpike
+        expr: rate(admin_actions_performed_total[5m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+          service: admin-service
+        annotations:
+          summary: "Admin action rate unusually high"
+
+      - alert: AdminDownstreamFailures
+        expr: rate(admin_downstream_failures_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: admin-service
+        annotations:
+          summary: "Admin-service downstream failures elevated"
