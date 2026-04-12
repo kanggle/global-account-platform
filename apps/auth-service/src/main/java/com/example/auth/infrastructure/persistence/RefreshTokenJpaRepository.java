@@ -15,5 +15,7 @@ public interface RefreshTokenJpaRepository extends JpaRepository<RefreshTokenJpa
 
     @Modifying
     @Query("UPDATE RefreshTokenJpaEntity r SET r.revoked = true WHERE r.accountId = :accountId AND r.revoked = false")
-    void revokeAllByAccountId(@Param("accountId") String accountId);
+    int revokeAllByAccountId(@Param("accountId") String accountId);
+
+    Optional<RefreshTokenJpaEntity> findByRotatedFrom(String rotatedFrom);
 }

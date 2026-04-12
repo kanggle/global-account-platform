@@ -39,19 +39,20 @@ credentials(비밀)와 profile(비밀 아님)은 **물리적으로 별도 서비
 
 **토큰 재사용 탐지 로직**: `POST /api/auth/refresh`가 `jti=A`로 rotation을 요청했을 때, A에 이미 `rotated_from`을 참조하는 자식이 존재하면 → 재사용 탐지. 해당 `account_id`의 모든 refresh_token을 `revoked=TRUE`로 일괄 처리 + `auth.token.reuse.detected` 이벤트 발행.
 
-### `outbox_events`
+### `outbox`
 
-[libs/java-messaging](../../../libs/java-messaging) 표준 스키마 사용.
+[libs/java-messaging](../../../libs/java-messaging) 표준 스키마 사용. 테이블 이름은 라이브러리의 `OutboxJpaEntity`가 `@Table(name = "outbox")`으로 선언하므로 `outbox`를 사용한다.
 
 | 컬럼 | 타입 | 설명 |
 |---|---|---|
-| `id` | BIGINT | PK |
-| `aggregate_type` | VARCHAR(50) | `auth` |
-| `aggregate_id` | VARCHAR(36) | `account_id` |
+| `id` | BIGINT | PK, AUTO_INCREMENT |
+| `aggregate_type` | VARCHAR(100) | `auth` |
+| `aggregate_id` | VARCHAR(255) | `account_id` |
 | `event_type` | VARCHAR(100) | `auth.login.succeeded` 등 |
 | `payload` | TEXT (JSON) | 이벤트 envelope |
-| `occurred_at` | DATETIME(6) | — |
-| `published_at` | DATETIME(6) | NULL이면 미발행 |
+| `created_at` | TIMESTAMP | — |
+| `published_at` | TIMESTAMP | NULL이면 미발행 |
+| `status` | VARCHAR(20) | `PENDING` / `PUBLISHED` |
 
 ---
 
@@ -59,7 +60,7 @@ credentials(비밀)와 profile(비밀 아님)은 **물리적으로 별도 서비
 
 - **Flyway**: `V{nnnn}__{description}.sql` 네이밍
 - 첫 마이그레이션: `V0001__create_credentials_and_refresh_tokens.sql`
-- Outbox 테이블: `V0002__create_outbox_events.sql` (libs/java-messaging DDL 재사용)
+- Outbox 테이블: `V0002__create_outbox_events.sql` (libs/java-messaging DDL 재사용, 테이블 이름은 `outbox`)
 - PII 마스킹 컬럼 (`credential_hash`, `device_fingerprint`) 변경 시 down migration 금지 — 단방향만 허용
 
 ---

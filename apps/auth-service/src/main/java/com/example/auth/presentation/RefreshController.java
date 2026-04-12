@@ -30,7 +30,9 @@ public class RefreshController {
         SessionContext sessionContext = new SessionContext(
                 httpRequest.getRemoteAddr(),
                 httpRequest.getHeader("User-Agent"),
-                httpRequest.getHeader("X-Device-Fingerprint")
+                httpRequest.getHeader("X-Device-Fingerprint"),
+                httpRequest.getHeader("X-Geo-Country") != null
+                        ? httpRequest.getHeader("X-Geo-Country") : "XX"
         );
 
         RefreshTokenCommand command = new RefreshTokenCommand(

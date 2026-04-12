@@ -15,5 +15,14 @@ public interface RefreshTokenRepository {
 
     boolean existsByRotatedFrom(String jti);
 
-    void revokeAllByAccountId(String accountId);
+    /**
+     * Revokes all active refresh tokens for the given account.
+     * @return the number of tokens revoked
+     */
+    int revokeAllByAccountId(String accountId);
+
+    /**
+     * Finds the child token that was rotated from the given JTI.
+     */
+    java.util.Optional<RefreshToken> findByRotatedFrom(String jti);
 }

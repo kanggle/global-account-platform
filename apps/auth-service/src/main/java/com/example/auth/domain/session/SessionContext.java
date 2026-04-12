@@ -1,13 +1,21 @@
 package com.example.auth.domain.session;
 
 /**
- * Value object representing session context information (IP, user agent, device).
+ * Value object representing session context information (IP, user agent, device, geo).
  */
 public record SessionContext(
         String ipAddress,
         String userAgent,
-        String deviceFingerprint
+        String deviceFingerprint,
+        String geoCountry
 ) {
+    /**
+     * Backward-compatible constructor that defaults geoCountry to "XX".
+     */
+    public SessionContext(String ipAddress, String userAgent, String deviceFingerprint) {
+        this(ipAddress, userAgent, deviceFingerprint, "XX");
+    }
+
     public String ipMasked() {
         if (ipAddress == null || ipAddress.isEmpty()) {
             return "unknown";
@@ -27,5 +35,9 @@ public record SessionContext(
         if (userAgent.contains("Firefox")) return "Firefox";
         if (userAgent.contains("Safari")) return "Safari";
         return "Other";
+    }
+
+    public String resolvedGeoCountry() {
+        return geoCountry != null ? geoCountry : "XX";
     }
 }
