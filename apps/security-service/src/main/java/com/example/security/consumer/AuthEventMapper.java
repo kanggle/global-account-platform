@@ -1,5 +1,6 @@
 package com.example.security.consumer;
 
+import com.example.security.domain.detection.EvaluationContext;
 import com.example.security.domain.history.LoginHistoryEntry;
 import com.example.security.domain.history.LoginOutcome;
 import com.example.security.domain.util.PiiMaskingUtils;
@@ -50,6 +51,37 @@ public final class AuthEventMapper {
             return LoginOutcome.RATE_LIMITED;
         }
         return LoginOutcome.FAILURE;
+    }
+
+    /**
+     * Build an {@link EvaluationContext} for the detection pipeline.
+     * Keeps the rule layer free of Kafka/JSON concerns.
+     */
+    public static EvaluationContext toEvaluationContext(JsonNode envelope, String eventType) {
+        JsonNode payload = envelope.path("payload");
+        String eventId = envelope.path("eventId").asText();
+        String accountId = nullableText(payload, "accountId");
+        String ipMasked = nullableText(payload, "ipMasked");
+        String deviceFingerprint = nullableText(payload, "deviceFingerprint");
+        String geoCountry = nullableText(payload, "geoCountry");
+
+        String ts = nullableText(payload, "timestamp");
+        Instant occurredAt;
+        if (ts != null) {
+            occurredAt = Instant.parse(ts);
+        } else {
+            String env = envelope.path("occurredAt").asText();
+            occurredAt = env.isEmpty() ? Instant.now() : Instant.parse(env);
+        }
+
+        Integer failCount = null;
+        JsonNode fc = payload.path("failCount");
+        if (!fc.isMissingNode() && fc.isNumber()) {
+            failCount = fc.asInt();
+        }
+
+        return new EvaluationContext(
+                eventId, eventType, accountId, ipMasked, deviceFingerprint, geoCountry, occurredAt, failCount);
     }
 
     private static String nullableText(JsonNode node, String field) {

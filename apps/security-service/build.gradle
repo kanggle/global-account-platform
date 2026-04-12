@@ -31,6 +31,12 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
+    // MaxMind GeoIP2 (local GeoLite2 DB). Optional at runtime — absence is handled gracefully.
+    implementation 'com.maxmind.geoip2:geoip2:4.2.0'
+
+    // WireMock for testing the internal HTTP client against account-service.
+    testImplementation 'com.github.tomakehurst:wiremock-jre8-standalone:3.0.1'
+
     // Micrometer Prometheus
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 

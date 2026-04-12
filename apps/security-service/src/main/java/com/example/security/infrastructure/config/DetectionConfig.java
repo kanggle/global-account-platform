@@ -1,0 +1,44 @@
+package com.example.security.infrastructure.config;
+
+import com.example.security.domain.detection.*;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Wires the detection pipeline. Rules are exposed as individual beans and
+ * auto-collected by {@code DetectSuspiciousActivityUseCase} via
+ * {@code List<SuspiciousActivityRule>} — new rules can be added by declaring a
+ * new {@code @Bean} without touching the use-case.
+ */
+@Configuration
+@EnableConfigurationProperties(DetectionProperties.class)
+public class DetectionConfig {
+
+    @Bean
+    public DetectionThresholds detectionThresholds(DetectionProperties props) {
+        return props.toThresholds();
+    }
+
+    @Bean
+    public VelocityRule velocityRule(VelocityCounter counter, DetectionThresholds thresholds) {
+        return new VelocityRule(counter, thresholds);
+    }
+
+    @Bean
+    public GeoAnomalyRule geoAnomalyRule(GeoLookup geoLookup,
+                                         LastKnownGeoStore geoStore,
+                                         DetectionThresholds thresholds) {
+        return new GeoAnomalyRule(geoLookup, geoStore, thresholds);
+    }
+
+    @Bean
+    public DeviceChangeRule deviceChangeRule(KnownDeviceStore store, DetectionThresholds thresholds) {
+        return new DeviceChangeRule(store, thresholds);
+    }
+
+    @Bean
+    public TokenReuseRule tokenReuseRule() {
+        return new TokenReuseRule();
+    }
+}

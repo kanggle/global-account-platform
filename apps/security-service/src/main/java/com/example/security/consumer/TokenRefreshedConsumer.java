@@ -1,5 +1,6 @@
 package com.example.security.consumer;
 
+import com.example.security.application.DetectSuspiciousActivityUseCase;
 import com.example.security.application.RecordLoginHistoryUseCase;
 import com.example.security.consumer.handler.EventDedupService;
 import com.example.security.domain.history.LoginOutcome;
@@ -15,8 +16,9 @@ public class TokenRefreshedConsumer extends AbstractAuthEventConsumer {
 
     public TokenRefreshedConsumer(ObjectMapper objectMapper,
                                    EventDedupService dedupService,
-                                   RecordLoginHistoryUseCase recordLoginHistoryUseCase) {
-        super(objectMapper, dedupService, recordLoginHistoryUseCase);
+                                   RecordLoginHistoryUseCase recordLoginHistoryUseCase,
+                                   DetectSuspiciousActivityUseCase detectUseCase) {
+        super(objectMapper, dedupService, recordLoginHistoryUseCase, detectUseCase);
     }
 
     @KafkaListener(topics = "auth.token.refreshed", groupId = "security-service")

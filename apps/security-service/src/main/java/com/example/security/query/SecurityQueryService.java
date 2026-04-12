@@ -2,22 +2,56 @@ package com.example.security.query;
 
 import com.example.security.infrastructure.persistence.LoginHistoryJpaEntity;
 import com.example.security.infrastructure.persistence.LoginHistoryJpaRepository;
+import com.example.security.infrastructure.persistence.SuspiciousEventJpaEntity;
+import com.example.security.infrastructure.persistence.SuspiciousEventJpaRepository;
 import com.example.security.domain.util.PiiMaskingUtils;
 import com.example.security.query.dto.LoginHistoryView;
+import com.example.security.query.dto.SuspiciousEventView;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class SecurityQueryService {
 
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
     private final LoginHistoryJpaRepository loginHistoryJpaRepository;
+    private final SuspiciousEventJpaRepository suspiciousEventJpaRepository;
+    private final ObjectMapper objectMapper;
+
+    public List<SuspiciousEventView> findSuspiciousEvents(String accountId, Instant from, Instant to) {
+        List<SuspiciousEventJpaEntity> entities =
+                suspiciousEventJpaRepository.findByAccountIdAndDetectedAtBetweenOrderByDetectedAtDesc(accountId, from, to);
+        return entities.stream().map(this::toView).toList();
+    }
+
+    private SuspiciousEventView toView(SuspiciousEventJpaEntity e) {
+        Object evidence = Collections.emptyMap();
+        if (e.getEvidence() != null && !e.getEvidence().isBlank()) {
+            try {
+                evidence = objectMapper.readValue(e.getEvidence(), MAP_TYPE);
+            } catch (Exception ex) {
+                log.debug("Failed to parse evidence JSON for suspiciousEventId={}", e.getId(), ex);
+            }
+        }
+        return new SuspiciousEventView(
+                e.getId(), e.getAccountId(), e.getRuleCode(), e.getRiskScore(),
+                e.getActionTaken(), evidence, e.getDetectedAt());
+    }
 
     public Page<LoginHistoryView> findLoginHistory(String accountId, Instant from, Instant to,
                                                     String outcome, Pageable pageable) {

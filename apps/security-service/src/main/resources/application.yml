@@ -79,3 +79,22 @@ security-service:
   dedup:
     redis-ttl-seconds: ${DEDUP_REDIS_TTL:86400}
   internal-token: ${INTERNAL_SERVICE_TOKEN:}
+
+security:
+  detection:
+    velocity:
+      threshold: ${DETECT_VELOCITY_THRESHOLD:10}
+      window-seconds: ${DETECT_VELOCITY_WINDOW_SECONDS:3600}
+    geo:
+      speed-km-per-hour: ${DETECT_GEO_MAX_SPEED:900}
+      min-score: ${DETECT_GEO_MIN_SCORE:85}
+    device:
+      score: ${DETECT_DEVICE_SCORE:50}
+    auto-lock:
+      account-service-base-url: ${ACCOUNT_SERVICE_BASE_URL:http://localhost:8081}
+      max-attempts: ${AUTO_LOCK_MAX_ATTEMPTS:3}
+      initial-backoff-ms: ${AUTO_LOCK_INITIAL_BACKOFF_MS:200}
+      connect-timeout-ms: ${AUTO_LOCK_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${AUTO_LOCK_READ_TIMEOUT_MS:10000}
+    geoip:
+      db-path: ${GEOIP_DB_PATH:}
