@@ -122,6 +122,7 @@ public class AuthEventPublisher {
 
     private void writeEvent(String eventType, String aggregateId, Map<String, Object> payload) {
         Map<String, Object> envelope = new LinkedHashMap<>();
+        // TODO: TASK-BE-015 switch to UUID v7 when Java 21+ UUID v7 support is added
         envelope.put("eventId", UUID.randomUUID().toString());
         envelope.put("eventType", eventType);
         envelope.put("source", SOURCE);
