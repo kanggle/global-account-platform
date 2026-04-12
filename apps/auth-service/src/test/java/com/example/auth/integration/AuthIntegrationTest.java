@@ -18,9 +18,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.time.Instant;
 
@@ -47,6 +49,10 @@ class AuthIntegrationTest {
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
+
+    @Container
+    static KafkaContainer kafka = new KafkaContainer(
+            DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
 
     static WireMockServer wireMock;
 
@@ -87,6 +93,7 @@ class AuthIntegrationTest {
         registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
         registry.add("auth.account-service.base-url", () -> "http://localhost:18082");
     }
 
