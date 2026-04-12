@@ -5,6 +5,7 @@ import com.example.auth.domain.token.RefreshToken;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -32,6 +33,11 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
     @Override
     public int revokeAllByAccountId(String accountId) {
         return refreshTokenJpaRepository.revokeAllByAccountId(accountId);
+    }
+
+    @Override
+    public List<String> findActiveJtisByAccountId(String accountId) {
+        return refreshTokenJpaRepository.findActiveJtisByAccountId(accountId);
     }
 
     @Override

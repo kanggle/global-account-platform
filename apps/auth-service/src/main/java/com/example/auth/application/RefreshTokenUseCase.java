@@ -20,7 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -29,7 +30,7 @@ public class RefreshTokenUseCase {
 
     /** Session revoke reason code emitted on the session.revoked event when reuse is detected. */
     private static final String REVOKE_REASON_TOKEN_REUSE = "TOKEN_REUSE_DETECTED";
-    private static final String ACTOR_TYPE_SYSTEM = "SYSTEM";
+    private static final String ACTOR_TYPE_SYSTEM = "system";
 
     private final TokenGeneratorPort tokenGeneratorPort;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -56,6 +57,23 @@ public class RefreshTokenUseCase {
         // Check blacklist (fail-closed: if Redis is down, deny refresh)
         if (tokenBlacklist.isBlacklisted(jti)) {
             throw new SessionRevokedException();
+        }
+
+        // Check bulk invalidation marker (UC-3 step 3, EF-3). Tokens issued before the marker
+        // were invalidated en-masse (reuse detection, admin logout-all, account lock/delete).
+        Optional<Instant> invalidatedAt = bulkInvalidationStore.getInvalidatedAt(accountId);
+        if (invalidatedAt.isPresent()) {
+            Instant tokenIat;
+            try {
+                tokenIat = tokenGeneratorPort.extractIssuedAt(command.refreshToken());
+            } catch (Exception e) {
+                // If we can't read iat, we can't prove the token is newer than the marker — deny.
+                log.warn("Failed to extract iat for invalidate-all check, fail-closed: {}", e.getMessage());
+                throw new SessionRevokedException();
+            }
+            if (tokenIat.isBefore(invalidatedAt.get())) {
+                throw new SessionRevokedException();
+            }
         }
 
         // Look up the refresh token in DB
@@ -130,6 +148,10 @@ public class RefreshTokenUseCase {
         // still enforce the TokenReuseDetectedException response to the caller.
         boolean alreadyRevoked = existingToken.isRevoked();
 
+        // Capture active jtis BEFORE the bulk update so the session.revoked event can list every
+        // jti that transitioned from active to revoked.
+        List<String> activeJtis = refreshTokenRepository.findActiveJtisByAccountId(accountId);
+
         // Revoke every active refresh token for this account (DB authoritative defence).
         int revokedCount = refreshTokenRepository.revokeAllByAccountId(accountId);
 
@@ -155,7 +177,7 @@ public class RefreshTokenUseCase {
         );
         authEventPublisher.publishSessionRevoked(
                 accountId,
-                Collections.singletonList(jti),
+                activeJtis,
                 REVOKE_REASON_TOKEN_REUSE,
                 ACTOR_TYPE_SYSTEM,
                 null,

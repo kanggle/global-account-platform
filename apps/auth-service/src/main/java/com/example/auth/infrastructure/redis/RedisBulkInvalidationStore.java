@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * Redis-backed {@link BulkInvalidationStore}. Stores the marker timestamp (epoch-millis) so that
@@ -44,6 +45,26 @@ public class RedisBulkInvalidationStore implements BulkInvalidationStore {
             log.warn("Redis unavailable while checking bulk invalidation marker, fail-closed: {}",
                     e.getMessage());
             return true;
+        }
+    }
+
+    @Override
+    public Optional<Instant> getInvalidatedAt(String accountId) {
+        try {
+            String value = redisTemplate.opsForValue().get(KEY_PREFIX + accountId);
+            if (value == null) {
+                return Optional.empty();
+            }
+            return Optional.of(Instant.ofEpochMilli(Long.parseLong(value)));
+        } catch (NumberFormatException e) {
+            log.warn("Malformed bulk invalidation marker for account={}, fail-closed: {}",
+                    accountId, e.getMessage());
+            return Optional.of(Instant.now());
+        } catch (Exception e) {
+            // fail-closed: treat as invalidated now to reject all in-flight tokens
+            log.warn("Redis unavailable while reading bulk invalidation marker, fail-closed: {}",
+                    e.getMessage());
+            return Optional.of(Instant.now());
         }
     }
 }

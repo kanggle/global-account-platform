@@ -2,6 +2,7 @@ package com.example.auth.domain.repository;
 
 import com.example.auth.domain.token.RefreshToken;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -20,6 +21,13 @@ public interface RefreshTokenRepository {
      * @return the number of tokens revoked
      */
     int revokeAllByAccountId(String accountId);
+
+    /**
+     * Returns the jtis of all currently-active (non-revoked) refresh tokens for the account.
+     * Used to populate the {@code session.revoked} event's {@code revokedJtis} field when
+     * performing a bulk revoke.
+     */
+    List<String> findActiveJtisByAccountId(String accountId);
 
     /**
      * Finds the child token that was rotated from the given JTI.

@@ -22,7 +22,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
+
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,6 +64,7 @@ class RefreshTokenUseCaseTest {
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
@@ -105,6 +109,7 @@ class RefreshTokenUseCaseTest {
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn("unknown-jti");
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
         when(tokenBlacklist.isBlacklisted("unknown-jti")).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
         when(refreshTokenRepository.findByJti("unknown-jti")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
@@ -119,6 +124,7 @@ class RefreshTokenUseCaseTest {
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         RefreshToken revokedToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
@@ -138,12 +144,15 @@ class RefreshTokenUseCaseTest {
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
                 null, false, "fp-123");
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
+        List<String> activeJtis = List.of(OLD_JTI, "sibling-jti-1", "sibling-jti-2");
+        when(refreshTokenRepository.findActiveJtisByAccountId(ACCOUNT_ID)).thenReturn(activeJtis);
         when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(3);
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
 
@@ -158,10 +167,33 @@ class RefreshTokenUseCaseTest {
                 eq(CTX.ipMasked()), eq(CTX.deviceFingerprint()),
                 eq(true), eq(3)
         );
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> jtisCaptor = ArgumentCaptor.forClass(List.class);
         verify(authEventPublisher).publishSessionRevoked(
-                eq(ACCOUNT_ID), anyList(), eq("TOKEN_REUSE_DETECTED"),
-                eq("SYSTEM"), isNull(), any(Instant.class), eq(3)
+                eq(ACCOUNT_ID), jtisCaptor.capture(), eq("TOKEN_REUSE_DETECTED"),
+                eq("system"), isNull(), any(Instant.class), eq(3)
         );
+        assertThat(jtisCaptor.getValue())
+                .containsExactlyInAnyOrderElementsOf(activeJtis);
+    }
+
+    @Test
+    @DisplayName("Refresh fails with SESSION_REVOKED when invalidate-all marker exists and token iat precedes it")
+    void refreshFailsWhenInvalidateAllMarkerPredatesToken() {
+        String refreshTokenStr = "stale-token";
+        Instant markerAt = Instant.now().minusSeconds(60);
+        Instant tokenIat = markerAt.minusSeconds(60); // issued before the marker
+        when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
+        when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.of(markerAt));
+        when(tokenGeneratorPort.extractIssuedAt(refreshTokenStr)).thenReturn(tokenIat);
+
+        assertThatThrownBy(() -> refreshTokenUseCase.execute(
+                new RefreshTokenCommand(refreshTokenStr, CTX)))
+                .isInstanceOf(SessionRevokedException.class);
+
+        verify(refreshTokenRepository, never()).findByJti(anyString());
     }
 
     @Test
@@ -171,12 +203,14 @@ class RefreshTokenUseCaseTest {
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
                 null, true, "fp-123"); // already revoked
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
+        when(refreshTokenRepository.findActiveJtisByAccountId(ACCOUNT_ID)).thenReturn(List.of());
         when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(0);
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
 

@@ -97,4 +97,14 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
                 .getPayload();
         return claims.getSubject();
     }
+
+    @Override
+    public Instant extractIssuedAt(String refreshToken) {
+        Claims claims = Jwts.parser()
+                .verifyWith(publicKey)
+                .build()
+                .parseSignedClaims(refreshToken)
+                .getPayload();
+        return claims.getIssuedAt().toInstant();
+    }
 }

@@ -12,6 +12,16 @@ package com.example.auth.domain.repository;
 public interface BulkInvalidationStore {
 
     /**
+     * Returns the timestamp at which the bulk-invalidation marker was set, or {@link java.util.Optional#empty()}
+     * if no marker exists. Refresh tokens whose {@code iat} is before this instant must be rejected.
+     *
+     * <p>Implementations should fail-closed: if the store is unavailable, return a conservative value
+     * (e.g. {@code Optional.of(Instant.now())}) so callers treat all current tokens as invalidated.
+     */
+    java.util.Optional<java.time.Instant> getInvalidatedAt(String accountId);
+
+
+    /**
      * Marks all current refresh tokens for the given account as invalid for {@code ttlSeconds}.
      * Idempotent — calling again refreshes the TTL.
      */
