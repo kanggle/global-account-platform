@@ -8,11 +8,24 @@ base path: `/api/admin`
 
 ---
 
+## Authorization Model
+
+모든 mutation 및 read endpoint는 필요한 **permission key**를 선언한다 ([specs/services/admin-service/rbac.md](../../services/admin-service/rbac.md)). 운영자의 role 집합이 보유한 permission 합집합에 요청 endpoint의 permission이 포함되어야 통과한다. 누락 시 `403 PERMISSION_DENIED`.
+
+- Permission key catalog: `account.lock`, `account.unlock`, `account.force_logout`, `audit.read`, `security.event.read`
+- Annotation이 선언되지 않은 endpoint는 **fail-closed로 deny**되며 `admin_actions`에 `outcome=DENIED, permission_used="<missing>"` 기록
+- 권한 거부는 request 단위로 감사 row 1건 기록 (dedup 없음)
+- Operator 식별자는 JWT `sub` 클레임에서 추출 (`token_type = "admin"` 필수)
+
+---
+
 ## POST /api/admin/accounts/{accountId}/lock
 
 계정 강제 잠금.
 
-**Auth required**: Yes (operator token, role: ACCOUNT_ADMIN 이상)
+**Auth required**: Yes (operator token, `token_type=admin`)
+**Required permission**: `account.lock`
+**Granted to roles**: `SUPER_ADMIN`, `SUPPORT_LOCK`
 
 **Headers**:
 - `Authorization: Bearer <operator-token>`
@@ -58,7 +71,9 @@ base path: `/api/admin`
 
 계정 잠금 해제.
 
-**Auth required**: Yes (operator, ACCOUNT_ADMIN+)
+**Auth required**: Yes (operator token, `token_type=admin`)
+**Required permission**: `account.unlock`
+**Granted to roles**: `SUPER_ADMIN`, `SUPPORT_LOCK`
 
 **Headers**: Authorization + X-Operator-Reason + Idempotency-Key
 
@@ -90,7 +105,9 @@ base path: `/api/admin`
 
 특정 계정의 모든 세션 강제 종료 (refresh token 전체 revoke).
 
-**Auth required**: Yes (operator, ACCOUNT_ADMIN+)
+**Auth required**: Yes (operator token, `token_type=admin`)
+**Required permission**: `account.force_logout`
+**Granted to roles**: `SUPER_ADMIN`, `SUPPORT_LOCK`, `SECURITY_ANALYST`
 
 **Headers**: Authorization + X-Operator-Reason + Idempotency-Key
 
@@ -129,7 +146,11 @@ base path: `/api/admin`
 
 감사 로그 조회 (통합 뷰: admin_actions + login_history + suspicious_events).
 
-**Auth required**: Yes (operator, AUDITOR 이상)
+**Auth required**: Yes (operator token, `token_type=admin`)
+**Required permission**: `audit.read` (기본). `source=login_history` 또는 `source=suspicious` 필터 사용 시 `security.event.read`도 **추가로** 요구 (union이 아닌 intersection 검증 — 두 권한 모두 필요)
+**Granted to roles**:
+- `audit.read` only: `SUPPORT_LOCK` (admin_actions만 조회 가능, security source 필터 사용 시 403)
+- `audit.read` + `security.event.read`: `SUPER_ADMIN`, `SUPPORT_READONLY`, `SECURITY_ANALYST` (모든 source 조회 가능)
 
 **Query Parameters**:
 
@@ -179,7 +200,7 @@ base path: `/api/admin`
 | Status | Code | 조건 |
 |---|---|---|
 | 401 | `TOKEN_INVALID` | — |
-| 403 | `PERMISSION_DENIED` | AUDITOR role 필요 |
+| 403 | `PERMISSION_DENIED` | `audit.read` 또는 source별 추가 권한(`security.event.read`) 부족 |
 | 422 | `VALIDATION_ERROR` | from > to, size > 100 등 |
 
 **Note**: 이 조회 자체가 **meta-audit**로 기록됨 ([rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A5). PII는 마스킹됨 (IP 일부, 이메일 미포함).
@@ -188,11 +209,26 @@ base path: `/api/admin`
 
 ## Operator Roles
 
-| Role | 권한 |
-|---|---|
-| `SUPER_ADMIN` | 모든 작업 |
-| `ACCOUNT_ADMIN` | lock/unlock/revoke + 감사 조회 |
-| `AUDITOR` | 감사 조회만 (읽기 전용) |
+Canonical 정의는 [specs/services/admin-service/rbac.md](../../services/admin-service/rbac.md) "Seed Roles" 절. 본 계약은 클라이언트(운영자 UI) 참고용 요약이다.
+
+| Role | 보유 permission keys | 용도 |
+|---|---|---|
+| `SUPER_ADMIN` | 전체 | 플랫폼 오너 |
+| `SUPPORT_READONLY` | `audit.read`, `security.event.read` | CS L1, 조회 전용 |
+| `SUPPORT_LOCK` | `account.lock`, `account.unlock`, `account.force_logout`, `audit.read` | CS L2, 계정 제어 |
+| `SECURITY_ANALYST` | `audit.read`, `security.event.read`, `account.force_logout` | 보안팀, 의심 세션 긴급 종료 |
+
+### 403 Response Shape
+
+`PERMISSION_DENIED` 응답은 본 문서의 [Common Error Format](#common-error-format)을 따른다. permission 관련 추가 필드는 응답에 **노출하지 않는다** (attack surface 축소 — 클라이언트는 어떤 permission이 누락되었는지 알 수 없다). 거부 상세는 `admin_actions.detail`에만 기록된다.
+
+```json
+{
+  "code": "PERMISSION_DENIED",
+  "message": "Operator is not authorized to perform this action.",
+  "timestamp": "2026-04-13T10:00:00Z"
+}
+```
 
 ---
 
