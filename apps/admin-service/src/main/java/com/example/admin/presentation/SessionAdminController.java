@@ -4,7 +4,9 @@ import com.example.admin.application.RevokeSessionCommand;
 import com.example.admin.application.RevokeSessionResult;
 import com.example.admin.application.SessionAdminUseCase;
 import com.example.admin.application.exception.ReasonRequiredException;
+import com.example.admin.domain.rbac.Permission;
 import com.example.admin.infrastructure.security.OperatorContextHolder;
+import com.example.admin.presentation.aspect.RequiresPermission;
 import com.example.admin.presentation.dto.RevokeSessionRequest;
 import com.example.admin.presentation.dto.RevokeSessionResponse;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ public class SessionAdminController {
 
     @PostMapping("/{accountId}/revoke")
     @PreAuthorize("hasAnyRole('ACCOUNT_ADMIN','SUPER_ADMIN')")
+    @RequiresPermission(Permission.ACCOUNT_FORCE_LOGOUT)
     public ResponseEntity<RevokeSessionResponse> revoke(
             @PathVariable String accountId,
             @RequestHeader(value = "X-Operator-Reason", required = false) String headerReason,

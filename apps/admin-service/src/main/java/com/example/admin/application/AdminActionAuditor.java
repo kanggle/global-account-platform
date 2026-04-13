@@ -2,6 +2,7 @@ package com.example.admin.application;
 
 import com.example.admin.application.event.AdminEventPublisher;
 import com.example.admin.application.exception.AuditFailureException;
+import com.example.admin.domain.rbac.Permission;
 import com.example.admin.infrastructure.persistence.AdminActionJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminActionJpaRepository;
 import lombok.RequiredArgsConstructor;
@@ -59,6 +60,8 @@ public class AdminActionAuditor {
                     record.actionCode().name(),
                     record.operator().operatorId(),
                     primaryRole(record.operator()),
+                    record.operator().operatorId(), // operator_id (TASK-BE-028a)
+                    permissionForActionCode(record.actionCode()), // TASK-BE-028a
                     record.targetType(),
                     record.targetId(),
                     record.reason(),
@@ -109,6 +112,8 @@ public class AdminActionAuditor {
                     record.actionCode().name(),
                     record.operator().operatorId(),
                     primaryRole(record.operator()),
+                    record.operator().operatorId(),
+                    permissionForActionCode(record.actionCode()),
                     record.targetType(),
                     record.targetId(),
                     record.reason(),
@@ -124,6 +129,80 @@ public class AdminActionAuditor {
             log.error("Failed to write admin_actions audit row (fail-closed): auditId={}", record.auditId(), ex);
             throw new AuditFailureException("Failed to record admin action audit", ex);
         }
+    }
+
+    /**
+     * TASK-BE-028a: Records a DENIED admin_actions row directly (no IN_PROGRESS phase).
+     * Invoked by {@code RequiresPermissionAspect} when permission evaluation fails.
+     *
+     * <p>Writes in a REQUIRES_NEW transaction so that the deny audit row is durable
+     * even if the controller request is rolled back. No outbox event is emitted in
+     * this increment (envelope reshape deferred to TASK-BE-028b).
+     */
+    // TODO(TASK-BE-028b): emit admin.action.performed outbox event for DENIED rows
+    //                    with the new actor/action/target/outcome envelope.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordDenied(String operatorId,
+                             String permissionUsed,
+                             String endpoint,
+                             String method,
+                             String targetDescription) {
+        try {
+            Instant now = Instant.now();
+            String auditId = UUID.randomUUID().toString();
+            String actionCode = actionCodeForPermission(permissionUsed);
+            String targetType = targetDescription != null ? "TARGET" : "AUDIT_QUERY";
+            String targetId = targetDescription != null ? targetDescription : "-";
+            String reason = "<not_provided>";
+            String idempotencyKey = "denied:" + auditId; // unique sentinel
+            String detail = "PERMISSION_NOT_GRANTED endpoint=" + endpoint + " method=" + method;
+
+            AdminActionJpaEntity entity = AdminActionJpaEntity.create(
+                    auditId,
+                    actionCode,
+                    operatorId != null ? operatorId : "unknown",
+                    "UNKNOWN",
+                    operatorId,
+                    permissionUsed != null ? permissionUsed : Permission.MISSING,
+                    targetType,
+                    targetId,
+                    reason,
+                    null,
+                    idempotencyKey,
+                    Outcome.DENIED.name(),
+                    detail,
+                    now,
+                    now);
+            repository.save(entity);
+        } catch (RuntimeException ex) {
+            log.error("Failed to write DENIED admin_actions row (fail-closed): operatorId={} permission={}",
+                    operatorId, permissionUsed, ex);
+            throw new AuditFailureException("Failed to record DENIED admin action audit", ex);
+        }
+    }
+
+    private static String permissionForActionCode(ActionCode code) {
+        if (code == null) return Permission.MISSING;
+        return switch (code) {
+            case ACCOUNT_LOCK -> Permission.ACCOUNT_LOCK;
+            case ACCOUNT_UNLOCK -> Permission.ACCOUNT_UNLOCK;
+            case SESSION_REVOKE -> Permission.ACCOUNT_FORCE_LOGOUT;
+            case AUDIT_QUERY -> Permission.AUDIT_READ;
+        };
+    }
+
+    private static String actionCodeForPermission(String permissionKey) {
+        if (permissionKey == null) return "UNKNOWN";
+        return switch (permissionKey) {
+            case Permission.ACCOUNT_LOCK -> ActionCode.ACCOUNT_LOCK.name();
+            case Permission.ACCOUNT_UNLOCK -> ActionCode.ACCOUNT_UNLOCK.name();
+            case Permission.ACCOUNT_FORCE_LOGOUT -> ActionCode.SESSION_REVOKE.name();
+            case Permission.AUDIT_READ, Permission.SECURITY_EVENT_READ -> ActionCode.AUDIT_QUERY.name();
+            default -> {
+                if (permissionKey.contains("+")) yield ActionCode.AUDIT_QUERY.name();
+                yield "UNKNOWN";
+            }
+        };
     }
 
     private static String primaryRole(OperatorContext ctx) {

@@ -6,7 +6,9 @@ import com.example.admin.application.LockAccountResult;
 import com.example.admin.application.UnlockAccountCommand;
 import com.example.admin.application.UnlockAccountResult;
 import com.example.admin.application.exception.ReasonRequiredException;
+import com.example.admin.domain.rbac.Permission;
 import com.example.admin.infrastructure.security.OperatorContextHolder;
+import com.example.admin.presentation.aspect.RequiresPermission;
 import com.example.admin.presentation.dto.LockAccountRequest;
 import com.example.admin.presentation.dto.LockAccountResponse;
 import com.example.admin.presentation.dto.UnlockAccountRequest;
@@ -30,6 +32,7 @@ public class AccountAdminController {
 
     @PostMapping("/{accountId}/lock")
     @PreAuthorize("hasAnyRole('ACCOUNT_ADMIN','SUPER_ADMIN')")
+    @RequiresPermission(Permission.ACCOUNT_LOCK)
     public ResponseEntity<LockAccountResponse> lock(
             @PathVariable String accountId,
             @RequestHeader(value = "X-Operator-Reason", required = false) String headerReason,
@@ -47,6 +50,7 @@ public class AccountAdminController {
 
     @PostMapping("/{accountId}/unlock")
     @PreAuthorize("hasAnyRole('ACCOUNT_ADMIN','SUPER_ADMIN')")
+    @RequiresPermission(Permission.ACCOUNT_UNLOCK)
     public ResponseEntity<UnlockAccountResponse> unlock(
             @PathVariable String accountId,
             @RequestHeader(value = "X-Operator-Reason", required = false) String headerReason,

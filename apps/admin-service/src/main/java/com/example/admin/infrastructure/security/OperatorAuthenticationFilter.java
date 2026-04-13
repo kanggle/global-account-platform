@@ -73,6 +73,8 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        // TODO(TASK-BE-028b): switch claim from "scope" to "token_type" and drop "roles"
+        //                    claim (permissions resolved via DB per rbac.md D5).
         Object scope = claims.get("scope");
         if (!expectedScope.equals(scope)) {
             unauthorized(response, "TOKEN_INVALID", "Operator scope missing");

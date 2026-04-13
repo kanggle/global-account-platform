@@ -1,14 +1,20 @@
 package com.example.admin.presentation;
 
 import com.example.admin.application.AccountAdminUseCase;
+import com.example.admin.application.AdminActionAuditor;
 import com.example.admin.application.LockAccountResult;
+import com.example.admin.domain.rbac.PermissionEvaluator;
 import com.example.admin.presentation.advice.AdminExceptionHandler;
+import com.example.admin.presentation.aspect.RequiresPermissionAspect;
 import com.example.admin.support.OperatorJwtTestFixture;
 import com.example.admin.support.SliceTestSecurityConfig;
 import com.gap.security.jwt.JwtVerifier;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
@@ -18,16 +24,20 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AccountAdminController.class)
+@ImportAutoConfiguration(AopAutoConfiguration.class)
 @Import({SliceTestSecurityConfig.class, AdminExceptionHandler.class,
+        RequiresPermissionAspect.class,
         AccountAdminControllerTest.JwtBeans.class})
 @TestPropertySource(properties = {
         "admin.jwt.expected-scope=admin"
@@ -55,6 +65,18 @@ class AccountAdminControllerTest {
 
     @MockBean
     AccountAdminUseCase useCase;
+
+    @MockBean
+    PermissionEvaluator permissionEvaluator;
+
+    @MockBean
+    AdminActionAuditor auditor;
+
+    @BeforeEach
+    void grantAll() {
+        when(permissionEvaluator.hasPermission(anyString(), anyString())).thenReturn(true);
+        when(permissionEvaluator.hasAllPermissions(anyString(), any(Collection.class))).thenReturn(true);
+    }
 
     private String bearer(List<String> roles) {
         return "Bearer " + jwt.operatorToken("op-1", roles);

@@ -95,6 +95,20 @@ class AdminActionAuditorTest {
     }
 
     @Test
+    void recordDenied_inserts_row_with_DENIED_outcome_and_permission_used() {
+        auditor.recordDenied("op-1", "account.lock",
+                "/api/admin/accounts/acc-1/lock", "POST", "acc-1");
+
+        ArgumentCaptor<AdminActionJpaEntity> captor = ArgumentCaptor.forClass(AdminActionJpaEntity.class);
+        verify(repo).save(captor.capture());
+        AdminActionJpaEntity saved = captor.getValue();
+        assertThat(saved.getOutcome()).isEqualTo("DENIED");
+        assertThat(saved.getPermissionUsed()).isEqualTo("account.lock");
+        assertThat(saved.getOperatorId()).isEqualTo("op-1");
+        assertThat(saved.getCompletedAt()).isNotNull();
+    }
+
+    @Test
     void recordCompletion_missing_in_progress_row_throws_audit_failure() {
         when(repo.findById("audit-missing")).thenReturn(Optional.empty());
 

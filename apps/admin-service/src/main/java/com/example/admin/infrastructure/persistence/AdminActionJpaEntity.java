@@ -29,6 +29,14 @@ public class AdminActionJpaEntity {
     @Column(name = "actor_role", length = 30, nullable = false)
     private String actorRole;
 
+    // TASK-BE-028a: RBAC operator FK (nullable until 028b enforces FK + NOT NULL)
+    @Column(name = "operator_id", length = 36)
+    private String operatorId;
+
+    // TASK-BE-028a: the permission key evaluated for this action (or "<missing>")
+    @Column(name = "permission_used", length = 80)
+    private String permissionUsed;
+
     @Column(name = "target_type", length = 30, nullable = false)
     private String targetType;
 
@@ -69,11 +77,33 @@ public class AdminActionJpaEntity {
                                               String downstreamDetail,
                                               Instant startedAt,
                                               Instant completedAt) {
+        return create(id, actionCode, actorId, actorRole, actorId, null,
+                targetType, targetId, reason, ticketId, idempotencyKey,
+                outcome, downstreamDetail, startedAt, completedAt);
+    }
+
+    public static AdminActionJpaEntity create(String id,
+                                              String actionCode,
+                                              String actorId,
+                                              String actorRole,
+                                              String operatorId,
+                                              String permissionUsed,
+                                              String targetType,
+                                              String targetId,
+                                              String reason,
+                                              String ticketId,
+                                              String idempotencyKey,
+                                              String outcome,
+                                              String downstreamDetail,
+                                              Instant startedAt,
+                                              Instant completedAt) {
         AdminActionJpaEntity e = new AdminActionJpaEntity();
         e.id = id;
         e.actionCode = actionCode;
         e.actorId = actorId;
         e.actorRole = actorRole;
+        e.operatorId = operatorId;
+        e.permissionUsed = permissionUsed;
         e.targetType = targetType;
         e.targetId = targetId;
         e.reason = reason;

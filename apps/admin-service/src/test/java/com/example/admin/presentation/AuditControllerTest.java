@@ -1,30 +1,42 @@
 package com.example.admin.presentation;
 
+import com.example.admin.application.AdminActionAuditor;
 import com.example.admin.application.AuditQueryResult;
 import com.example.admin.application.AuditQueryUseCase;
+import com.example.admin.domain.rbac.Permission;
+import com.example.admin.domain.rbac.PermissionEvaluator;
 import com.example.admin.presentation.advice.AdminExceptionHandler;
+import com.example.admin.presentation.aspect.RequiresPermissionAspect;
 import com.example.admin.support.OperatorJwtTestFixture;
 import com.example.admin.support.SliceTestSecurityConfig;
 import com.gap.security.jwt.JwtVerifier;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.boot.autoconfigure.aop.AopAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Collection;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AuditController.class)
+@ImportAutoConfiguration(AopAutoConfiguration.class)
 @Import({SliceTestSecurityConfig.class, AdminExceptionHandler.class,
+        RequiresPermissionAspect.class,
         AuditControllerTest.JwtBeans.class})
 class AuditControllerTest {
 
@@ -50,18 +62,25 @@ class AuditControllerTest {
     @MockBean
     AuditQueryUseCase useCase;
 
+    @MockBean
+    PermissionEvaluator permissionEvaluator;
+
+    @MockBean
+    AdminActionAuditor auditor;
+
+    @BeforeEach
+    void defaults() {
+        when(useCase.query(any())).thenReturn(new AuditQueryResult(List.of(), 0, 20, 0L, 0));
+        // default grant audit.read
+        when(permissionEvaluator.hasPermission(anyString(), eq(Permission.AUDIT_READ))).thenReturn(true);
+    }
+
     private String bearer(List<String> roles) {
         return "Bearer " + jwt.operatorToken("op-1", roles);
     }
 
-    private AuditQueryResult emptyResult() {
-        return new AuditQueryResult(List.of(), 0, 20, 0L, 0);
-    }
-
     @Test
     void audit_query_with_auditor_role_returns_200() throws Exception {
-        when(useCase.query(any())).thenReturn(emptyResult());
-
         mockMvc.perform(get("/api/admin/audit")
                         .header("Authorization", bearer(List.of("AUDITOR"))))
                 .andExpect(status().isOk())
@@ -71,8 +90,6 @@ class AuditControllerTest {
 
     @Test
     void audit_query_with_accountAdmin_role_returns_200() throws Exception {
-        when(useCase.query(any())).thenReturn(emptyResult());
-
         mockMvc.perform(get("/api/admin/audit")
                         .header("Authorization", bearer(List.of("ACCOUNT_ADMIN"))))
                 .andExpect(status().isOk());
@@ -80,8 +97,6 @@ class AuditControllerTest {
 
     @Test
     void audit_query_with_superAdmin_role_returns_200() throws Exception {
-        when(useCase.query(any())).thenReturn(emptyResult());
-
         mockMvc.perform(get("/api/admin/audit")
                         .header("Authorization", bearer(List.of("SUPER_ADMIN"))))
                 .andExpect(status().isOk());
@@ -92,5 +107,38 @@ class AuditControllerTest {
         mockMvc.perform(get("/api/admin/audit"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("TOKEN_INVALID"));
+    }
+
+    // TASK-BE-028a: cross-permission source filter
+
+    @Test
+    void audit_query_login_history_without_security_event_read_returns_403() throws Exception {
+        // audit.read granted, security.event.read missing → hasAllPermissions=false
+        when(permissionEvaluator.hasAllPermissions(anyString(), any(Collection.class))).thenReturn(false);
+
+        mockMvc.perform(get("/api/admin/audit")
+                        .param("source", "login_history")
+                        .header("Authorization", bearer(List.of("AUDITOR"))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("PERMISSION_DENIED"));
+    }
+
+    @Test
+    void audit_query_login_history_with_both_permissions_returns_200() throws Exception {
+        when(permissionEvaluator.hasAllPermissions(anyString(), any(Collection.class))).thenReturn(true);
+
+        mockMvc.perform(get("/api/admin/audit")
+                        .param("source", "login_history")
+                        .header("Authorization", bearer(List.of("AUDITOR"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void audit_query_admin_source_only_requires_audit_read() throws Exception {
+        // hasAllPermissions stays unstubbed — source=admin_actions does not require it
+        mockMvc.perform(get("/api/admin/audit")
+                        .param("source", "admin_actions")
+                        .header("Authorization", bearer(List.of("AUDITOR"))))
+                .andExpect(status().isOk());
     }
 }
