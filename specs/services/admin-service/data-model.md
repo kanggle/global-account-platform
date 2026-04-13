@@ -93,7 +93,7 @@ RBAC의 의사결정(권한 평가 알고리즘, seed role 매트릭스, missing
 |---|---|---|---|---|
 | `id` | BIGINT | PK, AUTO_INCREMENT | internal | — |
 | `action_code` | VARCHAR(40) | NOT NULL, INDEX | internal | `ACCOUNT_LOCK` / `ACCOUNT_UNLOCK` / `SESSION_REVOKE` / `AUDIT_QUERY` / `SECURITY_EVENT_QUERY` 등 |
-| `operator_id` | BIGINT | **NOT NULL**, FK → `admin_operators.id` | internal | **신규 (TASK-BE-027)** — 기존 `operator_external_id` 문자열이 있었다면 deprecate하고 본 FK로 대체. 권한 평가 주체와 감사 주체를 동일 entity로 고정 |
+| `operator_id` | BIGINT | **NOT NULL**, FK → `admin_operators.id` | internal | **신규 (TASK-BE-027)** — 권한 평가 주체와 감사 주체를 동일 entity로 고정. admin-service는 bootstrap 마이그레이션이 아직 존재하지 않으므로 레거시 `operator_external_id` 같은 선행 컬럼은 없다 (TASK-BE-028 신규 생성 전제) |
 | `permission_used` | VARCHAR(80) | NULL | internal | **신규 (TASK-BE-027)** — 본 action이 통과(또는 거부)된 permission key. annotation 없는 endpoint의 경우 NULL이 아닌 sentinel `"<missing>"` 기록 ([rbac.md](./rbac.md) Missing-Annotation 정책) |
 | `target_type` | VARCHAR(20) | NULL | internal | `ACCOUNT` / `SESSION` / `AUDIT_QUERY` 등 |
 | `target_id` | VARCHAR(64) | NULL, INDEX | internal | 대상 식별자 (account_id 등). 조회 액션은 NULL 허용 |
@@ -128,6 +128,66 @@ RBAC의 의사결정(권한 평가 알고리즘, seed role 매트릭스, missing
 | `published_at` | TIMESTAMP | NULL이면 미발행 |
 | `status` | VARCHAR(20) | `PENDING` / `PUBLISHED` |
 
+보존·cleanup 정책은 [retention.md](./retention.md)에서 [libs/java-messaging](../../../libs/java-messaging) 공통 정책에 위임됨을 명시.
+
+#### `admin.action.performed` Event Envelope
+
+`outbox.payload`는 [libs/java-messaging](../../../libs/java-messaging) 표준 envelope([../../contracts/events/auth-events.md](../../contracts/events/auth-events.md) Event Envelope 절 참조)의 `payload` 필드에 다음 구조를 싣는다. `eventType = "admin.action.performed"`, `source = "admin-service"`, `partitionKey = actor.id` (동일 operator 액션의 순서 보장).
+
+이 envelope은 [rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A2 표준 스키마(actor/action/target/outcome)를 준수한다. `specs/contracts/events/admin-events.md` 파일은 현재 존재하지 않으므로(`2026-04-13 확인`) 본 문서가 canonical source이다. 해당 contract 파일이 신설되는 시점에 본 절은 링크로 축약하고 정의를 이관한다.
+
+```json
+{
+  "eventId": "UUID v7",
+  "occurredAt": "2026-04-13T10:00:00.123Z (ISO-8601 UTC, ms+ 정밀도)",
+  "actor": {
+    "type": "operator",
+    "id": "admin_operators.operator_id (UUID v7)",
+    "sessionId": "operator JWT jti"
+  },
+  "action": {
+    "permission": "audit.read | account.lock | ...  (rbac.md Permission Keys)",
+    "endpoint": "/api/admin/accounts/{accountId}/lock",
+    "method": "POST"
+  },
+  "target": {
+    "type": "ACCOUNT | OPERATOR | ROLE | AUDIT_QUERY",
+    "id": "target identifier or null",
+    "displayHint": "masked string or null"
+  },
+  "outcome": "SUCCESS | DENIED | FAILURE",
+  "reason": "X-Operator-Reason 원문 or '<not_provided>'"
+}
+```
+
+**필드 규칙**:
+
+- `actor.type`은 항상 `"operator"` (system-originated admin 액션은 본 서비스 범위 외).
+- `actor.sessionId`는 operator JWT `jti` 클레임 값([rbac.md](./rbac.md) JWT claim 절 참조 — `jti`는 표준 claim으로 이미 발급 중). 로그인 세션 추적 ID가 아닌 JWT `jti`를 택한 이유: admin-service는 자체 세션 저장소를 갖지 않으며 JWT stateless, `jti`는 이미 발급 시점에 유일성이 보장되어 추가 저장소 없이 재구성 가능.
+- `target.displayHint`는 **반드시 마스킹된 값만** 포함한다 ([rules/traits/regulated.md](../../../rules/traits/regulated.md) R4). email은 `j***@example.com`, 계정 ID 등 non-PII는 전체 가능. 마스킹은 TASK-BE-028에서 도입될 admin-service 전용 masking utility(패키지: `com.example.admin.domain.util.AdminPiiMaskingUtils` 예정)로 **중앙화**한다. 개별 outbox 호출 지점에서 ad-hoc 마스킹 금지. 참조 구현: [apps/security-service/src/main/java/com/example/security/domain/util/PiiMaskingUtils.java](../../../apps/security-service/src/main/java/com/example/security/domain/util/PiiMaskingUtils.java).
+- `outcome=DENIED`인 경우 `action.permission`은 요청 annotation의 permission 키(누락이면 sentinel `"<missing>"`). 교차 권한 엔드포인트의 DENIED 시 복합 키(`"audit.read+security.event.read"`) 규칙은 [rbac.md](./rbac.md) Permission Evaluation Algorithm 참조.
+- `reason` 필드는 upstream에서 이미 운영자가 입력한 사유 원문. PII 포함 가능성이 있으므로 envelope 분류는 `internal`이되 소비자 측에서 추가 마스킹이 필요할 수 있음 (아래 Data Classification Summary 참조).
+
+**DB Column → Envelope Field 매핑**:
+
+| Envelope field | Source (admin_actions column) | 비고 |
+|---|---|---|
+| `eventId` | (신규 UUID v7, outbox row 생성 시) | `admin_actions.id`와 별개 |
+| `occurredAt` | `admin_actions.occurred_at` | UTC ISO-8601 ms+ 정밀도 (A6) |
+| `actor.type` | (상수 `"operator"`) | — |
+| `actor.id` | `admin_operators.operator_id` (JOIN via `admin_actions.operator_id → admin_operators.id`) | 외부 UUID 사용 (내부 BIGINT PK 노출 금지) |
+| `actor.sessionId` | operator JWT `jti` (request context) | admin_actions에 별도 컬럼은 두지 않음 |
+| `action.permission` | `admin_actions.permission_used` | DENIED 시 sentinel 또는 복합 키 |
+| `action.endpoint` | (HTTP request context) | admin_actions에 저장 안 함 — 발행 시점 captured |
+| `action.method` | (HTTP request context) | 동일 |
+| `target.type` | `admin_actions.target_type` | — |
+| `target.id` | `admin_actions.target_id` | — |
+| `target.displayHint` | (조회 시점 마스킹 변환) | 원문 저장 없음. 마스킹 함수 결과만 envelope에 투입 |
+| `outcome` | `admin_actions.outcome` | SUCCESS/DENIED/FAILURE |
+| `reason` | `admin_actions.reason` | `<not_provided>` sentinel 허용 |
+
+비어있는 필드는 명시적 `null`로 기록(A2: 필드 생략 금지).
+
 ---
 
 ## Migration Strategy
@@ -150,7 +210,8 @@ RBAC의 의사결정(권한 평가 알고리즘, seed role 매트릭스, missing
 |---|---|
 | **restricted** | `admin_operators.password_hash`, `admin_operators.totp_secret_encrypted` |
 | **confidential** | `admin_operators.email`, `admin_operators.display_name`, `admin_actions.reason` |
-| **internal** | 위에 명시되지 않은 모든 컬럼 — `admin_operators` 나머지 (id, operator_id, status, totp_enrolled_at, last_login_at, created_at, updated_at, version), `admin_roles`의 모든 컬럼, `admin_role_permissions`의 모든 컬럼, `admin_operator_roles`의 모든 컬럼, `admin_actions`의 나머지 (id, action_code, operator_id, permission_used, target_type, target_id, ticket_id, request_id, outcome, detail, occurred_at), `outbox`의 모든 컬럼 |
+| **internal** | 위에 명시되지 않은 모든 컬럼 — `admin_operators` 나머지 (id, operator_id, status, totp_enrolled_at, last_login_at, created_at, updated_at, version), `admin_roles`의 모든 컬럼, `admin_role_permissions`의 모든 컬럼, `admin_operator_roles`의 모든 컬럼, `admin_actions`의 나머지 (id, action_code, operator_id, permission_used, target_type, target_id, ticket_id, request_id, outcome, detail, occurred_at), `outbox` 테이블의 나머지 컬럼 |
+| **internal (special)** | `outbox.payload` — `admin.action.performed` envelope을 직렬화하여 포함. `target.displayHint`처럼 **upstream에서 이미 마스킹된** confidential 원본의 파생값을 포함할 수 있다 ([rules/traits/regulated.md](../../../rules/traits/regulated.md) R4 — 중앙 masking utility 경유 강제). 원문 PII는 포함되지 않음을 스펙 레벨에서 보장하므로 분류는 `internal`. 단, `reason` 필드(운영자 입력 원문) 전달 시 소비자 측에서 필요에 따라 추가 필터링을 고려한다. |
 | **public** | 없음 |
 
 [rules/traits/regulated.md](../../../rules/traits/regulated.md) R1 (PII/secret 분리 저장·마스킹)과 R2 (시크릿 평문 저장 금지) 준수.
