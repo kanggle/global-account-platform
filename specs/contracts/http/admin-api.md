@@ -209,14 +209,7 @@ base path: `/api/admin`
 
 ## Operator Roles
 
-Canonical 정의는 [specs/services/admin-service/rbac.md](../../services/admin-service/rbac.md) "Seed Roles" 절. 본 계약은 클라이언트(운영자 UI) 참고용 요약이다.
-
-| Role | 보유 permission keys | 용도 |
-|---|---|---|
-| `SUPER_ADMIN` | 전체 | 플랫폼 오너 |
-| `SUPPORT_READONLY` | `audit.read`, `security.event.read` | CS L1, 조회 전용 |
-| `SUPPORT_LOCK` | `account.lock`, `account.unlock`, `account.force_logout`, `audit.read` | CS L2, 계정 제어 |
-| `SECURITY_ANALYST` | `audit.read`, `security.event.read`, `account.force_logout` | 보안팀, 의심 세션 긴급 종료 |
+**Reference matrix**: Role × permission 매트릭스의 canonical source는 [specs/services/admin-service/rbac.md — Seed Matrix](../../services/admin-service/rbac.md#seed-matrix-role--permission) 한 곳이다. 본 계약에서는 중복 테이블을 유지하지 않는다 (drift 방지).
 
 ### 403 Response Shape
 
