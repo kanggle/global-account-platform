@@ -1,5 +1,7 @@
 # membership-service — Overview
 
+> **Status: FROZEN** — global-account-platform의 product-layer demo consumer. 스코프 재개방 없이 신규 기능 태스크를 발행하지 않는다. 리뷰에서 생성된 fix 태스크만 수용한다.
+
 ## Purpose
 
 구독 플랜 관리 및 프리미엄 콘텐츠 접근 제어 전담 서비스. 팬이 아티스트 팬 클럽을 구독(활성화)하고 만료·해지하는 생명주기를 소유한다. community-service는 프리미엄 포스트 접근 여부를 이 서비스에 위임한다.

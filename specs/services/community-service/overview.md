@@ -1,5 +1,7 @@
 # community-service — Overview
 
+> **Status: FROZEN** — global-account-platform의 product-layer demo consumer. 스코프 재개방 없이 신규 기능 태스크를 발행하지 않는다. 리뷰에서 생성된 fix 태스크(TASK-BE-021 등)만 수용한다.
+
 ## Purpose
 
 아티스트 포스트·팬 커뮤니티 전담 서비스. 아티스트가 콘텐츠를 발행하고, 팬이 댓글·반응으로 상호작용하며, 팔로잉 아티스트 기반의 피드를 제공한다. Weverse 핵심 도메인인 "아티스트↔팬 상호작용"의 소유자.
