@@ -181,7 +181,7 @@ class AuthEventPublisherTest {
     }
 
     @Test
-    @DisplayName("publishLoginSucceeded (legacy 3-arg) includes geoCountry and null deviceId/isNewDevice")
+    @DisplayName("publishLoginSucceeded (legacy 3-arg) includes geoCountry and omits deviceId/isNewDevice keys entirely")
     void publishLoginSucceeded_includesGeoCountry() throws Exception {
         // given
         SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "JP");
@@ -199,12 +199,11 @@ class AuthEventPublisherTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
         assertThat(payload).containsEntry("geoCountry", "JP");
-        // Legacy delegator leaves the TASK-BE-025 fields null (consumer falls back to
-        // fingerprint).
-        assertThat(payload).containsKey("deviceId");
-        assertThat(payload.get("deviceId")).isNull();
-        assertThat(payload).containsKey("isNewDevice");
-        assertThat(payload.get("isNewDevice")).isNull();
+        // TASK-BE-026: legacy 3-arg form MUST omit the TASK-BE-025 fields entirely (field
+        // absence, not explicit nulls) so consumers' isMissingNode() check kicks in and
+        // DeviceChangeRule falls back to fingerprint-based logic.
+        assertThat(payload).doesNotContainKey("deviceId");
+        assertThat(payload).doesNotContainKey("isNewDevice");
     }
 
     @Test

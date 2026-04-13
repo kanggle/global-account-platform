@@ -56,11 +56,23 @@ public class AuthEventPublisher {
 
     /**
      * Legacy 3-arg form kept for integration tests and any pre-TASK-BE-025 call site.
-     * Delegates with {@code deviceId=null}, {@code isNewDevice=null} — consumers treat
-     * missing fields as a legacy event and fall back to fingerprint logic.
+     * Emits a payload that <b>omits</b> {@code deviceId} and {@code isNewDevice} entirely
+     * (field absence, not explicit nulls) so consumers correctly treat the event as legacy
+     * and fall back to fingerprint logic via {@code JsonNode#isMissingNode()}. Built
+     * independently of the 5-arg form to avoid leaking null keys into the JSON envelope
+     * (TASK-BE-026 warning absorption from TASK-BE-025 review).
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx) {
-        publishLoginSucceeded(accountId, sessionJti, ctx, null, null);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("ipMasked", ctx.ipMasked());
+        payload.put("userAgentFamily", ctx.userAgentFamily());
+        payload.put("deviceFingerprint", ctx.deviceFingerprint());
+        payload.put("geoCountry", ctx.resolvedGeoCountry());
+        payload.put("sessionJti", sessionJti);
+        payload.put("timestamp", Instant.now().toString());
+
+        writeEvent("auth.login.succeeded", accountId, payload);
     }
 
     /**
