@@ -71,7 +71,10 @@ public class CommunityEventPublisher {
             String json = objectMapper.writeValueAsString(envelope);
             outboxWriter.save(AGGREGATE_TYPE, aggregateId, eventType, json);
         } catch (JsonProcessingException e) {
+            // Rethrow to trigger transaction rollback — outbox write failed while
+            // state changes would otherwise persist (inconsistency).
             log.error("Failed to serialize event payload for {}: {}", eventType, e.getMessage());
+            throw new IllegalStateException("Failed to serialize outbox event: " + eventType, e);
         }
     }
 }
