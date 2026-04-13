@@ -15,7 +15,7 @@
 
 services:
   # ---------------------------------------------------------------------------
-  # MySQL 8 — 4 databases: auth_db, account_db, security_db, admin_db
+  # MySQL 8 — 6 databases: auth_db, account_db, security_db, admin_db, community_db, membership_db
   # ---------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
@@ -29,6 +29,8 @@ services:
       ACCOUNT_DB_PASSWORD: ${ACCOUNT_DB_PASSWORD:-account_pass}
       SECURITY_DB_PASSWORD: ${SECURITY_DB_PASSWORD:-security_pass}
       ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-admin_pass}
+      COMMUNITY_DB_PASSWORD: ${COMMUNITY_DB_PASSWORD:-community_pass}
+      MEMBERSHIP_DB_PASSWORD: ${MEMBERSHIP_DB_PASSWORD:-membership_pass}
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docker/mysql/init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
@@ -143,6 +145,12 @@ services:
           "security.suspicious.detected"
           "security.auto.lock.triggered"
           "admin.action.performed"
+          "community.post.published"
+          "community.comment.created"
+          "community.reaction.added"
+          "membership.subscription.activated"
+          "membership.subscription.expired"
+          "membership.subscription.cancelled"
         )
 
         create_topic() {

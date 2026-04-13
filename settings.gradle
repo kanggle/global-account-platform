@@ -11,5 +11,7 @@ include(
     'apps:auth-service',
     'apps:gateway-service',
     'apps:security-service',
-    'apps:admin-service'
+    'apps:admin-service',
+    'apps:community-service',
+    'apps:membership-service'
 )

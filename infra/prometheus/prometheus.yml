@@ -57,3 +57,19 @@ scrape_configs:
       - targets: ['host.docker.internal:8085']
         labels:
           service: admin-service
+
+  - job_name: 'community-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8086']
+        labels:
+          service: community-service
+
+  - job_name: 'membership-service'
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8087']
+        labels:
+          service: membership-service
