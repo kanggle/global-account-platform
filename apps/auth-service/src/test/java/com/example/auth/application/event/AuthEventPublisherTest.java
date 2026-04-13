@@ -101,25 +101,26 @@ class AuthEventPublisherTest {
     }
 
     @Test
-    @DisplayName("publishSessionRevoked writes correct payload to outbox")
-    void publishSessionRevoked_correctPayload() throws Exception {
+    @DisplayName("publishAuthSessionRevoked writes per-device payload to auth.session.revoked")
+    void publishAuthSessionRevoked_correctPayload() throws Exception {
         // given
-        List<String> revokedJtis = List.of("jti-1", "jti-2", "jti-3");
+        List<String> revokedJtis = List.of("jti-1", "jti-2");
         Instant revokedAt = Instant.parse("2026-04-12T10:00:00Z");
 
         // when
-        authEventPublisher.publishSessionRevoked(
-                ACCOUNT_ID, revokedJtis, "USER_LOGOUT", "user", null, revokedAt, 3);
+        authEventPublisher.publishAuthSessionRevoked(
+                ACCOUNT_ID, "dev-1", "USER_REQUESTED",
+                revokedJtis, revokedAt, "USER", ACCOUNT_ID);
 
         // then
         ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         verify(outboxWriter).save(eq("auth"), eq(ACCOUNT_ID),
-                eq("session.revoked"), payloadCaptor.capture());
+                eq("auth.session.revoked"), payloadCaptor.capture());
 
         Map<String, Object> envelope = objectMapper.readValue(
                 payloadCaptor.getValue(), new TypeReference<>() {});
 
-        assertThat(envelope).containsEntry("eventType", "session.revoked");
+        assertThat(envelope).containsEntry("eventType", "auth.session.revoked");
         assertThat(envelope).containsEntry("source", "auth-service");
         assertThat(envelope).containsEntry("schemaVersion", 1);
         assertThat(envelope).containsEntry("partitionKey", ACCOUNT_ID);
@@ -127,12 +128,14 @@ class AuthEventPublisherTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
         assertThat(payload).containsEntry("accountId", ACCOUNT_ID);
+        assertThat(payload).containsEntry("deviceId", "dev-1");
+        assertThat(payload).containsEntry("reason", "USER_REQUESTED");
         assertThat(payload).containsEntry("revokedJtis", revokedJtis);
-        assertThat(payload).containsEntry("revokeReason", "USER_LOGOUT");
-        assertThat(payload).containsEntry("actorType", "user");
-        assertThat(payload.get("actorId")).isNull();
         assertThat(payload).containsEntry("revokedAt", revokedAt.toString());
-        assertThat(payload).containsEntry("totalRevoked", 3);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> actor = (Map<String, Object>) payload.get("actor");
+        assertThat(actor).containsEntry("type", "USER");
+        assertThat(actor).containsEntry("accountId", ACCOUNT_ID);
     }
 
     @Test

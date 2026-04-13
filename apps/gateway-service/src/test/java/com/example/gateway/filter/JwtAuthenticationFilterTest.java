@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.http.server.reactive.MockServerHttpRequest;
 import org.springframework.mock.web.server.MockServerWebExchange;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -24,6 +26,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("JwtAuthenticationFilter 단위 테스트")
@@ -112,6 +115,75 @@ class JwtAuthenticationFilterTest {
                 .verifyComplete();
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    @DisplayName("JWT에 device_id claim이 있으면 X-Device-Id 헤더 주입")
+    void filter_deviceIdClaim_injectsXDeviceIdHeader() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me/sessions")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.isPublicRoute(HttpMethod.GET, "/api/accounts/me/sessions")).willReturn(false);
+        given(tokenValidator.validate("valid-token"))
+                .willReturn(Mono.just(Map.of("sub", "account-123", "device_id", "dev-abc")));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        ArgumentCaptor<ServerWebExchange> exchangeCaptor = ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(exchangeCaptor.capture());
+        HttpHeaders downstreamHeaders = exchangeCaptor.getValue().getRequest().getHeaders();
+        assertThat(downstreamHeaders.getFirst("X-Account-ID")).isEqualTo("account-123");
+        assertThat(downstreamHeaders.getFirst("X-Device-Id")).isEqualTo("dev-abc");
+    }
+
+    @Test
+    @DisplayName("JWT에 device_id claim이 없으면 X-Device-Id 헤더 주입 안 함 (legacy token)")
+    void filter_noDeviceIdClaim_omitsXDeviceIdHeader() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.isPublicRoute(HttpMethod.GET, "/api/accounts/me")).willReturn(false);
+        given(tokenValidator.validate("valid-token"))
+                .willReturn(Mono.just(Map.of("sub", "account-123")));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        ArgumentCaptor<ServerWebExchange> exchangeCaptor = ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(exchangeCaptor.capture());
+        HttpHeaders downstreamHeaders = exchangeCaptor.getValue().getRequest().getHeaders();
+        assertThat(downstreamHeaders.getFirst("X-Account-ID")).isEqualTo("account-123");
+        assertThat(downstreamHeaders.getFirst("X-Device-Id")).isNull();
+    }
+
+    @Test
+    @DisplayName("외부에서 보낸 X-Device-Id 헤더가 제거됨 (spoofing 방지)")
+    void filter_spoofedDeviceIdHeader_isStripped() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer valid-token")
+                .header("X-Device-Id", "spoofed-device")
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.isPublicRoute(HttpMethod.GET, "/api/accounts/me")).willReturn(false);
+        given(tokenValidator.validate("valid-token"))
+                .willReturn(Mono.just(Map.of("sub", "account-123"))); // no device_id claim
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        ArgumentCaptor<ServerWebExchange> exchangeCaptor = ArgumentCaptor.forClass(ServerWebExchange.class);
+        verify(chain).filter(exchangeCaptor.capture());
+        // Spoofed header must NOT pass through when the JWT has no device_id claim.
+        assertThat(exchangeCaptor.getValue().getRequest().getHeaders().getFirst("X-Device-Id")).isNull();
     }
 
     @Test

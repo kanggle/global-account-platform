@@ -36,7 +36,8 @@ public class AuthOutboxPollingScheduler extends OutboxPollingScheduler {
             case "auth.login.succeeded"       -> "auth.login.succeeded";
             case "auth.token.refreshed"       -> "auth.token.refreshed";
             case "auth.token.reuse.detected"  -> "auth.token.reuse.detected";
-            case "session.revoked"            -> "session.revoked";
+            case "auth.session.created"       -> "auth.session.created";
+            case "auth.session.revoked"       -> "auth.session.revoked";
             default -> throw new IllegalArgumentException("Unknown auth event type: " + eventType);
         };
     }

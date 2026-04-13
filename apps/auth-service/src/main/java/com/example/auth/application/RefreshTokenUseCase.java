@@ -12,6 +12,7 @@ import com.example.auth.domain.repository.DeviceSessionRepository;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.repository.TokenBlacklist;
 import com.example.auth.domain.session.DeviceSession;
+import com.example.auth.domain.session.RevokeReason;
 import com.example.auth.domain.session.SessionContext;
 import com.example.auth.domain.token.RefreshToken;
 import com.example.auth.domain.token.TokenPair;
@@ -30,9 +31,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class RefreshTokenUseCase {
 
-    /** Session revoke reason code emitted on the session.revoked event when reuse is detected. */
-    private static final String REVOKE_REASON_TOKEN_REUSE = "TOKEN_REUSE_DETECTED";
-    private static final String ACTOR_TYPE_SYSTEM = "system";
+    private static final String ACTOR_TYPE_SYSTEM = "SYSTEM";
 
     private final TokenGeneratorPort tokenGeneratorPort;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -146,9 +145,10 @@ public class RefreshTokenUseCase {
     }
 
     /**
-     * Handles a detected refresh-token reuse: bulk-revokes the account, sets the Redis
-     * invalidate-all marker, emits {@code auth.token.reuse.detected} and {@code session.revoked}
-     * events, and throws {@link TokenReuseDetectedException}.
+     * Handles a detected refresh-token reuse: bulk-revokes the account's refresh tokens
+     * and device sessions, sets the Redis invalidate-all marker, emits
+     * {@code auth.token.reuse.detected} and one {@code auth.session.revoked} event per
+     * affected device, and throws {@link TokenReuseDetectedException}.
      *
      * <p>All work runs inside the caller's {@code @Transactional} boundary so that DB revokes and
      * outbox writes commit atomically.
@@ -166,9 +166,14 @@ public class RefreshTokenUseCase {
         // still enforce the TokenReuseDetectedException response to the caller.
         boolean alreadyRevoked = existingToken.isRevoked();
 
-        // Capture active jtis BEFORE the bulk update so the session.revoked event can list every
-        // jti that transitioned from active to revoked.
-        List<String> activeJtis = refreshTokenRepository.findActiveJtisByAccountId(accountId);
+        // Snapshot active device_sessions + their active jtis BEFORE revoking so we can emit
+        // one event per device with the jtis that actually transitioned active -> revoked.
+        List<DeviceSession> activeSessions = deviceSessionRepository.findActiveByAccountId(accountId);
+        java.util.Map<String, List<String>> jtisByDevice = new java.util.LinkedHashMap<>();
+        for (DeviceSession session : activeSessions) {
+            jtisByDevice.put(session.getDeviceId(),
+                    refreshTokenRepository.findActiveJtisByDeviceId(session.getDeviceId()));
+        }
 
         // Revoke every active refresh token for this account (DB authoritative defence).
         int revokedCount = refreshTokenRepository.revokeAllByAccountId(accountId);
@@ -193,14 +198,25 @@ public class RefreshTokenUseCase {
                 true,
                 revokedCount
         );
-        authEventPublisher.publishSessionRevoked(
-                accountId,
-                activeJtis,
-                REVOKE_REASON_TOKEN_REUSE,
-                ACTOR_TYPE_SYSTEM,
-                null,
-                reuseAttemptAt,
-                revokedCount
-        );
+
+        // Cascade: mark each device_session revoked + emit per-device auth.session.revoked.
+        // Idempotent — already-revoked sessions are skipped.
+        for (DeviceSession session : activeSessions) {
+            if (session.isRevoked()) {
+                continue;
+            }
+            List<String> deviceJtis = jtisByDevice.getOrDefault(session.getDeviceId(), List.of());
+            session.revoke(reuseAttemptAt, RevokeReason.TOKEN_REUSE);
+            deviceSessionRepository.save(session);
+            authEventPublisher.publishAuthSessionRevoked(
+                    accountId,
+                    session.getDeviceId(),
+                    RevokeReason.TOKEN_REUSE.name(),
+                    deviceJtis,
+                    reuseAttemptAt,
+                    ACTOR_TYPE_SYSTEM,
+                    null
+            );
+        }
     }
 }

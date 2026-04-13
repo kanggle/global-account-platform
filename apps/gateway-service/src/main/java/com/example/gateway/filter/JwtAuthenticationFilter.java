@@ -34,6 +34,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private static final int ORDER = -100;
     private static final String ACCOUNT_ID_HEADER = "X-Account-ID";
+    private static final String DEVICE_ID_HEADER = "X-Device-Id";
 
     private final TokenValidator tokenValidator;
     private final RouteConfig routeConfig;
@@ -79,9 +80,14 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                                 "Access token is missing, expired, or has an invalid signature");
                     }
 
-                    ServerHttpRequest enriched = stripped.mutate()
-                            .header(ACCOUNT_ID_HEADER, accountId)
-                            .build();
+                    String deviceId = extractDeviceId(claims);
+
+                    ServerHttpRequest.Builder enrichedBuilder = stripped.mutate()
+                            .header(ACCOUNT_ID_HEADER, accountId);
+                    if (deviceId != null && !deviceId.isBlank()) {
+                        enrichedBuilder.header(DEVICE_ID_HEADER, deviceId);
+                    }
+                    ServerHttpRequest enriched = enrichedBuilder.build();
 
                     return chain.filter(strippedExchange.mutate().request(enriched).build());
                 })
@@ -101,6 +107,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return request.mutate()
                 .headers(h -> {
                     h.remove(ACCOUNT_ID_HEADER);
+                    h.remove(DEVICE_ID_HEADER);
                 })
                 .build();
     }
@@ -115,6 +122,11 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return accountId.toString();
         }
         return null;
+    }
+
+    private String extractDeviceId(Map<String, Object> claims) {
+        Object deviceId = claims.get("device_id");
+        return deviceId != null ? deviceId.toString() : null;
     }
 
     private Mono<Void> writeUnauthorized(ServerWebExchange exchange, String message) {

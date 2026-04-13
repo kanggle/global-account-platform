@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,8 +20,10 @@ public class LogoutController {
     private final LogoutUseCase logoutUseCase;
 
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@Valid @RequestBody LogoutRequest request) {
-        logoutUseCase.execute(new LogoutCommand(request.refreshToken()));
+    public ResponseEntity<Void> logout(
+            @Valid @RequestBody LogoutRequest request,
+            @RequestHeader(value = "X-Device-Id", required = false) String deviceId) {
+        logoutUseCase.execute(new LogoutCommand(request.refreshToken(), deviceId));
         return ResponseEntity.noContent().build();
     }
 }

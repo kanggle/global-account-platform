@@ -11,6 +11,8 @@ import com.example.auth.domain.repository.BulkInvalidationStore;
 import com.example.auth.domain.repository.DeviceSessionRepository;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.repository.TokenBlacklist;
+import com.example.auth.domain.session.DeviceSession;
+import com.example.auth.domain.session.RevokeReason;
 import com.example.auth.domain.session.SessionContext;
 import com.example.auth.domain.token.RefreshToken;
 import com.example.auth.domain.token.TokenPair;
@@ -141,7 +143,7 @@ class RefreshTokenUseCaseTest {
     }
 
     @Test
-    @DisplayName("Reuse detected: throws TokenReuseDetectedException, bulk revokes, emits both events, sets Redis marker")
+    @DisplayName("Reuse detected: revokes all device_sessions, emits per-device auth.session.revoked with TOKEN_REUSE")
     void refreshFailsReuseDetected() {
         String refreshTokenStr = "reused-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
@@ -154,10 +156,21 @@ class RefreshTokenUseCaseTest {
                 null, false, "fp-123");
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
-        List<String> activeJtis = List.of(OLD_JTI, "sibling-jti-1", "sibling-jti-2");
-        when(refreshTokenRepository.findActiveJtisByAccountId(ACCOUNT_ID)).thenReturn(activeJtis);
         when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(3);
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
+
+        DeviceSession s1 = DeviceSession.create("dev-1", ACCOUNT_ID, "fp-1", "Chrome",
+                "127.0.0.1", "KR", Instant.now().minusSeconds(3600));
+        DeviceSession s2 = DeviceSession.create("dev-2", ACCOUNT_ID, "fp-2", "Safari",
+                "127.0.0.2", "KR", Instant.now().minusSeconds(1800));
+        when(deviceSessionRepository.findActiveByAccountId(ACCOUNT_ID))
+                .thenReturn(List.of(s1, s2));
+        when(refreshTokenRepository.findActiveJtisByDeviceId("dev-1"))
+                .thenReturn(List.of(OLD_JTI, "sibling-jti-1"));
+        when(refreshTokenRepository.findActiveJtisByDeviceId("dev-2"))
+                .thenReturn(List.of("sibling-jti-2"));
+        when(deviceSessionRepository.save(any(DeviceSession.class)))
+                .thenAnswer(i -> i.getArgument(0));
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
                 new RefreshTokenCommand(refreshTokenStr, CTX)))
@@ -170,14 +183,21 @@ class RefreshTokenUseCaseTest {
                 eq(CTX.ipMasked()), eq(CTX.deviceFingerprint()),
                 eq(true), eq(3)
         );
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<String>> jtisCaptor = ArgumentCaptor.forClass(List.class);
-        verify(authEventPublisher).publishSessionRevoked(
-                eq(ACCOUNT_ID), jtisCaptor.capture(), eq("TOKEN_REUSE_DETECTED"),
-                eq("system"), isNull(), any(Instant.class), eq(3)
-        );
-        assertThat(jtisCaptor.getValue())
-                .containsExactlyInAnyOrderElementsOf(activeJtis);
+
+        ArgumentCaptor<DeviceSession> savedSessions = ArgumentCaptor.forClass(DeviceSession.class);
+        verify(deviceSessionRepository, times(2)).save(savedSessions.capture());
+        assertThat(savedSessions.getAllValues())
+                .allMatch(DeviceSession::isRevoked)
+                .allMatch(s -> s.getRevokeReason() == RevokeReason.TOKEN_REUSE);
+
+        verify(authEventPublisher).publishAuthSessionRevoked(
+                eq(ACCOUNT_ID), eq("dev-1"), eq(RevokeReason.TOKEN_REUSE.name()),
+                eq(List.of(OLD_JTI, "sibling-jti-1")), any(Instant.class),
+                eq("SYSTEM"), isNull());
+        verify(authEventPublisher).publishAuthSessionRevoked(
+                eq(ACCOUNT_ID), eq("dev-2"), eq(RevokeReason.TOKEN_REUSE.name()),
+                eq(List.of("sibling-jti-2")), any(Instant.class),
+                eq("SYSTEM"), isNull());
     }
 
     @Test
@@ -213,7 +233,7 @@ class RefreshTokenUseCaseTest {
                 null, true, "fp-123"); // already revoked
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
-        when(refreshTokenRepository.findActiveJtisByAccountId(ACCOUNT_ID)).thenReturn(List.of());
+        when(deviceSessionRepository.findActiveByAccountId(ACCOUNT_ID)).thenReturn(List.of());
         when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(0);
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
 
@@ -224,7 +244,8 @@ class RefreshTokenUseCaseTest {
         verify(bulkInvalidationStore).invalidateAll(ACCOUNT_ID, 604800L);
         verify(authEventPublisher, never()).publishTokenReuseDetected(
                 anyString(), anyString(), any(), any(), any(), any(), anyBoolean(), anyInt());
-        verify(authEventPublisher, never()).publishSessionRevoked(
-                anyString(), anyList(), anyString(), anyString(), any(), any(Instant.class), anyInt());
+        verify(authEventPublisher, never()).publishAuthSessionRevoked(
+                anyString(), anyString(), anyString(), anyList(), any(Instant.class), anyString(), any());
+        verify(deviceSessionRepository, never()).save(any());
     }
 }

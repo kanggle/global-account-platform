@@ -102,25 +102,6 @@ public class AuthEventPublisher {
     }
 
     /**
-     * Publishes session.revoked event when sessions are explicitly invalidated.
-     */
-    public void publishSessionRevoked(String accountId, List<String> revokedJtis,
-                                       String revokeReason, String actorType,
-                                       String actorId, Instant revokedAt,
-                                       int totalRevoked) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("accountId", accountId);
-        payload.put("revokedJtis", revokedJtis);
-        payload.put("revokeReason", revokeReason);
-        payload.put("actorType", actorType);
-        payload.put("actorId", actorId);
-        payload.put("revokedAt", revokedAt.toString());
-        payload.put("totalRevoked", totalRevoked);
-
-        writeEvent("session.revoked", accountId, payload);
-    }
-
-    /**
      * Publishes {@code auth.session.created} when a new device session is registered on
      * login. Spec: specs/contracts/events/auth-events.md.
      *
