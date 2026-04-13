@@ -38,7 +38,7 @@
 | `path` | 요청 URI (쿼리 제외) | `/api/auth/login` |
 | `status` | HTTP 응답 상태 | `200` |
 | `duration_ms` | 처리 시간 | `42` |
-| `client_ip` | 원본 IP (마스킹됨, 마지막 옥텟 `***`) | `192.168.1.***` |
+| `client_ip` | 원본 IP (마스킹됨, 마지막 두 옥텟 `*`. canonical: [auth-service device-session.md "IP Masking Format"](../auth-service/device-session.md)) | `192.168.*.*` |
 | `upstream` | 라우팅된 다운스트림 서비스 이름 | `auth-service` |
 
 **PII 금지**: User-Agent 전문, 이메일, 토큰 값은 로그에 남기지 않음 ([rules/traits/regulated.md](../../../rules/traits/regulated.md) R4).

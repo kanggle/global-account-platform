@@ -33,7 +33,7 @@ base path: `/internal/security`
       "eventId": "string (UUID)",
       "accountId": "string",
       "outcome": "FAILURE",
-      "ipMasked": "192.168.1.***",
+      "ipMasked": "192.168.*.*",
       "userAgentFamily": "Chrome 120",
       "deviceFingerprint": "string (hashed, truncated)",
       "geoCountry": "KR",
@@ -48,7 +48,7 @@ base path: `/internal/security`
 ```
 
 **PII 마스킹 규칙** ([rules/traits/regulated.md](../../../rules/traits/regulated.md) R4):
-- `ipMasked`: 마지막 옥텟 `***`
+- `ipMasked`: 마지막 두 옥텟을 `*`로 마스킹 (canonical: [auth-service device-session.md "IP Masking Format"](../../services/auth-service/device-session.md))
 - `deviceFingerprint`: SHA256 해시의 앞 12자만
 - 이메일: 응답에 포함하지 않음
 

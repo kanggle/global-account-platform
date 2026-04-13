@@ -162,7 +162,7 @@ base path: `/api/admin`
       "eventId": "string",
       "accountId": "string",
       "outcome": "FAILURE",
-      "ipMasked": "192.168.1.***",
+      "ipMasked": "192.168.*.*",
       "geoCountry": "KR",
       "occurredAt": "2026-04-12T09:58:00Z"
     }

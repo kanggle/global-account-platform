@@ -33,9 +33,10 @@ credentials(비밀)와 profile(비밀 아님)은 **물리적으로 별도 서비
 | `expires_at` | DATETIME(6) | NOT NULL | internal | — |
 | `rotated_from` | VARCHAR(36) | NULL, INDEX | confidential | 이전 토큰의 jti. NULL이면 최초 발급 |
 | `revoked` | BOOLEAN | NOT NULL, DEFAULT FALSE | internal | 명시적 revoke 여부 |
-| `device_fingerprint` | VARCHAR(128) | NULL | confidential | 디바이스 식별 (해시) |
+| `device_id` | VARCHAR(36) | NULL, INDEX | internal | `device_sessions.device_id` 참조 (FK 없음). NULL 허용 (D5 백필 전 기존 row). [device-session.md](./device-session.md) D5 canonical |
+| `device_fingerprint` | VARCHAR(128) | NULL | confidential | (deprecated, superseded by `device_id`) 디바이스 식별 (해시) |
 
-**인덱스**: `idx_rt_jti` (UNIQUE), `idx_rt_account_id`, `idx_rt_rotated_from`
+**인덱스**: `idx_rt_jti` (UNIQUE), `idx_rt_account_id`, `idx_rt_rotated_from`, `idx_rt_device_id`
 
 **토큰 재사용 탐지 로직**: `POST /api/auth/refresh`가 `jti=A`로 rotation을 요청했을 때, A에 이미 `rotated_from`을 참조하는 자식이 존재하면 → 재사용 탐지. 해당 `account_id`의 모든 refresh_token을 `revoked=TRUE`로 일괄 처리 + `auth.token.reuse.detected` 이벤트 발행.
 
@@ -71,7 +72,7 @@ credentials(비밀)와 profile(비밀 아님)은 **물리적으로 별도 서비
 |---|---|
 | **restricted** | `credentials.credential_hash` |
 | **confidential** | `refresh_tokens.jti`, `refresh_tokens.rotated_from`, `refresh_tokens.device_fingerprint`, `device_sessions.device_fingerprint`, `device_sessions.ip_last` |
-| **internal** | 위에 명시되지 않은 `credentials`, `refresh_tokens`, `device_sessions`, `outbox`의 모든 컬럼 (예: `device_sessions.device_id`, `account_id`, `user_agent`, `geo_last`, `issued_at`, `last_seen_at`, `revoked_at`, `revoke_reason`) |
+| **internal** | `refresh_tokens.device_id`, 그리고 위에 명시되지 않은 `credentials`, `refresh_tokens`, `device_sessions`, `outbox`의 모든 컬럼 (예: `device_sessions.device_id`, `account_id`, `user_agent`, `geo_last`, `issued_at`, `last_seen_at`, `revoked_at`, `revoke_reason`) |
 | **public** | 없음 |
 
 [rules/traits/regulated.md](../../../rules/traits/regulated.md) R1 준수.
