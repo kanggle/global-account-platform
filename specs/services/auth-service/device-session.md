@@ -90,6 +90,23 @@ fingerprint가 null·빈 문자열·resolve 실패인 경우:
 
 **데이터 분류**: [rules/traits/regulated.md](../../../rules/traits/regulated.md) R1에 따라 `device_fingerprint`, `ip_last`는 **confidential**. 감사 로그 조회 외 read API 응답에서는 마스킹된 형태로만 노출.
 
+### IP Masking Format
+
+HTTP 응답·이벤트 payload에서 IP를 노출할 때는 아래 규칙을 **단일 표준**으로 사용한다. 원본 IP는 `device_sessions.ip_last`에만 저장되며 외부 경로에서는 절대 노출하지 않는다.
+
+| 형식 | 마스킹 규칙 | 예시 |
+|---|---|---|
+| IPv4 | 마지막 **두 옥텟**을 `*`로 치환 | `192.168.1.42` → `192.168.*.*` |
+| IPv6 | 마지막 **80 bit**(하위 5 그룹)를 `*`로 치환 후 `::*`로 축약 | `2001:db8:85a3:1:2:3:4:5` → `2001:db8:85a3::*` |
+
+규칙 상세:
+- IPv4는 항상 4옥텟 dotted-decimal로 변환 후 마스킹. 축약·leading-zero 없음
+- IPv6는 정규화(RFC 5952) 후 상위 48 bit(첫 3 그룹)만 유지, 나머지는 `::*` sentinel 하나로 대체
+- resolve 실패·비정상 입력은 `"unknown"` 문자열 반환 (IP를 전혀 노출하지 않음)
+- JSON 필드명은 `ipMasked`로 통일 (HTTP 응답·Kafka 이벤트 payload 공통)
+
+이 포맷은 [specs/contracts/http/auth-api.md](../../contracts/http/auth-api.md)의 `GET /api/accounts/me/sessions`, `GET /api/accounts/me/sessions/current` 응답과 [specs/contracts/events/auth-events.md](../../contracts/events/auth-events.md)의 `auth.login.attempted`, `auth.login.succeeded`, `auth.login.failed`, `auth.token.refreshed`, `auth.token.reuse.detected`, `auth.session.created`에 동일하게 적용된다.
+
 ### `refresh_tokens` 변경 (참고)
 
 | 컬럼 | 변경 내용 |

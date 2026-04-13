@@ -69,9 +69,11 @@ credentials(비밀)와 profile(비밀 아님)은 **물리적으로 별도 서비
 
 | 등급 | 컬럼 |
 |---|---|
-| **restricted** | `credential_hash` |
-| **confidential** | `jti`, `rotated_from`, `device_fingerprint` |
-| **internal** | 나머지 모든 컬럼 |
+| **restricted** | `credentials.credential_hash` |
+| **confidential** | `refresh_tokens.jti`, `refresh_tokens.rotated_from`, `refresh_tokens.device_fingerprint`, `device_sessions.device_fingerprint`, `device_sessions.ip_last` |
+| **internal** | 위에 명시되지 않은 `credentials`, `refresh_tokens`, `device_sessions`, `outbox`의 모든 컬럼 (예: `device_sessions.device_id`, `account_id`, `user_agent`, `geo_last`, `issued_at`, `last_seen_at`, `revoked_at`, `revoke_reason`) |
 | **public** | 없음 |
 
 [rules/traits/regulated.md](../../../rules/traits/regulated.md) R1 준수.
+
+> `device_sessions` DDL/인덱스/제약은 본 문서가 아닌 [specs/services/auth-service/device-session.md](./device-session.md) "Data Model" 절에서 선언된다. 본 Classification Summary는 해당 테이블의 컬럼 분류를 canonical 위치에서 재확인하는 역할만 수행한다.
