@@ -4,6 +4,7 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 
 **발행 방식**: Outbox 패턴 — DB 트랜잭션 커밋 후 relay가 Kafka에 발행 ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T3)
 **파티션 키**: `account_id` (같은 계정의 이벤트 순서 보장)
+**IP 마스킹**: 모든 payload의 `ipMasked` 필드는 [specs/services/auth-service/device-session.md](../../services/auth-service/device-session.md#ip-masking-format) "IP Masking Format" 절의 표준을 따른다 (IPv4 `192.168.*.*`, IPv6 `2001:db8:85a3::*`).
 
 ---
 
@@ -36,7 +37,7 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 {
   "accountId": "string | null (미존재 이메일이면 null)",
   "emailHash": "string (SHA256[:10])",
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "userAgentFamily": "Chrome 120",
   "deviceFingerprint": "string (hashed)",
   "geoCountry": "KR",
@@ -61,7 +62,7 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
   "emailHash": "string",
   "failureReason": "CREDENTIALS_INVALID | ACCOUNT_LOCKED | ACCOUNT_DORMANT | ACCOUNT_DELETED | RATE_LIMITED",
   "failCount": 3,
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "userAgentFamily": "Chrome 120",
   "deviceFingerprint": "string",
   "geoCountry": "KR",
@@ -83,7 +84,7 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 ```json
 {
   "accountId": "string",
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "userAgentFamily": "Chrome 120",
   "deviceFingerprint": "string",
   "geoCountry": "KR",
@@ -108,7 +109,7 @@ Refresh token rotation 성공 시 발행.
   "accountId": "string",
   "previousJti": "string (소비된 토큰)",
   "newJti": "string (새로 발급된 토큰)",
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "deviceFingerprint": "string",
   "timestamp": "2026-04-12T10:00:00Z"
 }
@@ -131,7 +132,7 @@ Refresh token rotation 성공 시 발행.
   "reusedJti": "string (재사용 시도된 토큰)",
   "originalRotationAt": "2026-04-12T09:50:00Z",
   "reuseAttemptAt": "2026-04-12T10:00:00Z",
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "deviceFingerprint": "string",
   "sessionsRevoked": true,
   "revokedCount": 5
@@ -156,7 +157,7 @@ Refresh token rotation 성공 시 발행.
   "sessionJti": "string (이 device에 최초 발급된 refresh token의 jti)",
   "deviceFingerprintHash": "string (fingerprint SHA256, 관측용)",
   "userAgentFamily": "Chrome 120",
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "geoCountry": "KR",
   "issuedAt": "2026-04-13T10:00:00Z",
   "evictedDeviceIds": ["string"]

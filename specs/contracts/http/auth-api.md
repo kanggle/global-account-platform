@@ -122,8 +122,11 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 | `exp` | `iat + 1800` (30분) |
 | `jti` | UUID |
 | `scope` | `user` (일반 사용자) 또는 `admin` (운영자) |
+| `device_id` | 이 access token이 속한 device session의 opaque UUID v7. 로그인 성공 시 `device_sessions.device_id`에서 채워지며, refresh rotation으로 새 access token이 발급될 때도 동일 값을 유지한다. `GET /api/accounts/me/sessions/current`, `DELETE /api/accounts/me/sessions` (bulk) 등 "현재 세션" 해석의 단일 소스 |
 
 서명: RS256. 공개 키는 JWKS 엔드포인트로 배포.
+
+**`device_id` claim 설계 근거** ([specs/services/auth-service/device-session.md](../../services/auth-service/device-session.md) D1): `device_id`는 서버 발급 opaque UUID v7이며 fingerprint가 아니다. PII/식별 리스크가 낮아 access token claim으로 실어도 안전하며, stateless 경로에서 "현재 세션"을 즉시 해석할 수 있다.
 
 ### Refresh Token (JWT)
 
@@ -134,6 +137,10 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 | `iat` | 발급 시각 |
 | `exp` | `iat + 604800` (7일) |
 | `type` | `refresh` |
+
+### Refresh Token Rotation and `device_id` 지속성
+
+Refresh rotation(`POST /api/auth/refresh`) 경로에서 새 access token이 발급될 때, `device_id` claim은 **기존 값을 그대로 상속**한다. `device_id`는 opaque device session ID로서 access/refresh token이 회전하더라도 device session 자체가 revoke·eviction되지 않는 한 불변이다. 즉 access token의 `jti`는 매 회전마다 바뀌지만 `device_id`는 같다. 이 불변성은 [device-session.md](../../services/auth-service/device-session.md) D5(refresh_tokens↔device_sessions 매핑)에서 보장된다.
 
 ---
 
@@ -152,7 +159,7 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
     {
       "deviceId": "01936c2f-7d8a-7c3e-9b4a-1f2e3d4c5b6a",
       "userAgentFamily": "Chrome 120",
-      "ipMasked": "192.168.1.***",
+      "ipMasked": "192.168.*.*",
       "geoCountry": "KR",
       "issuedAt": "2026-04-01T10:00:00Z",
       "lastSeenAt": "2026-04-13T08:22:00Z",
@@ -167,7 +174,7 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 **Response 필드 노트**:
 - `deviceId`: `device_sessions.device_id` (서버 생성 opaque UUID v7). 클라이언트는 이 값을 revoke path variable로 사용
 - `current`: 이 응답을 받은 access token이 속한 session과 같으면 `true`
-- `ipMasked`: 마지막 두 옥텟 마스킹 (`specs/services/auth-service/device-session.md` 참조)
+- `ipMasked`: IPv4는 마지막 두 옥텟을 `*`로, IPv6는 하위 80 bit을 `::*`로 마스킹. 정식 규칙은 [specs/services/auth-service/device-session.md](../../services/auth-service/device-session.md#ip-masking-format) "IP Masking Format" 절을 단일 참조로 사용
 - fingerprint 원문, 원본 IP는 **절대 노출하지 않음**
 
 **Errors**:
@@ -180,7 +187,7 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 
 ## GET /api/accounts/me/sessions/current
 
-현재 access token이 속한 device session 단건 조회.
+현재 access token이 속한 device session 단건 조회. 서버는 access token JWT의 `device_id` claim을 읽어 해당 `device_sessions` row를 반환한다.
 
 **Auth required**: Yes (access token)
 
@@ -189,7 +196,7 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 {
   "deviceId": "01936c2f-7d8a-7c3e-9b4a-1f2e3d4c5b6a",
   "userAgentFamily": "Chrome 120",
-  "ipMasked": "192.168.1.***",
+  "ipMasked": "192.168.*.*",
   "geoCountry": "KR",
   "issuedAt": "2026-04-01T10:00:00Z",
   "lastSeenAt": "2026-04-13T08:22:00Z",
@@ -239,7 +246,7 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 
 ## DELETE /api/accounts/me/sessions
 
-현재 device session을 **제외**한 다른 모든 세션을 일괄 revoke한다 ("다른 기기에서 로그아웃").
+현재 device session을 **제외**한 다른 모든 세션을 일괄 revoke한다 ("다른 기기에서 로그아웃"). "현재 device session"은 access token JWT의 `device_id` claim으로 식별한다.
 
 **Auth required**: Yes (access token)
 
