@@ -21,6 +21,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers("/api/auth/refresh").permitAll()
                         .requestMatchers("/api/auth/logout").permitAll()
+                        // Session management endpoints — gateway enforces JWT and forwards
+                        // X-Account-Id / X-Device-Id headers (see AccountSessionController).
+                        .requestMatchers("/api/accounts/me/sessions/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .anyRequest().denyAll()

@@ -33,4 +33,16 @@ public interface RefreshTokenRepository {
      * Finds the child token that was rotated from the given JTI.
      */
     java.util.Optional<RefreshToken> findByRotatedFrom(String jti);
+
+    /**
+     * Returns the jtis of all currently-active (non-revoked) refresh tokens for the device.
+     * Used to populate the {@code auth.session.revoked} event's {@code revokedJtis} field.
+     */
+    List<String> findActiveJtisByDeviceId(String deviceId);
+
+    /**
+     * Revokes all active refresh tokens for the given device.
+     * @return the number of tokens revoked
+     */
+    int revokeAllByDeviceId(String deviceId);
 }

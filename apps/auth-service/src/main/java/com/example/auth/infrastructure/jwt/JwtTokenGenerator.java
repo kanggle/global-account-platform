@@ -39,7 +39,7 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
     }
 
     @Override
-    public TokenPair generateTokenPair(String accountId, String scope) {
+    public TokenPair generateTokenPair(String accountId, String scope, String deviceId) {
         Instant now = Instant.now();
         String accessJti = UUID.randomUUID().toString();
         String refreshJti = UUID.randomUUID().toString();
@@ -52,6 +52,11 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
         accessClaims.put("exp", now.plusSeconds(accessTokenTtlSeconds));
         accessClaims.put("jti", accessJti);
         accessClaims.put("scope", scope);
+        if (deviceId != null) {
+            // device_id claim: opaque UUID v7 of the device session that owns this access token.
+            // See specs/contracts/http/auth-api.md "Access Token claims" + device-session.md D5.
+            accessClaims.put("device_id", deviceId);
+        }
 
         String accessToken = jwtSigner.sign(accessClaims);
 

@@ -10,6 +10,7 @@ import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.CredentialLookupResult;
 import com.example.auth.application.result.LoginResult;
+import com.example.auth.application.result.RegisterDeviceSessionResult;
 import com.example.auth.domain.repository.LoginAttemptCounter;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
@@ -39,6 +40,7 @@ public class LoginUseCase {
     private final RefreshTokenRepository refreshTokenRepository;
     private final LoginAttemptCounter loginAttemptCounter;
     private final AuthEventPublisher authEventPublisher;
+    private final RegisterOrUpdateDeviceSessionUseCase registerOrUpdateDeviceSessionUseCase;
 
     @Value("${auth.login.max-failure-count:5}")
     private int maxFailureCount;
@@ -82,8 +84,14 @@ public class LoginUseCase {
             throw new CredentialsInvalidException();
         }
 
-        // Login success - generate tokens
-        TokenPair tokenPair = tokenGeneratorPort.generateTokenPair(accountId, "user");
+        // Login success — register/touch the device_session BEFORE issuing tokens so the
+        // device_id is available as a JWT claim and as a refresh_tokens.device_id stamp.
+        // Eviction (if needed) runs in the same transaction (D4 atomicity).
+        RegisterDeviceSessionResult sessionResult =
+                registerOrUpdateDeviceSessionUseCase.execute(accountId, ctx);
+        String deviceId = sessionResult.deviceId();
+
+        TokenPair tokenPair = tokenGeneratorPort.generateTokenPair(accountId, "user", deviceId);
 
         // Extract JTI from refresh token and persist
         String refreshJti = tokenGeneratorPort.extractJti(tokenPair.refreshToken());
@@ -91,17 +99,49 @@ public class LoginUseCase {
         RefreshToken refreshTokenEntity = RefreshToken.create(
                 refreshJti, accountId, now,
                 now.plusSeconds(tokenGeneratorPort.refreshTokenTtlSeconds()),
-                null, ctx.deviceFingerprint()
+                null,
+                // Shadow-write the deprecated device_fingerprint column during the D5
+                // migration window. New readers should consult device_id instead.
+                ctx.deviceFingerprint(),
+                deviceId
         );
         refreshTokenRepository.save(refreshTokenEntity);
 
         // Reset failure counter
         loginAttemptCounter.resetFailureCount(emailHash);
 
-        // Publish success event
+        // Publish success events: legacy auth.login.succeeded + new auth.session.created
+        // (the latter only on a brand-new device_session row, per the spec lifecycle).
         authEventPublisher.publishLoginSucceeded(accountId, refreshJti, ctx);
+        if (sessionResult.newSession()) {
+            authEventPublisher.publishAuthSessionCreated(
+                    accountId, deviceId, refreshJti,
+                    fingerprintHash(ctx.deviceFingerprint()),
+                    ctx.userAgentFamily(),
+                    ctx.ipMasked(),
+                    ctx.resolvedGeoCountry(),
+                    now,
+                    sessionResult.evictedDeviceIds());
+        }
 
         return LoginResult.of(tokenPair.accessToken(), tokenPair.refreshToken(), tokenPair.expiresIn());
+    }
+
+    /**
+     * SHA-256 of the raw fingerprint, hex-encoded. Used for {@code auth.session.created}
+     * payload's {@code deviceFingerprintHash} so consumers receive an observation hash
+     * instead of the raw fingerprint.
+     */
+    static String fingerprintHash(String fingerprint) {
+        if (fingerprint == null || fingerprint.isBlank()) {
+            return null;
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(md.digest(fingerprint.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     private void checkAccountStatus(String status, String accountId, String emailHash, SessionContext ctx) {

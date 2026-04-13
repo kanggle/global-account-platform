@@ -65,6 +65,27 @@ public class AuthExceptionHandler {
                 .body(ErrorResponse.of("SERVICE_UNAVAILABLE", "A required service is temporarily unavailable"));
     }
 
+    @ExceptionHandler(SessionNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleSessionNotFound(SessionNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("SESSION_NOT_FOUND", "Session not found"));
+    }
+
+    @ExceptionHandler(SessionOwnershipMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleSessionOwnership(SessionOwnershipMismatchException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("SESSION_OWNERSHIP_MISMATCH",
+                        "Session does not belong to caller"));
+    }
+
+    @ExceptionHandler(org.springframework.web.bind.MissingRequestHeaderException.class)
+    public ResponseEntity<ErrorResponse> handleMissingHeader(
+            org.springframework.web.bind.MissingRequestHeaderException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("VALIDATION_ERROR",
+                        "Missing required header: " + e.getHeaderName()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()

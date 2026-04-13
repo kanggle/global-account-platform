@@ -17,14 +17,9 @@ public record SessionContext(
     }
 
     public String ipMasked() {
-        if (ipAddress == null || ipAddress.isEmpty()) {
-            return "unknown";
-        }
-        int lastDot = ipAddress.lastIndexOf('.');
-        if (lastDot > 0) {
-            return ipAddress.substring(0, lastDot) + ".***";
-        }
-        return ipAddress;
+        // Delegates to the canonical IpMasker (two-octet IPv4 / 48-bit IPv6 rule).
+        // See specs/services/auth-service/device-session.md "IP Masking Format".
+        return IpMasker.mask(ipAddress);
     }
 
     public String userAgentFamily() {

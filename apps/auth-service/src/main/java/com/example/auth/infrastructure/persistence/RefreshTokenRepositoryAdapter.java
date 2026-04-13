@@ -44,4 +44,14 @@ public class RefreshTokenRepositoryAdapter implements RefreshTokenRepository {
     public Optional<RefreshToken> findByRotatedFrom(String jti) {
         return refreshTokenJpaRepository.findByRotatedFrom(jti).map(RefreshTokenJpaEntity::toDomain);
     }
+
+    @Override
+    public List<String> findActiveJtisByDeviceId(String deviceId) {
+        return refreshTokenJpaRepository.findActiveJtisByDeviceId(deviceId);
+    }
+
+    @Override
+    public int revokeAllByDeviceId(String deviceId) {
+        return refreshTokenJpaRepository.revokeAllByDeviceId(deviceId);
+    }
 }

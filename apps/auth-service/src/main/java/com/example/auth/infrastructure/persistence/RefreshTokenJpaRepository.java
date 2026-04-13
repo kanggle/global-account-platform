@@ -22,4 +22,11 @@ public interface RefreshTokenJpaRepository extends JpaRepository<RefreshTokenJpa
     List<String> findActiveJtisByAccountId(@Param("accountId") String accountId);
 
     Optional<RefreshTokenJpaEntity> findByRotatedFrom(String rotatedFrom);
+
+    @Query("SELECT r.jti FROM RefreshTokenJpaEntity r WHERE r.deviceId = :deviceId AND r.revoked = false")
+    List<String> findActiveJtisByDeviceId(@Param("deviceId") String deviceId);
+
+    @Modifying
+    @Query("UPDATE RefreshTokenJpaEntity r SET r.revoked = true WHERE r.deviceId = :deviceId AND r.revoked = false")
+    int revokeAllByDeviceId(@Param("deviceId") String deviceId);
 }

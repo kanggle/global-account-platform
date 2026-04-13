@@ -16,10 +16,14 @@ public class RefreshToken {
     private final Instant expiresAt;
     private final String rotatedFrom;
     private boolean revoked;
+    /** @deprecated superseded by {@link #deviceId}; retained for shadow-write window (D5). */
+    @Deprecated
     private final String deviceFingerprint;
+    /** Logical reference to {@code device_sessions.device_id}. Nullable for legacy rows. */
+    private final String deviceId;
 
     public RefreshToken(Long id, String jti, String accountId, Instant issuedAt, Instant expiresAt,
-                        String rotatedFrom, boolean revoked, String deviceFingerprint) {
+                        String rotatedFrom, boolean revoked, String deviceFingerprint, String deviceId) {
         this.id = id;
         this.jti = Objects.requireNonNull(jti, "jti must not be null");
         this.accountId = Objects.requireNonNull(accountId, "accountId must not be null");
@@ -28,11 +32,34 @@ public class RefreshToken {
         this.rotatedFrom = rotatedFrom;
         this.revoked = revoked;
         this.deviceFingerprint = deviceFingerprint;
+        this.deviceId = deviceId;
+    }
+
+    /**
+     * @deprecated Use {@link #RefreshToken(Long, String, String, Instant, Instant, String,
+     *             boolean, String, String)} that carries {@code deviceId}. Retained
+     *             for backwards compatibility during TASK-BE-023 rollout.
+     */
+    @Deprecated
+    public RefreshToken(Long id, String jti, String accountId, Instant issuedAt, Instant expiresAt,
+                        String rotatedFrom, boolean revoked, String deviceFingerprint) {
+        this(id, jti, accountId, issuedAt, expiresAt, rotatedFrom, revoked, deviceFingerprint, null);
     }
 
     public static RefreshToken create(String jti, String accountId, Instant issuedAt,
+                                       Instant expiresAt, String rotatedFrom,
+                                       String deviceFingerprint, String deviceId) {
+        return new RefreshToken(null, jti, accountId, issuedAt, expiresAt, rotatedFrom,
+                false, deviceFingerprint, deviceId);
+    }
+
+    /**
+     * @deprecated retained for callers that have not yet adopted device_session integration.
+     */
+    @Deprecated
+    public static RefreshToken create(String jti, String accountId, Instant issuedAt,
                                        Instant expiresAt, String rotatedFrom, String deviceFingerprint) {
-        return new RefreshToken(null, jti, accountId, issuedAt, expiresAt, rotatedFrom, false, deviceFingerprint);
+        return create(jti, accountId, issuedAt, expiresAt, rotatedFrom, deviceFingerprint, null);
     }
 
     public boolean isExpired() {
@@ -47,31 +74,13 @@ public class RefreshToken {
         this.revoked = true;
     }
 
-    public Long getId() {
-        return id;
-    }
-
-    public String getJti() {
-        return jti;
-    }
-
-    public String getAccountId() {
-        return accountId;
-    }
-
-    public Instant getIssuedAt() {
-        return issuedAt;
-    }
-
-    public Instant getExpiresAt() {
-        return expiresAt;
-    }
-
-    public String getRotatedFrom() {
-        return rotatedFrom;
-    }
-
-    public String getDeviceFingerprint() {
-        return deviceFingerprint;
-    }
+    public Long getId() { return id; }
+    public String getJti() { return jti; }
+    public String getAccountId() { return accountId; }
+    public Instant getIssuedAt() { return issuedAt; }
+    public Instant getExpiresAt() { return expiresAt; }
+    public String getRotatedFrom() { return rotatedFrom; }
+    @Deprecated
+    public String getDeviceFingerprint() { return deviceFingerprint; }
+    public String getDeviceId() { return deviceId; }
 }

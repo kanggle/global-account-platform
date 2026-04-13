@@ -8,6 +8,7 @@ import com.example.auth.application.exception.TokenReuseDetectedException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.RefreshTokenResult;
 import com.example.auth.domain.repository.BulkInvalidationStore;
+import com.example.auth.domain.repository.DeviceSessionRepository;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.repository.TokenBlacklist;
 import com.example.auth.domain.session.SessionContext;
@@ -47,6 +48,8 @@ class RefreshTokenUseCaseTest {
     private BulkInvalidationStore bulkInvalidationStore;
     @Mock
     private AuthEventPublisher authEventPublisher;
+    @Mock
+    private DeviceSessionRepository deviceSessionRepository;
 
     @InjectMocks
     private RefreshTokenUseCase refreshTokenUseCase;
@@ -71,7 +74,7 @@ class RefreshTokenUseCaseTest {
                 null, false, "fp-123");
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
-        when(tokenGeneratorPort.generateTokenPair(ACCOUNT_ID, "user"))
+        when(tokenGeneratorPort.generateTokenPair(eq(ACCOUNT_ID), eq("user"), nullable(String.class)))
                 .thenReturn(new TokenPair("new-access", "new-refresh", 1800));
         when(tokenGeneratorPort.extractJti("new-refresh")).thenReturn(NEW_JTI);
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);

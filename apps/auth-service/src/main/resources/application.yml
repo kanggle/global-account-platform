@@ -79,6 +79,8 @@ auth:
   login:
     max-failure-count: ${LOGIN_MAX_FAILURES:5}
     failure-window-seconds: ${LOGIN_FAILURE_WINDOW:900}
+  device-session:
+    max-active-sessions: ${AUTH_MAX_ACTIVE_SESSIONS:10}
   account-service:
     base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8082}
     connect-timeout-ms: ${ACCOUNT_SERVICE_CONNECT_TIMEOUT:3000}

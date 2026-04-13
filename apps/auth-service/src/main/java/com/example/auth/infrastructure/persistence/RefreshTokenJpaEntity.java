@@ -36,11 +36,18 @@ public class RefreshTokenJpaEntity {
     @Column(name = "revoked", nullable = false)
     private boolean revoked;
 
+    /** Deprecated — superseded by {@link #deviceId}. Retained for D5 shadow-write window. */
+    @Deprecated
     @Column(name = "device_fingerprint", length = 128)
     private String deviceFingerprint;
 
+    /** Logical reference to {@code device_sessions.device_id}. Nullable for legacy rows. */
+    @Column(name = "device_id", length = 36)
+    private String deviceId;
+
     public RefreshToken toDomain() {
-        return new RefreshToken(id, jti, accountId, issuedAt, expiresAt, rotatedFrom, revoked, deviceFingerprint);
+        return new RefreshToken(id, jti, accountId, issuedAt, expiresAt,
+                rotatedFrom, revoked, deviceFingerprint, deviceId);
     }
 
     public static RefreshTokenJpaEntity fromDomain(RefreshToken token) {
@@ -53,6 +60,7 @@ public class RefreshTokenJpaEntity {
         entity.rotatedFrom = token.getRotatedFrom();
         entity.revoked = token.isRevoked();
         entity.deviceFingerprint = token.getDeviceFingerprint();
+        entity.deviceId = token.getDeviceId();
         return entity;
     }
 }

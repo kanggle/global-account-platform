@@ -11,13 +11,23 @@ import java.time.Instant;
 public interface TokenGeneratorPort {
 
     /**
+     * Generates a new access + refresh token pair without an attached device session.
+     * Equivalent to {@link #generateTokenPair(String, String, String)} with {@code deviceId = null}.
+     */
+    default TokenPair generateTokenPair(String accountId, String scope) {
+        return generateTokenPair(accountId, scope, null);
+    }
+
+    /**
      * Generates a new access + refresh token pair.
      *
-     * @param accountId the account ID to embed as 'sub' claim
-     * @param scope     the scope claim (e.g. "user", "admin")
-     * @return token pair with access token, refresh token JTI, and TTL
+     * @param accountId the account ID to embed as {@code sub}
+     * @param scope     the {@code scope} claim (e.g. "user", "admin")
+     * @param deviceId  the {@code device_id} claim (opaque UUID v7 of the device session);
+     *                  may be {@code null} for legacy / pre-session-integration callers
+     * @return token pair with access token, refresh token, and access TTL
      */
-    TokenPair generateTokenPair(String accountId, String scope);
+    TokenPair generateTokenPair(String accountId, String scope, String deviceId);
 
     /**
      * Returns the access token TTL in seconds.

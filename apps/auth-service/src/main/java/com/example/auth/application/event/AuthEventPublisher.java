@@ -120,6 +120,58 @@ public class AuthEventPublisher {
         writeEvent("session.revoked", accountId, payload);
     }
 
+    /**
+     * Publishes {@code auth.session.created} when a new device session is registered on
+     * login. Spec: specs/contracts/events/auth-events.md.
+     *
+     * @param evictedDeviceIds device_ids that were evicted in the same transaction by the
+     *                         concurrent-session limit; empty list if none
+     */
+    public void publishAuthSessionCreated(String accountId, String deviceId, String sessionJti,
+                                          String deviceFingerprintHash, String userAgentFamily,
+                                          String ipMasked, String geoCountry, Instant issuedAt,
+                                          List<String> evictedDeviceIds) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("deviceId", deviceId);
+        payload.put("sessionJti", sessionJti);
+        payload.put("deviceFingerprintHash", deviceFingerprintHash);
+        payload.put("userAgentFamily", userAgentFamily);
+        payload.put("ipMasked", ipMasked);
+        payload.put("geoCountry", geoCountry);
+        payload.put("issuedAt", issuedAt.toString());
+        payload.put("evictedDeviceIds", evictedDeviceIds != null ? evictedDeviceIds : List.of());
+
+        writeEvent("auth.session.created", accountId, payload);
+    }
+
+    /**
+     * Publishes {@code auth.session.revoked} for a single device session per the new
+     * (TASK-BE-022) payload shape. Spec: specs/contracts/events/auth-events.md.
+     *
+     * @param reason       canonical {@code RevokeReason} name
+     * @param revokedJtis  jtis of refresh_tokens flipped from active to revoked in this op
+     * @param actorType    {@code USER | ADMIN | SYSTEM}
+     * @param actorAccountId actor identifier (null for SYSTEM)
+     */
+    public void publishAuthSessionRevoked(String accountId, String deviceId, String reason,
+                                          List<String> revokedJtis, Instant revokedAt,
+                                          String actorType, String actorAccountId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("deviceId", deviceId);
+        payload.put("reason", reason);
+        payload.put("revokedJtis", revokedJtis != null ? revokedJtis : List.of());
+        payload.put("revokedAt", revokedAt.toString());
+
+        Map<String, Object> actor = new LinkedHashMap<>();
+        actor.put("type", actorType);
+        actor.put("accountId", actorAccountId);
+        payload.put("actor", actor);
+
+        writeEvent("auth.session.revoked", accountId, payload);
+    }
+
     private void writeEvent(String eventType, String aggregateId, Map<String, Object> payload) {
         Map<String, Object> envelope = new LinkedHashMap<>();
         // TODO: TASK-BE-015 switch to UUID v7 when Java 21+ UUID v7 support is added

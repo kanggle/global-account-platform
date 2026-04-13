@@ -144,7 +144,7 @@ class OutboxRelayIntegrationTest {
                 JsonNode payload = envelope.get("payload");
                 assertThat(payload.get("accountId").asText()).isEqualTo(accountId);
                 assertThat(payload.get("sessionJti").asText()).isEqualTo(sessionJti);
-                assertThat(payload.get("ipMasked").asText()).isEqualTo("192.168.1.***");
+                assertThat(payload.get("ipMasked").asText()).isEqualTo("192.168.*.*");
                 assertThat(payload.get("userAgentFamily").asText()).isEqualTo("Chrome");
                 assertThat(payload.get("deviceFingerprint").asText()).isEqualTo("fp-abc123");
             });

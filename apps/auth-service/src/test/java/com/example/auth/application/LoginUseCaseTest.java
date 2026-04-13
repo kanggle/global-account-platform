@@ -9,6 +9,7 @@ import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.CredentialLookupResult;
 import com.example.auth.application.result.LoginResult;
+import com.example.auth.application.result.RegisterDeviceSessionResult;
 import com.example.auth.domain.repository.LoginAttemptCounter;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
@@ -46,6 +47,8 @@ class LoginUseCaseTest {
     private LoginAttemptCounter loginAttemptCounter;
     @Mock
     private AuthEventPublisher authEventPublisher;
+    @Mock
+    private RegisterOrUpdateDeviceSessionUseCase registerOrUpdateDeviceSessionUseCase;
 
     @InjectMocks
     private LoginUseCase loginUseCase;
@@ -69,7 +72,9 @@ class LoginUseCaseTest {
         when(accountServicePort.lookupCredentialsByEmail(EMAIL))
                 .thenReturn(Optional.of(new CredentialLookupResult(ACCOUNT_ID, HASH, "argon2id", "ACTIVE")));
         when(passwordHasher.verify(PASSWORD, HASH)).thenReturn(true);
-        when(tokenGeneratorPort.generateTokenPair(ACCOUNT_ID, "user"))
+        when(registerOrUpdateDeviceSessionUseCase.execute(eq(ACCOUNT_ID), any(SessionContext.class)))
+                .thenReturn(new RegisterDeviceSessionResult("dev-1", true, java.util.List.of()));
+        when(tokenGeneratorPort.generateTokenPair(eq(ACCOUNT_ID), eq("user"), eq("dev-1")))
                 .thenReturn(new TokenPair("access-jwt", "refresh-jwt", 1800));
         when(tokenGeneratorPort.extractJti("refresh-jwt")).thenReturn("jti-123");
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
