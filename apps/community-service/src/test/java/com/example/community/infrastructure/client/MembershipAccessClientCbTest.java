@@ -2,6 +2,7 @@ package com.example.community.infrastructure.client;
 
 import com.example.community.domain.access.ContentAccessChecker;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.springboot3.circuitbreaker.autoconfigure.CircuitBreakerAutoConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -48,9 +49,13 @@ class MembershipAccessClientCbTest {
         if (wm != null) wm.stop();
     }
 
+    @Autowired
+    CircuitBreakerRegistry circuitBreakerRegistry;
+
     @AfterEach
     void resetStubs() {
         wm.resetAll();
+        circuitBreakerRegistry.circuitBreaker("membershipService").reset();
     }
 
     @DynamicPropertySource

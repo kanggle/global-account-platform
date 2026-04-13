@@ -12,7 +12,6 @@ import com.example.community.domain.post.status.PostStatusHistoryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -36,8 +35,7 @@ class PublishPostUseCaseTest {
     @Mock CommunityEventPublisher eventPublisher;
     @Mock AccountProfileLookup accountProfileLookup;
 
-    @InjectMocks PublishPostUseCase useCase = new PublishPostUseCase(
-            null, null, null, null, null);
+    PublishPostUseCase useCase;
 
     @Test
     void artist_publishes_public_post_ok() {
