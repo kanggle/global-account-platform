@@ -8,6 +8,7 @@ import { LoginSchema, type LoginInput } from '../schemas';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { apiClient } from '@/shared/api/client';
 import { ApiError, messageForCode } from '@/shared/api/errors';
 
 export function LoginForm() {
@@ -24,25 +25,7 @@ export function LoginForm() {
   async function onSubmit(values: LoginInput) {
     setSubmitError(null);
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-      });
-      if (!res.ok) {
-        let code = 'UNKNOWN';
-        let message = '로그인에 실패했습니다.';
-        try {
-          const body = (await res.json()) as { code?: string; message?: string };
-          code = body.code ?? code;
-          message = body.message ?? message;
-        } catch {
-          /* ignore */
-        }
-        setSubmitError(messageForCode(code, message));
-        return;
-      }
+      await apiClient.post('/api/auth/login', values, { skipAuthRetry: true });
       const redirect = params?.get('redirect') ?? '/accounts';
       router.push(redirect);
       router.refresh();

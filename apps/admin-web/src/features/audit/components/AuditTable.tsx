@@ -6,6 +6,7 @@ import { Table, THead, TBody, TR, TH, TD } from '@/shared/ui/table';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Button } from '@/shared/ui/button';
+import { formatDateTime } from '@/shared/lib/date';
 
 export function AuditTable() {
   const [filters, setFilters] = useState<{ accountId: string; actionCode: string; from: string; to: string }>({
@@ -69,7 +70,7 @@ export function AuditTable() {
                     <TD>{entry.actionCode} ({entry.outcome})</TD>
                     <TD>{entry.targetId}</TD>
                     <TD>{entry.operatorId}</TD>
-                    <TD>{entry.occurredAt}</TD>
+                    <TD>{formatDateTime(entry.occurredAt)}</TD>
                   </TR>
                 );
               }
@@ -80,7 +81,7 @@ export function AuditTable() {
                     <TD>LOGIN ({entry.outcome})</TD>
                     <TD>{entry.accountId}</TD>
                     <TD>—</TD>
-                    <TD>{entry.occurredAt}</TD>
+                    <TD>{formatDateTime(entry.occurredAt)}</TD>
                   </TR>
                 );
               }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { requireOperatorSession } from './session';
-import { hasAnyRole } from '@/features/auth/guards/RoleGuard';
+import { hasAnyRole } from '@/shared/ui/RoleGuard';
 
 export default async function ConsoleLayout({ children }: { children: ReactNode }) {
   const session = await requireOperatorSession('/accounts');

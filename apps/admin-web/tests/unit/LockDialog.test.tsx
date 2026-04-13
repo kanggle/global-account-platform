@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@/shared/ui/toast';
 import { LockDialog } from '@/features/accounts/components/LockDialog';
+import { runAxe } from '../a11y/axe-helper';
 
 function wrap(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -15,6 +16,12 @@ function wrap(ui: React.ReactNode) {
 }
 
 describe('LockDialog', () => {
+  it('has no axe violations when open', async () => {
+    const { container } = render(wrap(<LockDialog open onOpenChange={() => {}} accountId="acc-1" />));
+    const violations = await runAxe(container);
+    expect(violations).toEqual([]);
+  });
+
   it('requires a reason before submitting', async () => {
     const user = userEvent.setup();
     render(wrap(<LockDialog open onOpenChange={() => {}} accountId="acc-1" />));

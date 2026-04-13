@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { RoleGuard } from '@/features/auth/guards/RoleGuard';
+import { RoleGuard } from '@/shared/ui/RoleGuard';
 
 describe('RoleGuard', () => {
   it('renders children when operator has a permitted role', () => {

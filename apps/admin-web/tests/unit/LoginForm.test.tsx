@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { runAxe } from '../a11y/axe-helper';
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -40,6 +41,12 @@ describe('LoginForm', () => {
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/accounts'));
     expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('has no axe violations on initial render', async () => {
+    const { container } = render(<LoginForm />);
+    const violations = await runAxe(container);
+    expect(violations).toEqual([]);
   });
 
   it('shows a friendly error on 401', async () => {

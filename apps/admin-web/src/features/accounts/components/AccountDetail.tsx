@@ -6,7 +6,8 @@ import { LockDialog } from './LockDialog';
 import { UnlockDialog } from './UnlockDialog';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
-import { RoleGuard } from '@/features/auth/guards/RoleGuard';
+import { RoleGuard } from '@/shared/ui/RoleGuard';
+import { formatDateTime } from '@/shared/lib/date';
 import type { OperatorRole } from '@/shared/api/admin-api';
 
 interface Props {
@@ -33,9 +34,9 @@ export function AccountDetail({ accountId, roles }: Props) {
         <dt className="text-muted-foreground">ID</dt>
         <dd>{data.id}</dd>
         <dt className="text-muted-foreground">가입일</dt>
-        <dd>{data.createdAt}</dd>
+        <dd>{formatDateTime(data.createdAt)}</dd>
         <dt className="text-muted-foreground">최근 로그인</dt>
-        <dd>{data.lastLoginAt ?? '—'}</dd>
+        <dd>{formatDateTime(data.lastLoginAt)}</dd>
       </dl>
 
       <section>
@@ -44,7 +45,7 @@ export function AccountDetail({ accountId, roles }: Props) {
           {data.recentLogins.length === 0 ? <li>이력 없음</li> : null}
           {data.recentLogins.map((h) => (
             <li key={h.eventId}>
-              {h.occurredAt} — {h.outcome} ({h.ipMasked ?? '-'}, {h.geoCountry ?? '-'})
+              {formatDateTime(h.occurredAt)} — {h.outcome} ({h.ipMasked ?? '-'}, {h.geoCountry ?? '-'})
             </li>
           ))}
         </ul>
