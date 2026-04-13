@@ -142,6 +142,67 @@ Refresh token rotation 성공 시 발행.
 
 ---
 
+## auth.session.created
+
+신규 device session이 생성될 때 발행 (로그인 성공 경로의 device_session insert 직후, 동일 트랜잭션 outbox).
+
+**Topic**: `auth.session.created`
+
+**Payload**:
+```json
+{
+  "accountId": "string",
+  "deviceId": "string (UUID v7, device_sessions.device_id)",
+  "sessionJti": "string (이 device에 최초 발급된 refresh token의 jti)",
+  "deviceFingerprintHash": "string (fingerprint SHA256, 관측용)",
+  "userAgentFamily": "Chrome 120",
+  "ipMasked": "192.168.1.***",
+  "geoCountry": "KR",
+  "issuedAt": "2026-04-13T10:00:00Z",
+  "evictedDeviceIds": ["string"]
+}
+```
+
+**필드 노트**:
+- `evictedDeviceIds`: concurrent-session policy에 의해 이 로그인과 **동일 트랜잭션**에서 eviction된 이전 device들의 `device_id` 목록. 없으면 빈 배열. 각 evicted device는 별도로 `auth.session.revoked` 이벤트도 발행된다 (reason=`EVICTED_BY_LIMIT`)
+- fingerprint 원문은 발행하지 않음. 해시만.
+
+**Consumers**: security-service (DeviceChangeRule 입력, login_history 내 device 컬럼 정합성)
+
+---
+
+## auth.session.revoked
+
+device session이 revoke될 때 발행. 사용자 명시 revoke, concurrent-session eviction, token reuse cascade, admin 강제 로그아웃 모두 동일 토픽.
+
+**Topic**: `auth.session.revoked`
+
+**Payload**:
+```json
+{
+  "accountId": "string",
+  "deviceId": "string (UUID v7)",
+  "reason": "USER_REQUESTED | EVICTED_BY_LIMIT | TOKEN_REUSE | ADMIN_FORCED | LOGOUT_OTHERS",
+  "revokedJtis": ["string"],
+  "revokedAt": "2026-04-13T10:00:00Z",
+  "actor": {
+    "type": "USER | ADMIN | SYSTEM",
+    "accountId": "string | null"
+  }
+}
+```
+
+**필드 노트**:
+- `revokedJtis`: 해당 device_session에 연결되어 이번 revoke로 `revoked=TRUE` 처리된 `refresh_tokens.jti` 목록 (일반적으로 활성 1개, rotation 이력 포함 시 다수 가능)
+- `actor.type`:
+  - `USER` — 본인이 `DELETE /api/accounts/me/sessions/*` 호출
+  - `ADMIN` — admin-service 경유 강제 revoke
+  - `SYSTEM` — eviction, token reuse cascade 등 자동화 경로
+
+**Consumers**: security-service (login_history outcome=SESSION_REVOKED 기록)
+
+---
+
 ## Consumer Rules
 
 - **멱등 처리 필수**: `eventId`(UUID v7) 기반 dedupe. Redis + MySQL 이중 방어 (T8)

@@ -8,7 +8,7 @@ Device/session specs and contracts — `device_sessions` model, list/revoke endp
 
 # Status
 
-backlog
+review
 
 # Owner
 

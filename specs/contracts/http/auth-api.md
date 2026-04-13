@@ -137,6 +137,135 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 
 ---
 
+## GET /api/accounts/me/sessions
+
+현재 인증된 사용자의 활성 device session 목록을 조회한다.
+
+**Auth required**: Yes (access token)
+
+**Request**: (no body)
+
+**Response 200**:
+```json
+{
+  "items": [
+    {
+      "deviceId": "01936c2f-7d8a-7c3e-9b4a-1f2e3d4c5b6a",
+      "userAgentFamily": "Chrome 120",
+      "ipMasked": "192.168.1.***",
+      "geoCountry": "KR",
+      "issuedAt": "2026-04-01T10:00:00Z",
+      "lastSeenAt": "2026-04-13T08:22:00Z",
+      "current": false
+    }
+  ],
+  "total": 1,
+  "maxActiveSessions": 10
+}
+```
+
+**Response 필드 노트**:
+- `deviceId`: `device_sessions.device_id` (서버 생성 opaque UUID v7). 클라이언트는 이 값을 revoke path variable로 사용
+- `current`: 이 응답을 받은 access token이 속한 session과 같으면 `true`
+- `ipMasked`: 마지막 두 옥텟 마스킹 (`specs/services/auth-service/device-session.md` 참조)
+- fingerprint 원문, 원본 IP는 **절대 노출하지 않음**
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `TOKEN_INVALID` | access token 만료/변조 |
+
+---
+
+## GET /api/accounts/me/sessions/current
+
+현재 access token이 속한 device session 단건 조회.
+
+**Auth required**: Yes (access token)
+
+**Response 200**:
+```json
+{
+  "deviceId": "01936c2f-7d8a-7c3e-9b4a-1f2e3d4c5b6a",
+  "userAgentFamily": "Chrome 120",
+  "ipMasked": "192.168.1.***",
+  "geoCountry": "KR",
+  "issuedAt": "2026-04-01T10:00:00Z",
+  "lastSeenAt": "2026-04-13T08:22:00Z",
+  "current": true
+}
+```
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `TOKEN_INVALID` | access token 만료/변조 |
+| 404 | `SESSION_NOT_FOUND` | 토큰 claim의 `device_id`에 해당하는 활성 session 없음 (이미 revoke되었거나 DB 불일치) |
+
+---
+
+## DELETE /api/accounts/me/sessions/{deviceId}
+
+특정 디바이스의 session을 revoke한다. 연결된 refresh token은 모두 `revoked = TRUE` 처리된다.
+
+**Auth required**: Yes (access token)
+
+**Path Parameters**:
+
+| 이름 | 타입 | 설명 |
+|---|---|---|
+| `deviceId` | string (UUID) | revoke 대상 `device_sessions.device_id` |
+
+**Response 204**: No Content
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `TOKEN_INVALID` | access token 만료/변조 |
+| 403 | `SESSION_OWNERSHIP_MISMATCH` | 해당 `deviceId`가 현재 account 소유가 아님 |
+| 404 | `SESSION_NOT_FOUND` | `deviceId` 미존재 또는 이미 revoke 상태 |
+
+**Side Effects**:
+- `device_sessions.revoked_at = NOW()`, `revoke_reason = 'USER_REQUESTED'`
+- 연결된 `refresh_tokens.revoked = TRUE`
+- outbox: `auth.session.revoked`
+
+**Note**: 현재 자기 자신의 deviceId를 revoke하는 것은 허용된다 — 즉시 로그아웃과 동등. 클라이언트는 후속 호출에서 refresh token이 거부됨을 처리해야 한다.
+
+---
+
+## DELETE /api/accounts/me/sessions
+
+현재 device session을 **제외**한 다른 모든 세션을 일괄 revoke한다 ("다른 기기에서 로그아웃").
+
+**Auth required**: Yes (access token)
+
+**Request**: (no body)
+
+**Response 200**:
+```json
+{
+  "revokedCount": 3
+}
+```
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `TOKEN_INVALID` | access token 만료/변조 |
+| 404 | `SESSION_NOT_FOUND` | 현재 토큰의 `device_id`에 해당하는 active session이 없음 (제외 기준을 설정할 수 없음) |
+
+**Side Effects**:
+- 현재 device를 제외한 모든 active `device_sessions.revoked_at = NOW()`, `revoke_reason = 'LOGOUT_OTHERS'`
+- 대응 `refresh_tokens.revoked = TRUE`
+- 각 revoked session마다 outbox: `auth.session.revoked`
+
+---
+
 ## Common Error Format
 
 모든 에러 응답:
