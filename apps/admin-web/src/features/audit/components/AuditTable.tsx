@@ -91,7 +91,7 @@ export function AuditTable() {
                   <TD>{entry.reasonCode ?? 'SUSPICIOUS'}</TD>
                   <TD>{entry.accountId ?? '—'}</TD>
                   <TD>—</TD>
-                  <TD>{entry.occurredAt}</TD>
+                  <TD>{formatDateTime(entry.occurredAt)}</TD>
                 </TR>
               );
             })}
