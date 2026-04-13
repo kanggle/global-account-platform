@@ -49,7 +49,7 @@ public class ExpireSubscriptionUseCase {
         historyRepository.append(new SubscriptionStatusHistoryEntry(
                 s.getId(), s.getAccountId(),
                 from, SubscriptionStatus.EXPIRED,
-                "SCHEDULER_EXPIRY", "SYSTEM", now));
+                "SCHEDULED_EXPIRE", "SYSTEM", now));
 
         eventPublisher.publishExpired(s);
     }

@@ -1,16 +1,8 @@
 package com.example.membership.domain.subscription;
 
 import com.example.membership.domain.plan.PlanLevel;
-import com.example.membership.domain.subscription.status.SubscriptionStateTransitionException;
 import com.example.membership.domain.subscription.status.SubscriptionStatus;
 import com.example.membership.domain.subscription.status.SubscriptionStatusMachine;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -19,45 +11,47 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Subscription aggregate root. State transitions must go through
- * {@link SubscriptionStatusMachine} — direct UPDATE of status is forbidden.
+ * Subscription aggregate root. POJO domain object — persistence mapping lives in
+ * {@code infrastructure/persistence/SubscriptionJpaEntity}. State transitions must
+ * go through {@link SubscriptionStatusMachine} — direct UPDATE of status is forbidden.
  */
-@Entity
-@Table(name = "subscriptions")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Subscription {
 
-    @Id
-    @Column(length = 36)
     private String id;
-
-    @Column(name = "account_id", nullable = false, length = 36)
     private String accountId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "plan_level", nullable = false, length = 20)
     private PlanLevel planLevel;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
     private SubscriptionStatus status;
-
-    @Column(name = "started_at", nullable = false)
     private LocalDateTime startedAt;
-
-    @Column(name = "expires_at")
     private LocalDateTime expiresAt;
-
-    @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
-
-    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
-
-    @Version
-    @Column(nullable = false)
     private int version;
+
+    /**
+     * Reconstitution constructor used by the persistence adapter to rebuild a
+     * Subscription aggregate from its JPA entity counterpart.
+     */
+    public Subscription(String id,
+                        String accountId,
+                        PlanLevel planLevel,
+                        SubscriptionStatus status,
+                        LocalDateTime startedAt,
+                        LocalDateTime expiresAt,
+                        LocalDateTime cancelledAt,
+                        LocalDateTime createdAt,
+                        int version) {
+        this.id = id;
+        this.accountId = accountId;
+        this.planLevel = planLevel;
+        this.status = status;
+        this.startedAt = startedAt;
+        this.expiresAt = expiresAt;
+        this.cancelledAt = cancelledAt;
+        this.createdAt = createdAt;
+        this.version = version;
+    }
 
     /**
      * Factory: creates a new ACTIVE subscription (transitions NONE → ACTIVE).
@@ -109,10 +103,10 @@ public class Subscription {
     }
 
     /**
-     * Test/reconstitution-only hook for backfilling an expired-at in the past. Keep package-private
-     * so only integration tests within the same module reach it.
+     * Test/reconstitution-only hook for backfilling an expired-at in the past. Kept
+     * package-private so only tests within the same package can reach it.
      */
-    public void unsafeSetExpiresAtForTest(LocalDateTime value) {
+    void unsafeSetExpiresAtForTest(LocalDateTime value) {
         this.expiresAt = value;
     }
 }
