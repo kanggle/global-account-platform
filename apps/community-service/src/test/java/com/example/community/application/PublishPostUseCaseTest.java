@@ -7,6 +7,8 @@ import com.example.community.domain.post.Post;
 import com.example.community.domain.post.PostRepository;
 import com.example.community.domain.post.PostType;
 import com.example.community.domain.post.PostVisibility;
+import com.example.community.domain.post.status.PostStatusHistoryEntry;
+import com.example.community.domain.post.status.PostStatusHistoryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,16 +32,17 @@ import static org.mockito.Mockito.when;
 class PublishPostUseCaseTest {
 
     @Mock PostRepository postRepository;
+    @Mock PostStatusHistoryRepository historyRepository;
     @Mock CommunityEventPublisher eventPublisher;
     @Mock AccountProfileLookup accountProfileLookup;
 
     @InjectMocks PublishPostUseCase useCase = new PublishPostUseCase(
-            null, null, null, null);
+            null, null, null, null, null);
 
     @Test
     void artist_publishes_public_post_ok() {
         ObjectMapper mapper = new ObjectMapper();
-        useCase = new PublishPostUseCase(postRepository, eventPublisher, accountProfileLookup, mapper);
+        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, mapper);
 
         when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
         when(accountProfileLookup.displayNameOf("artist-1")).thenReturn("Stage Name");
@@ -55,11 +58,12 @@ class PublishPostUseCaseTest {
         assertThat(view.authorDisplayName()).isEqualTo("Stage Name");
         assertThat(view.type()).isEqualTo(PostType.ARTIST_POST);
         verify(eventPublisher).publishPostPublished(any(), any(), any(), any(), any());
+        verify(historyRepository).save(any(PostStatusHistoryEntry.class));
     }
 
     @Test
     void fan_cannot_publish_artist_post() {
-        useCase = new PublishPostUseCase(postRepository, eventPublisher, accountProfileLookup, new ObjectMapper());
+        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, new ObjectMapper());
 
         PublishPostCommand cmd = new PublishPostCommand(
                 new ActorContext("fan-1", Set.of("FAN")),

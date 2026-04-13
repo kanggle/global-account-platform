@@ -7,6 +7,9 @@ import com.example.community.domain.post.Post;
 import com.example.community.domain.post.PostRepository;
 import com.example.community.domain.post.PostType;
 import com.example.community.domain.post.status.ActorType;
+import com.example.community.domain.post.status.PostStatus;
+import com.example.community.domain.post.status.PostStatusHistoryEntry;
+import com.example.community.domain.post.status.PostStatusHistoryRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +25,7 @@ public class PublishPostUseCase {
     private static final String ROLE_ARTIST = "ARTIST";
 
     private final PostRepository postRepository;
+    private final PostStatusHistoryRepository historyRepository;
     private final CommunityEventPublisher eventPublisher;
     private final AccountProfileLookup accountProfileLookup;
     private final ObjectMapper objectMapper;
@@ -52,6 +56,15 @@ public class PublishPostUseCase {
         );
         post.publish(ActorType.AUTHOR);
         Post saved = postRepository.save(post);
+
+        historyRepository.save(PostStatusHistoryEntry.record(
+                saved.getId(),
+                PostStatus.DRAFT,
+                PostStatus.PUBLISHED,
+                ActorType.AUTHOR,
+                actor.accountId(),
+                null
+        ));
 
         eventPublisher.publishPostPublished(
                 saved.getId(),

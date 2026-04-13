@@ -19,6 +19,11 @@ public class FollowArtistUseCase {
 
     @Transactional
     public FollowResult follow(String fanAccountId, String artistAccountId) {
+        // TODO: community-api.md declares ARTIST_NOT_FOUND (404) when the artist account
+        // does not exist. community-service currently has no account-service integration,
+        // so artist existence is not verified here. Add account-service lookup when the
+        // client is introduced; until then, non-existent artistAccountId will still
+        // succeed at follow time but produce empty feed results.
         if (fanAccountId.equals(artistAccountId)) {
             throw new IllegalArgumentException("Cannot follow self");
         }

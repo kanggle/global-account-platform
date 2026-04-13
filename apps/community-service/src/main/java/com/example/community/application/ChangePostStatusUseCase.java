@@ -5,8 +5,8 @@ import com.example.community.domain.post.Post;
 import com.example.community.domain.post.PostRepository;
 import com.example.community.domain.post.status.ActorType;
 import com.example.community.domain.post.status.PostStatus;
-import com.example.community.infrastructure.persistence.PostStatusHistoryJpaEntity;
-import com.example.community.infrastructure.persistence.PostStatusHistoryJpaRepository;
+import com.example.community.domain.post.status.PostStatusHistoryEntry;
+import com.example.community.domain.post.status.PostStatusHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ChangePostStatusUseCase {
 
     private final PostRepository postRepository;
-    private final PostStatusHistoryJpaRepository historyRepository;
+    private final PostStatusHistoryRepository historyRepository;
 
     @Transactional
     public void execute(String postId, PostStatus target, ActorType actorType, String actorId, String reason) {
@@ -24,7 +24,7 @@ public class ChangePostStatusUseCase {
                 .orElseThrow(() -> new PostNotFoundException(postId));
         PostStatus previous = post.changeStatus(target, actorType);
         postRepository.save(post);
-        historyRepository.save(PostStatusHistoryJpaEntity.record(
-                postId, previous.name(), target.name(), actorType.name(), actorId, reason));
+        historyRepository.save(PostStatusHistoryEntry.record(
+                postId, previous, target, actorType, actorId, reason));
     }
 }

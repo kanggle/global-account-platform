@@ -23,6 +23,17 @@ class PostStatusMachineTest {
     }
 
     @Test
+    void author_draft_to_deleted_not_allowed() {
+        // Authors cannot go directly from DRAFT to DELETED — must publish first then delete.
+        assertThat(PostStatusMachine.isTransitionAllowed(
+                PostStatus.DRAFT, PostStatus.DELETED, ActorType.AUTHOR)).isFalse();
+        assertThatThrownBy(() ->
+                PostStatusMachine.ensureTransitionAllowed(PostStatus.DRAFT, PostStatus.DELETED, ActorType.AUTHOR))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("STATE_TRANSITION_INVALID");
+    }
+
+    @Test
     void author_hidden_to_published_not_allowed() {
         assertThatThrownBy(() ->
                 PostStatusMachine.ensureTransitionAllowed(PostStatus.HIDDEN, PostStatus.PUBLISHED, ActorType.AUTHOR))

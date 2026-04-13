@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +40,11 @@ public class GetFeedUseCase {
                 PageRequest.of(safePage, safeSize)
         );
 
+        List<String> postIds = posts.getContent().stream().map(Post::getId).toList();
+        // Batch aggregates — fixed 2 queries regardless of page size. Empty list → empty map.
+        Map<String, Long> commentCounts = commentRepository.countsByPostIds(postIds);
+        Map<String, Long> reactionCounts = reactionRepository.countsByPostIds(postIds);
+
         List<FeedItemView> items = new ArrayList<>(posts.getNumberOfElements());
         for (Post post : posts.getContent()) {
             boolean locked = false;
@@ -56,8 +62,8 @@ public class GetFeedUseCase {
             }
 
             String displayName = accountProfileLookup.displayNameOf(post.getAuthorAccountId());
-            long commentCount = commentRepository.countByPostId(post.getId());
-            long reactionCount = reactionRepository.countByPostId(post.getId());
+            long commentCount = commentCounts.getOrDefault(post.getId(), 0L);
+            long reactionCount = reactionCounts.getOrDefault(post.getId(), 0L);
 
             items.add(new FeedItemView(
                     post.getId(),
