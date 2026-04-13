@@ -90,7 +90,8 @@ class LoginUseCaseTest {
         assertThat(result.tokenType()).isEqualTo("Bearer");
 
         verify(loginAttemptCounter).resetFailureCount(anyString());
-        verify(authEventPublisher).publishLoginSucceeded(eq(ACCOUNT_ID), eq("jti-123"), eq(CTX));
+        verify(authEventPublisher).publishLoginSucceeded(eq(ACCOUNT_ID), eq("jti-123"), eq(CTX),
+                eq("dev-1"), eq(true));
     }
 
     @Test

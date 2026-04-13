@@ -54,7 +54,28 @@ public class AuthEventPublisher {
         writeEvent("auth.login.failed", accountId != null ? accountId : emailHash, payload);
     }
 
+    /**
+     * Legacy 3-arg form kept for integration tests and any pre-TASK-BE-025 call site.
+     * Delegates with {@code deviceId=null}, {@code isNewDevice=null} — consumers treat
+     * missing fields as a legacy event and fall back to fingerprint logic.
+     */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx) {
+        publishLoginSucceeded(accountId, sessionJti, ctx, null, null);
+    }
+
+    /**
+     * Extended form (TASK-BE-025): carries {@code deviceId} and {@code isNewDevice} so
+     * security-service's DeviceChangeRule can evaluate on the authoritative
+     * device_sessions signal instead of fingerprint churn. Both fields are additive
+     * (nullable) for backward-compat with legacy consumers.
+     *
+     * @param deviceId     device_sessions.device_id stamped on this login (nullable)
+     * @param isNewDevice  true iff the device_sessions row was created in this login
+     *                     transaction; false iff an existing active row was touched.
+     *                     null signals "unknown" (consumers fall back to fingerprint).
+     */
+    public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx,
+                                      String deviceId, Boolean isNewDevice) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("accountId", accountId);
         payload.put("ipMasked", ctx.ipMasked());
@@ -62,6 +83,8 @@ public class AuthEventPublisher {
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
         payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("sessionJti", sessionJti);
+        payload.put("deviceId", deviceId);
+        payload.put("isNewDevice", isNewDevice);
         payload.put("timestamp", Instant.now().toString());
 
         writeEvent("auth.login.succeeded", accountId, payload);

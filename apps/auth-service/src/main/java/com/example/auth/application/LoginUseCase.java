@@ -112,7 +112,8 @@ public class LoginUseCase {
 
         // Publish success events: legacy auth.login.succeeded + new auth.session.created
         // (the latter only on a brand-new device_session row, per the spec lifecycle).
-        authEventPublisher.publishLoginSucceeded(accountId, refreshJti, ctx);
+        authEventPublisher.publishLoginSucceeded(accountId, refreshJti, ctx,
+                deviceId, sessionResult.newSession());
         if (sessionResult.newSession()) {
             authEventPublisher.publishAuthSessionCreated(
                     accountId, deviceId, refreshJti,

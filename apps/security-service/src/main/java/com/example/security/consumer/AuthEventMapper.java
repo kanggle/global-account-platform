@@ -80,8 +80,18 @@ public final class AuthEventMapper {
             failCount = fc.asInt();
         }
 
+        // TASK-BE-025: auth.login.succeeded now carries deviceId + isNewDevice. Legacy
+        // events (pre-TASK-BE-025) omit both — DeviceChangeRule falls back to fingerprint.
+        String deviceId = nullableText(payload, "deviceId");
+        Boolean isNewDevice = null;
+        JsonNode ind = payload.path("isNewDevice");
+        if (!ind.isMissingNode() && !ind.isNull() && ind.isBoolean()) {
+            isNewDevice = ind.asBoolean();
+        }
+
         return new EvaluationContext(
-                eventId, eventType, accountId, ipMasked, deviceFingerprint, geoCountry, occurredAt, failCount);
+                eventId, eventType, accountId, ipMasked, deviceFingerprint, geoCountry,
+                occurredAt, failCount, deviceId, isNewDevice);
     }
 
     private static String nullableText(JsonNode node, String field) {

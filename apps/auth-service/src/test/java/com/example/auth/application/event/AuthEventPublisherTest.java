@@ -181,7 +181,7 @@ class AuthEventPublisherTest {
     }
 
     @Test
-    @DisplayName("publishLoginSucceeded includes geoCountry in payload")
+    @DisplayName("publishLoginSucceeded (legacy 3-arg) includes geoCountry and null deviceId/isNewDevice")
     void publishLoginSucceeded_includesGeoCountry() throws Exception {
         // given
         SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "JP");
@@ -199,6 +199,56 @@ class AuthEventPublisherTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
         assertThat(payload).containsEntry("geoCountry", "JP");
+        // Legacy delegator leaves the TASK-BE-025 fields null (consumer falls back to
+        // fingerprint).
+        assertThat(payload).containsKey("deviceId");
+        assertThat(payload.get("deviceId")).isNull();
+        assertThat(payload).containsKey("isNewDevice");
+        assertThat(payload.get("isNewDevice")).isNull();
+    }
+
+    @Test
+    @DisplayName("publishLoginSucceeded (TASK-BE-025 5-arg) includes deviceId and isNewDevice")
+    void publishLoginSucceeded_includesDeviceIdAndIsNewDevice() throws Exception {
+        // given
+        SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "KR");
+
+        // when
+        authEventPublisher.publishLoginSucceeded(ACCOUNT_ID, "jti-001", ctx, "dev-xyz", true);
+
+        // then
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(outboxWriter).save(eq("auth"), eq(ACCOUNT_ID),
+                eq("auth.login.succeeded"), payloadCaptor.capture());
+
+        Map<String, Object> envelope = objectMapper.readValue(
+                payloadCaptor.getValue(), new TypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
+        assertThat(payload).containsEntry("accountId", ACCOUNT_ID);
+        assertThat(payload).containsEntry("sessionJti", "jti-001");
+        assertThat(payload).containsEntry("deviceId", "dev-xyz");
+        assertThat(payload).containsEntry("isNewDevice", true);
+        assertThat(payload).containsEntry("geoCountry", "KR");
+    }
+
+    @Test
+    @DisplayName("publishLoginSucceeded with isNewDevice=false serializes as JSON false")
+    void publishLoginSucceeded_isNewDeviceFalse() throws Exception {
+        SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "KR");
+
+        authEventPublisher.publishLoginSucceeded(ACCOUNT_ID, "jti-002", ctx, "dev-abc", false);
+
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(outboxWriter).save(eq("auth"), eq(ACCOUNT_ID),
+                eq("auth.login.succeeded"), payloadCaptor.capture());
+
+        Map<String, Object> envelope = objectMapper.readValue(
+                payloadCaptor.getValue(), new TypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
+        assertThat(payload).containsEntry("deviceId", "dev-abc");
+        assertThat(payload).containsEntry("isNewDevice", false);
     }
 
     @Test

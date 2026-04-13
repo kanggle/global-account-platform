@@ -37,6 +37,23 @@ public class DeviceChangeRule implements SuspiciousActivityRule {
         if (ctx == null || !ctx.isLoginSucceeded() || !ctx.hasAccount()) {
             return DetectionResult.NONE;
         }
+
+        // TASK-BE-025 primary path: auth-service tells us whether device_sessions row
+        // was newly created in this login. Trust the authoritative server-side signal
+        // instead of fingerprint churn (browser updates, UA drift, etc.).
+        if (ctx.isNewDevice() != null) {
+            if (!ctx.isNewDevice()) {
+                return DetectionResult.NONE;
+            }
+            Map<String, Object> evidence = new LinkedHashMap<>();
+            evidence.put("description", "Login from newly registered device_session");
+            if (ctx.deviceId() != null) {
+                evidence.put("deviceId", ctx.deviceId());
+            }
+            return new DetectionResult(CODE, thresholds.deviceChangeScore(), evidence);
+        }
+
+        // Fallback (legacy events without isNewDevice) — fingerprint comparison.
         String fp = ctx.deviceFingerprint();
         if (fp == null || fp.isBlank()) {
             return DetectionResult.NONE;

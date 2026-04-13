@@ -14,8 +14,28 @@ public record EvaluationContext(
         String deviceFingerprint,
         String geoCountry,
         Instant occurredAt,
-        Integer failCount
+        Integer failCount,
+        String deviceId,
+        Boolean isNewDevice
 ) {
+
+    /**
+     * Backward-compatible constructor for call sites that predate the TASK-BE-025
+     * device_id payload extension. Defaults {@code deviceId} and {@code isNewDevice}
+     * to null so legacy tests and rule evaluation fall back to the fingerprint path.
+     */
+    public EvaluationContext(
+            String eventId,
+            String eventType,
+            String accountId,
+            String ipMasked,
+            String deviceFingerprint,
+            String geoCountry,
+            Instant occurredAt,
+            Integer failCount) {
+        this(eventId, eventType, accountId, ipMasked, deviceFingerprint, geoCountry,
+                occurredAt, failCount, null, null);
+    }
 
     public boolean hasAccount() {
         return accountId != null && !accountId.isBlank();

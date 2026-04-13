@@ -89,11 +89,18 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
   "deviceFingerprint": "string",
   "geoCountry": "KR",
   "sessionJti": "string (발급된 refresh token의 jti)",
+  "deviceId": "string | null (UUID, device_sessions.device_id — optional, additive)",
+  "isNewDevice": "boolean | null (optional, additive)",
   "timestamp": "2026-04-12T10:00:00Z"
 }
 ```
 
-**Consumers**: security-service (GeoAnomalyRule, DeviceChangeRule 평가, login_history 기록)
+**필드 노트** (TASK-BE-025):
+- `deviceId`: 이 로그인에 사용된 `device_sessions.device_id`. auth-service가 발급하는 opaque UUID. 필드 생략/`null`은 레거시 이벤트로 간주.
+- `isNewDevice`: `true`면 device_session row가 **이번 로그인 트랜잭션에서 새로 생성**됨. `false`면 기존 active row의 `last_seen_at`만 touch됨. `null`이면 알 수 없음 (legacy) — 소비자는 fingerprint fallback 사용.
+- 두 필드 모두 **optional·additive**. 기존 consumer는 필드를 무시해도 정상 동작 (forward-compatible). 소비자는 unknown-field-tolerant 파싱을 유지해야 한다.
+
+**Consumers**: security-service (GeoAnomalyRule, DeviceChangeRule 평가, login_history 기록). DeviceChangeRule은 `isNewDevice`가 제공되면 이를 authoritative signal로 사용하고, 없으면 `deviceFingerprint` 기반 known-device 비교로 fallback한다.
 
 ---
 

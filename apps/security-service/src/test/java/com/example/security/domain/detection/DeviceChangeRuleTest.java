@@ -23,6 +23,11 @@ class DeviceChangeRuleTest {
                 "1.2.3.***", fp, "KR", Instant.now(), null);
     }
 
+    private EvaluationContext succeededCtxWithDevice(String fp, String deviceId, Boolean isNewDevice) {
+        return new EvaluationContext("evt-1", "auth.login.succeeded", "acc-1",
+                "1.2.3.***", fp, "KR", Instant.now(), null, deviceId, isNewDevice);
+    }
+
     @Test
     @DisplayName("Unknown device fires with configured score (50 by default)")
     void unknownDeviceFires() {
@@ -59,5 +64,42 @@ class DeviceChangeRuleTest {
         DetectionResult r = new DeviceChangeRule(store, strict).evaluate(succeededCtx("fp-new"));
         assertThat(r.riskScore()).isEqualTo(80);
         assertThat(RiskLevel.fromScore(r.riskScore())).isEqualTo(RiskLevel.AUTO_LOCK);
+    }
+
+    // --- TASK-BE-025: device_id-based primary path ---
+
+    @Test
+    @DisplayName("isNewDevice=true → ALERT regardless of fingerprint match")
+    void isNewDeviceTrueFires() {
+        DetectionResult r = new DeviceChangeRule(store, thresholds)
+                .evaluate(succeededCtxWithDevice("fp-any", "dev-123", true));
+        assertThat(r.fired()).isTrue();
+        assertThat(r.riskScore()).isEqualTo(50);
+        assertThat(RiskLevel.fromScore(r.riskScore())).isEqualTo(RiskLevel.ALERT);
+        assertThat(r.evidence()).containsEntry("deviceId", "dev-123");
+        // Known-device store must NOT be consulted on primary path.
+        verifyNoInteractions(store);
+    }
+
+    @Test
+    @DisplayName("isNewDevice=false → no alert even if fingerprint is unknown")
+    void isNewDeviceFalseSkipsEvenForNewFingerprint() {
+        DetectionResult r = new DeviceChangeRule(store, thresholds)
+                .evaluate(succeededCtxWithDevice("fp-never-seen", "dev-456", false));
+        assertThat(r.fired()).isFalse();
+        // fingerprint store is bypassed when the authoritative signal is present.
+        verifyNoInteractions(store);
+    }
+
+    @Test
+    @DisplayName("Absent isNewDevice (legacy event) → fingerprint fallback evaluation preserved")
+    void legacyFallbackToFingerprint() {
+        // legacy: both deviceId and isNewDevice null → must use KnownDeviceStore path
+        when(store.isKnown("acc-1", "fp-new")).thenReturn(false);
+        DetectionResult r = new DeviceChangeRule(store, thresholds)
+                .evaluate(succeededCtxWithDevice("fp-new", null, null));
+        assertThat(r.fired()).isTrue();
+        assertThat(r.riskScore()).isEqualTo(50);
+        verify(store).remember("acc-1", "fp-new");
     }
 }
