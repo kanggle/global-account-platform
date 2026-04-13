@@ -1,0 +1,79 @@
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { z } from 'zod';
+import { getServerEnv } from '@/shared/config/env';
+import { logger, newRequestId } from '@/shared/lib/logger';
+
+const BodySchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+});
+
+const TokenResponseSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+  expiresIn: z.number().int().positive(),
+  tokenType: z.literal('Bearer').optional(),
+  scope: z.string().optional(),
+  roles: z.array(z.string()).optional(),
+});
+
+const accessCookieOpts = {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'strict' as const,
+  path: '/',
+};
+
+export async function POST(req: Request) {
+  const requestId = newRequestId();
+  const env = getServerEnv();
+
+  let body: z.infer<typeof BodySchema>;
+  try {
+    body = BodySchema.parse(await req.json());
+  } catch {
+    return NextResponse.json({ code: 'VALIDATION_ERROR', message: '요청이 올바르지 않습니다.' }, { status: 422 });
+  }
+
+  try {
+    const upstream = await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
+      body: JSON.stringify(body),
+    });
+
+    if (!upstream.ok) {
+      const errBody = await upstream.json().catch(() => ({ code: 'UNKNOWN', message: '로그인 실패' }));
+      logger.warn('login_failed', { requestId, status: upstream.status, code: errBody.code });
+      return NextResponse.json(errBody, { status: upstream.status });
+    }
+
+    const data = TokenResponseSchema.parse(await upstream.json());
+
+    // Operator scope check — non-operator tokens are rejected here.
+    const scope = data.scope ?? '';
+    const roles = data.roles ?? [];
+    const isOperator = scope.includes('admin') || roles.some((r) => ['SUPER_ADMIN', 'ACCOUNT_ADMIN', 'AUDITOR'].includes(r));
+    if (!isOperator) {
+      logger.warn('login_rejected_not_operator', { requestId });
+      return NextResponse.json(
+        { code: 'PERMISSION_DENIED', message: '운영자 권한이 없는 계정입니다.' },
+        { status: 403 },
+      );
+    }
+
+    const jar = await cookies();
+    jar.set('accessToken', data.accessToken, { ...accessCookieOpts, maxAge: data.expiresIn });
+    jar.set('refreshToken', data.refreshToken, { ...accessCookieOpts, maxAge: 60 * 60 * 24 * 14 });
+
+    logger.info('login_success', { requestId });
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    logger.error('login_proxy_error', { requestId, err: String(err) });
+    return NextResponse.json(
+      { code: 'DOWNSTREAM_ERROR', message: '로그인 서비스 일시 장애' },
+      { status: 502 },
+    );
+  }
+}
