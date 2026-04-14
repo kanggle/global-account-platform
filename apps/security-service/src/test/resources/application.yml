@@ -45,3 +45,29 @@ security-service:
   dedup:
     redis-ttl-seconds: 60
   internal-token: test-internal-token
+
+# TASK-BE-032: override detection thresholds for test runs.
+# Demonstrates that rule behaviour is config-driven and can be tuned
+# without code changes. Values are intentionally close to defaults so
+# integration tests remain deterministic.
+security:
+  detection:
+    velocity:
+      threshold: 5
+      window-seconds: 600
+      score-weight: 80
+    geo:
+      speed-km-per-hour: 900
+      min-score: 85
+      score-slope: 15
+    device:
+      score: 50
+      alert-on-new: true
+    auto-lock:
+      account-service-base-url: http://localhost:0
+      max-attempts: 2
+      initial-backoff-ms: 50
+      connect-timeout-ms: 500
+      read-timeout-ms: 2000
+    geoip:
+      db-path: ""

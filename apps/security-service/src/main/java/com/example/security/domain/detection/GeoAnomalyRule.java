@@ -84,7 +84,8 @@ public class GeoAnomalyRule implements SuspiciousActivityRule {
 
         // Score scales with how far the implied speed exceeds the physical limit.
         double ratio = speedKmH / thresholds.geoSpeedKmPerHour();
-        int score = (int) Math.min(100, Math.max(thresholds.geoMinScore(), Math.round(thresholds.geoMinScore() + (ratio - 1.0) * 15)));
+        int score = (int) Math.min(100, Math.max(thresholds.geoMinScore(),
+                Math.round(thresholds.geoMinScore() + (ratio - 1.0) * thresholds.geoScoreSlope())));
 
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("description", "Geographically impossible travel between successive logins");

@@ -21,7 +21,7 @@ class GeoAnomalyRuleTest {
     @Mock GeoLookup geoLookup;
     @Mock LastKnownGeoStore geoStore;
 
-    private final DetectionThresholds thresholds = new DetectionThresholds(10, 3600, 900, 85, 50);
+    private final DetectionThresholds thresholds = DetectionThresholds.defaults();
 
     // Seoul (37.5, 127.0) and New York (40.7, -74.0) — ~11000km apart.
     private static final GeoPoint SEOUL = new GeoPoint("KR", 37.5, 127.0);

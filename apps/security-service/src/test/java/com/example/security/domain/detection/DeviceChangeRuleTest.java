@@ -16,7 +16,7 @@ class DeviceChangeRuleTest {
 
     @Mock KnownDeviceStore store;
 
-    private final DetectionThresholds thresholds = new DetectionThresholds(10, 3600, 900, 85, 50);
+    private final DetectionThresholds thresholds = DetectionThresholds.defaults();
 
     private EvaluationContext succeededCtx(String fp) {
         return new EvaluationContext("evt-1", "auth.login.succeeded", "acc-1",
@@ -59,7 +59,7 @@ class DeviceChangeRuleTest {
     @Test
     @DisplayName("Configurable score affects outcome (raise to 80 → AUTO_LOCK)")
     void configurableScore() {
-        DetectionThresholds strict = new DetectionThresholds(10, 3600, 900, 85, 80);
+        DetectionThresholds strict = new DetectionThresholds(10, 3600, 80, 900, 85, 15, 80, true);
         when(store.isKnown("acc-1", "fp-new")).thenReturn(false);
         DetectionResult r = new DeviceChangeRule(store, strict).evaluate(succeededCtx("fp-new"));
         assertThat(r.riskScore()).isEqualTo(80);

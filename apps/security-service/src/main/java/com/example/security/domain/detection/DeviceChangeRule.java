@@ -37,6 +37,9 @@ public class DeviceChangeRule implements SuspiciousActivityRule {
         if (ctx == null || !ctx.isLoginSucceeded() || !ctx.hasAccount()) {
             return DetectionResult.NONE;
         }
+        if (!thresholds.deviceAlertOnNew()) {
+            return DetectionResult.NONE;
+        }
 
         // TASK-BE-025 primary path: auth-service tells us whether device_sessions row
         // was newly created in this login. Trust the authoritative server-side signal

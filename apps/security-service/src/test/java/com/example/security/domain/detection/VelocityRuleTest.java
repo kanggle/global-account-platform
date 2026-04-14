@@ -17,7 +17,7 @@ class VelocityRuleTest {
     @Mock
     private VelocityCounter counter;
 
-    private final DetectionThresholds thresholds = new DetectionThresholds(10, 3600, 900, 85, 50);
+    private final DetectionThresholds thresholds = DetectionThresholds.defaults();
 
     private EvaluationContext failedCtx() {
         return new EvaluationContext(
@@ -85,7 +85,7 @@ class VelocityRuleTest {
     @Test
     @DisplayName("Threshold change alters firing behaviour (config-driven)")
     void configDrivenThreshold() {
-        DetectionThresholds tight = new DetectionThresholds(3, 3600, 900, 85, 50);
+        DetectionThresholds tight = new DetectionThresholds(3, 3600, 80, 900, 85, 15, 50, true);
         when(counter.incrementAndGet("acc-1", 3600)).thenReturn(3L);
         DetectionResult r = new VelocityRule(counter, tight).evaluate(failedCtx());
         assertThat(r.fired()).isTrue();

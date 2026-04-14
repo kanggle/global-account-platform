@@ -40,7 +40,8 @@ public class VelocityRule implements SuspiciousActivityRule {
         if (count < thresholds.velocityThreshold()) {
             return DetectionResult.NONE;
         }
-        int score = (int) Math.min(100L, (count * 80L) / thresholds.velocityThreshold());
+        int score = (int) Math.min(100L,
+                (count * (long) thresholds.velocityScoreWeight()) / thresholds.velocityThreshold());
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("description", "Repeated login failures within window");
         evidence.put("failCount", count);
