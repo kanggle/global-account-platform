@@ -67,6 +67,71 @@ base path: `/api/admin`
 
 ---
 
+## POST /api/admin/accounts/bulk-lock
+
+여러 계정을 한 번의 요청으로 순차 잠금. 보안 사고 대응 시 사용.
+
+**Auth required**: Yes (operator token, `token_type=admin`)
+**Required permission**: `account.lock`
+**Granted to roles**: `SUPER_ADMIN`, `SUPPORT_LOCK`
+
+**Headers**:
+- `Authorization: Bearer <operator-token>`
+- `X-Operator-Reason: string (required)` — 감사 헤더
+- `Idempotency-Key: string (required, ≤64자, UUID 권장)`
+
+**Request**:
+```json
+{
+  "accountIds": ["acc-1", "acc-2", "..."],
+  "reason": "string (required, ≥8자)",
+  "ticketId": "string (optional)"
+}
+```
+
+**Constraints**:
+- `accountIds.length` ≤ 100. 초과 시 `422 BATCH_SIZE_EXCEEDED`.
+- 중복 `accountId`는 서버에서 1회만 처리 (입력 순서 보존 dedup).
+- `reason`은 최소 8자.
+
+**Response 200**:
+```json
+{
+  "results": [
+    { "accountId": "acc-1", "outcome": "LOCKED" },
+    { "accountId": "acc-2", "outcome": "NOT_FOUND",      "error": { "code": "ACCOUNT_NOT_FOUND", "message": "..." } },
+    { "accountId": "acc-3", "outcome": "ALREADY_LOCKED", "error": { "code": "STATE_TRANSITION_INVALID", "message": "..." } },
+    { "accountId": "acc-4", "outcome": "FAILURE",        "error": { "code": "DOWNSTREAM_ERROR", "message": "..." } }
+  ]
+}
+```
+
+- `outcome` ∈ `{LOCKED, NOT_FOUND, ALREADY_LOCKED, FAILURE}`
+- 부분 실패 허용: 일부 계정 실패 시에도 응답은 200. 전체 롤백 없음.
+- 각 타겟 계정별로 `admin_actions` 1행 기록 (NOT_FOUND/FAILURE 포함).
+
+**Idempotency**:
+- `(operator_id, Idempotency-Key)`가 유일 키.
+- 동일 key로 재요청 시 body(SHA-256 기준 canonical hash = sorted dedup accountIds + reason + ticketId) 일치하면 **이전 응답 본문을 그대로 반환**하며 추가 다운스트림 호출·감사 row 기록 없음.
+- 동일 key + 다른 payload 시 `409 IDEMPOTENCY_KEY_CONFLICT`.
+- 저장 TTL 정책은 운영 정책(out-of-scope). 별도 cleanup 작업이 책임.
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `TOKEN_INVALID` | operator token 만료/변조 |
+| 403 | `PERMISSION_DENIED` | `account.lock` 미보유 |
+| 400 | `REASON_REQUIRED` | `X-Operator-Reason` 누락 |
+| 400 | `VALIDATION_ERROR` | 필수 헤더/필드 누락, reason<8자, accountIds 비어있음 |
+| 422 | `BATCH_SIZE_EXCEEDED` | accountIds>100 |
+| 409 | `IDEMPOTENCY_KEY_CONFLICT` | 동일 key 재사용·payload 불일치 |
+| 503 | `CIRCUIT_OPEN` | 전체 요청이 circuit open으로 소화되지 않은 드문 경우 (개별 row 레벨 CB OPEN은 outcome=FAILURE로 기록) |
+
+**Side Effects**: accountId별 `admin_actions` 1행, `admin.action.performed` outbox 이벤트 N건, `admin_bulk_lock_idempotency` 1행.
+
+---
+
 ## POST /api/admin/accounts/{accountId}/unlock
 
 계정 잠금 해제.

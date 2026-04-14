@@ -2,6 +2,7 @@ package com.example.admin.presentation;
 
 import com.example.admin.application.AccountAdminUseCase;
 import com.example.admin.application.AdminActionAuditor;
+import com.example.admin.application.BulkLockAccountUseCase;
 import com.example.admin.application.LockAccountResult;
 import com.example.admin.domain.rbac.PermissionEvaluator;
 import com.example.admin.presentation.advice.AdminExceptionHandler;
@@ -64,6 +65,9 @@ class AccountAdminControllerTest {
 
     @MockBean
     AccountAdminUseCase useCase;
+
+    @MockBean
+    BulkLockAccountUseCase bulkLockUseCase;
 
     @MockBean
     PermissionEvaluator permissionEvaluator;

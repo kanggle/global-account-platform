@@ -142,6 +142,7 @@ public class RequiresPermissionAspect {
         if ("AccountAdminController".equals(simple)) {
             if ("lock".equals(name)) return ActionCode.ACCOUNT_LOCK;
             if ("unlock".equals(name)) return ActionCode.ACCOUNT_UNLOCK;
+            if ("bulkLock".equals(name)) return ActionCode.ACCOUNT_LOCK;
         }
         if ("SessionAdminController".equals(simple)) return ActionCode.SESSION_REVOKE;
         if ("AuditController".equals(simple)) return ActionCode.AUDIT_QUERY;
