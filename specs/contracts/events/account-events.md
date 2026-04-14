@@ -74,7 +74,13 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 }
 ```
 
-**Consumers**: auth-service (해당 계정 로그인 즉시 차단)
+**Consumer 해석 규칙** (TASK-BE-041b):
+- `reasonCode` → security-service `account_lock_history.reason`
+- `actorId` → `locked_by` (누락 시 `00000000-0000-0000-0000-000000000000` system 관례값)
+- `actorType=operator` → `source=admin`, `actorType=system` → `source=system`
+- payload의 대체 필드 `reason`, `lockedBy`, `source`도 허용 (forward compatibility)
+
+**Consumers**: auth-service (해당 계정 로그인 즉시 차단), security-service (`account_lock_history` append-only 이력 적재)
 
 ---
 

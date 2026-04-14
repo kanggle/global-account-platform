@@ -109,7 +109,7 @@ query → domain (via SecurityQueryService, read-only JPA 경로)
 ## Boundary Rules
 
 ### consumer/
-- 각 consumer는 단일 topic 구독: `auth.login.attempted`, `auth.login.failed`, `auth.login.succeeded`, `auth.token.refreshed`, `auth.token.reuse.detected`
+- 각 consumer는 단일 topic 구독: `auth.login.attempted`, `auth.login.failed`, `auth.login.succeeded`, `auth.token.refreshed`, `auth.token.reuse.detected`, `account.locked` (TASK-BE-041b — `account_lock_history` 적재)
 - **멱등 처리 필수**: Redis `EventDedupService`로 eventId 기반 dedupe. 미지원 시 `processed_events` 테이블 upsert ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T8)
 - 실패 시 지수 백오프 3회 재시도 후 `<topic>.dlq`로 이관
 - 소비 트레이스(`traceparent`)를 Kafka 헤더에서 MDC로 복원 ([platform/service-types/event-consumer.md](../../../platform/service-types/event-consumer.md))
