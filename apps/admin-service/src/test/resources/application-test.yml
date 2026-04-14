@@ -71,6 +71,11 @@ admin:
         -----END PRIVATE KEY-----
     issuer: admin-service
     expected-token-type: admin
+  totp:
+    issuer: admin-service
+    encryption-key-id: v1
+    encryption-keys:
+      v1: REVWX09OTFlfVE9UUF9LRVlfMzJfQllURVNfISEhWFg=
   downstream:
     connect-timeout-ms: 2000
     read-timeout-ms: 3000

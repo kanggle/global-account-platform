@@ -45,8 +45,18 @@ public class AdminActionAuditor {
             ActionCode.ACCOUNT_LOCK, "ACCOUNT",
             ActionCode.ACCOUNT_UNLOCK, "ACCOUNT",
             ActionCode.SESSION_REVOKE, "SESSION",
-            ActionCode.AUDIT_QUERY, "AUDIT_QUERY"
+            ActionCode.AUDIT_QUERY, "AUDIT_QUERY",
+            // TASK-BE-029-2 — self-directed 2FA enroll/verify. Target is the
+            // operator themselves (bootstrap context's operator_id).
+            ActionCode.OPERATOR_2FA_ENROLL, "OPERATOR",
+            ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR"
     );
+
+    /** Reason constant for self-enrollment audit rows (admin-api.md §X-Operator-Reason exceptions). */
+    public static final String REASON_SELF_ENROLLMENT = "<self_enrollment>";
+    /** Synthetic permission strings for the unauthenticated 2FA sub-tree (security.md §Bootstrap Token). */
+    public static final String PERMISSION_2FA_ENROLL = "auth.2fa_enroll";
+    public static final String PERMISSION_2FA_VERIFY = "auth.2fa_verify";
 
     private final AdminActionJpaRepository repository;
     private final AdminOperatorJpaRepository operatorRepository;
@@ -317,6 +327,10 @@ public class AdminActionAuditor {
             case ACCOUNT_UNLOCK -> Permission.ACCOUNT_UNLOCK;
             case SESSION_REVOKE -> Permission.ACCOUNT_FORCE_LOGOUT;
             case AUDIT_QUERY -> Permission.AUDIT_READ;
+            // 029-2: synthetic permission strings for the unauthenticated
+            // 2FA sub-tree (no grantable permission; treat as sentinel for audit).
+            case OPERATOR_2FA_ENROLL -> PERMISSION_2FA_ENROLL;
+            case OPERATOR_2FA_VERIFY -> PERMISSION_2FA_VERIFY;
         };
     }
 

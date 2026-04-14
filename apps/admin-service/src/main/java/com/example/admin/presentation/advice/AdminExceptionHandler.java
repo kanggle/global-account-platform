@@ -4,6 +4,8 @@ import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.application.exception.BatchSizeExceededException;
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.IdempotencyKeyConflictException;
+import com.example.admin.application.exception.InvalidBootstrapTokenException;
+import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
@@ -46,6 +48,20 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUnauthorized(OperatorUnauthorizedException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("TOKEN_INVALID", e.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidBootstrapTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidBootstrap(InvalidBootstrapTokenException e) {
+        log.debug("bootstrap token rejected: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_BOOTSTRAP_TOKEN",
+                        "Bootstrap token is missing, expired, or has been consumed"));
+    }
+
+    @ExceptionHandler(InvalidTwoFaCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalid2Fa(InvalidTwoFaCodeException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_2FA_CODE", "TOTP code is invalid"));
     }
 
     @ExceptionHandler(DownstreamFailureException.class)

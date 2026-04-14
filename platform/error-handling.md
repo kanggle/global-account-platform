@@ -224,6 +224,8 @@ All services must return errors in the following JSON format:
 | AUDIT_FAILURE | 500 | Audit row persistence failed; the admin command is aborted to preserve audit integrity |
 | ACCOUNT_NOT_FOUND | 404 | Target account does not exist (admin path only; distinct from public/account-api usage context) |
 | STATE_TRANSITION_INVALID | 422 | Requested state transition is not allowed from the current account state (admin path) |
+| INVALID_BOOTSTRAP_TOKEN | 401 | Bootstrap token (2FA enroll/verify sub-tree) is missing, malformed, expired, wrong `token_type`, or has been replayed (`jti` already consumed) |
+| INVALID_2FA_CODE | 401 | Submitted TOTP code does not verify against the operator's enrolled secret (±1 window, 30s step) |
 
 ---
 
