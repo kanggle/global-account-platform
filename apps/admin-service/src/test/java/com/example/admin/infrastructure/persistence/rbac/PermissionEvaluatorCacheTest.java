@@ -147,4 +147,37 @@ class PermissionEvaluatorCacheTest {
         // Each call falls through to DB when Redis is unreachable.
         assertThat(hits.get()).isEqualTo(2);
     }
+
+    @Test
+    @DisplayName("Lettuce RedisCommandTimeoutException 주입 시에도 origin 경로로 degrade (028c-fix)")
+    void lettuceCommandTimeoutDegradesToOrigin() {
+        StringRedisTemplate brokenRedis = mock(StringRedisTemplate.class);
+        when(brokenRedis.opsForValue())
+                .thenThrow(new io.lettuce.core.RedisCommandTimeoutException("timeout"));
+        PermissionEvaluatorImpl localOrigin = mock(PermissionEvaluatorImpl.class);
+        when(localOrigin.loadPermissions(anyString())).thenReturn(Set.of("audit.read"));
+
+        CachingPermissionEvaluator degraded = new CachingPermissionEvaluator(
+                localOrigin, brokenRedis, new ObjectMapper(), 10L, "admin:operator:perm:");
+
+        assertThat(degraded.hasPermission(OPERATOR, "audit.read")).isTrue();
+        verify(localOrigin, times(1)).loadPermissions(OPERATOR);
+    }
+
+    @Test
+    @DisplayName("Lettuce RedisException(최상위) 주입 시에도 evaluator 밖으로 예외가 새지 않는다 (028c-fix)")
+    void lettuceRedisExceptionDoesNotPropagate() {
+        StringRedisTemplate brokenRedis = mock(StringRedisTemplate.class);
+        when(brokenRedis.opsForValue())
+                .thenThrow(new io.lettuce.core.RedisException("boom"));
+        PermissionEvaluatorImpl localOrigin = mock(PermissionEvaluatorImpl.class);
+        when(localOrigin.loadPermissions(anyString())).thenReturn(Set.of("audit.read"));
+
+        CachingPermissionEvaluator degraded = new CachingPermissionEvaluator(
+                localOrigin, brokenRedis, new ObjectMapper(), 10L, "admin:operator:perm:");
+
+        // Must not throw; must return DB-backed result.
+        assertThat(degraded.hasPermission(OPERATOR, "audit.read")).isTrue();
+        verify(localOrigin, times(1)).loadPermissions(OPERATOR);
+    }
 }
