@@ -305,6 +305,77 @@ base path: `/api/admin`
 
 ---
 
+## POST /api/admin/auth/2fa/enroll
+
+운영자 자신의 TOTP 2FA 최초(또는 재) 등록. 서버가 160-bit secret 생성·AES-GCM 암호화 저장, Argon2id hash된 10개 recovery codes를 동시 발급한다.
+
+**Auth required**: Bootstrap token (operator JWT 불가). `Authorization: Bearer <bootstrap-token>`, `token_type = "admin_bootstrap"`, `jti` 1회 소비 (상세: [security.md §Bootstrap Token](../../services/admin-service/security.md)).
+**Required permission**: 없음 (self-enrollment)
+**X-Operator-Reason**: 요구 없음 (`admin_actions.reason = "<self_enrollment>"` 상수 기록)
+
+**Headers**:
+- `Authorization: Bearer <bootstrap-token>`
+
+**Request**: body 없음
+
+**Response 200**:
+```json
+{
+  "otpauthUri": "otpauth://totp/admin-service:op@example.com?secret=...&issuer=admin-service&algorithm=SHA1&digits=6&period=30",
+  "recoveryCodes": ["A1B2-C3D4-E5F6", "..."],
+  "enrolledAt": "2026-04-14T10:00:00Z"
+}
+```
+
+`recoveryCodes`는 **평문 1회 응답 후 서버 저장은 Argon2id 해시만**. 재호출 시 기존 secret + recovery codes는 전부 무효화되고 새 값으로 대체된다.
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `INVALID_BOOTSTRAP_TOKEN` | bootstrap token 부재/만료/재사용(jti 소비됨)/서명 실패/`token_type` 불일치 |
+| 500 | `AUDIT_FAILURE` | 감사 row 기록 실패 (fail-closed) |
+
+감사: `action_code = OPERATOR_2FA_ENROLL`, `target_type = OPERATOR`, `target_id = operator_id`, `permission_used = auth.2fa_enroll`, `twofa_used = FALSE`, `outcome = SUCCESS|FAILURE`.
+
+---
+
+## POST /api/admin/auth/2fa/verify
+
+Enroll 직후 또는 로그인 플로우(TASK-BE-029-3)에서 운영자가 제출한 TOTP 코드를 검증한다. 성공 시 `admin_operator_totp.last_used_at`이 갱신된다.
+
+**Auth required**: Bootstrap token.
+**Required permission**: 없음 (self-enrollment)
+**X-Operator-Reason**: 요구 없음
+
+**Headers**:
+- `Authorization: Bearer <bootstrap-token>`
+
+**Request**:
+```json
+{
+  "totpCode": "string (6 digits, required)"
+}
+```
+
+**Response 200**:
+```json
+{ "verified": true }
+```
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | `totpCode`이 6자리 숫자가 아님 |
+| 401 | `INVALID_BOOTSTRAP_TOKEN` | bootstrap token 부재/만료/재사용/서명 실패 |
+| 401 | `INVALID_2FA_CODE` | 코드가 ±1 window(30s step) 안에서 일치하지 않음 (enrollment 미존재 시 동일 코드 반환) |
+| 500 | `AUDIT_FAILURE` | 감사 row 기록 실패 |
+
+감사: `action_code = OPERATOR_2FA_VERIFY`, `target_type = OPERATOR`, `permission_used = auth.2fa_verify`, `twofa_used = FALSE` (본 엔드포인트 자체는 로그인 경로가 아님 — `twofa_used = TRUE`는 029-3의 `/login` 감사 row에서 기록).
+
+---
+
 ## Operator Roles
 
 **Reference matrix**: Role × permission 매트릭스의 canonical source는 [specs/services/admin-service/rbac.md — Seed Matrix](../../services/admin-service/rbac.md#seed-matrix-role--permission) 한 곳이다. 본 계약에서는 중복 테이블을 유지하지 않는다 (drift 방지).

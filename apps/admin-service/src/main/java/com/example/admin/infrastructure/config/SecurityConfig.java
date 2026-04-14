@@ -1,5 +1,7 @@
 package com.example.admin.infrastructure.config;
 
+import com.example.admin.infrastructure.security.BootstrapAuthenticationFilter;
+import com.example.admin.infrastructure.security.BootstrapTokenService;
 import com.example.admin.infrastructure.security.OperatorAuthenticationFilter;
 import com.gap.security.jwt.JwtVerifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -38,11 +40,21 @@ public class SecurityConfig {
     }
 
     @Bean
+    public BootstrapAuthenticationFilter bootstrapAuthenticationFilter(
+            BootstrapTokenService bootstrapTokenService) {
+        return new BootstrapAuthenticationFilter(bootstrapTokenService);
+    }
+
+    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
-                                           OperatorAuthenticationFilter operatorFilter) throws Exception {
+                                           OperatorAuthenticationFilter operatorFilter,
+                                           BootstrapAuthenticationFilter bootstrapFilter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Bootstrap filter runs first — it only matches the 2FA
+                // enroll/verify sub-tree and is a no-op on every other path.
+                .addFilterBefore(bootstrapFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(operatorFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()

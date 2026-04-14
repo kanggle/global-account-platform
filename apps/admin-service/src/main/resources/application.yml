@@ -89,6 +89,17 @@ admin:
       v1: ${ADMIN_JWT_V1_PEM:dev-only-placeholder-pkcs8}
     issuer: ${ADMIN_JWT_ISSUER:admin-service}
     expected-token-type: ${JWT_EXPECTED_TOKEN_TYPE:admin}
+  totp:
+    # otpauth issuer label presented to the operator's authenticator app.
+    issuer: ${ADMIN_TOTP_ISSUER:admin-service}
+    # Active AES-GCM key kid used for NEW writes. Rotation: register a new
+    # kid under encryption-keys, flip encryption-key-id, retire old kid
+    # once no rows reference it (see security.md §Rotation Procedure).
+    encryption-key-id: ${ADMIN_TOTP_ACTIVE_KID:v1}
+    # kid -> base64 32-byte AES key. Override per environment (KMS/Vault
+    # in prod). dev placeholder is a fixed 32B key for local boot only.
+    encryption-keys:
+      v1: ${ADMIN_TOTP_V1_KEY:REVWX09OTFlfVE9UUF9LRVlfMzJfQllURVNfISEhWFg=}
   downstream:
     connect-timeout-ms: ${DOWNSTREAM_CONNECT_TIMEOUT:3000}
     read-timeout-ms: ${DOWNSTREAM_READ_TIMEOUT:10000}

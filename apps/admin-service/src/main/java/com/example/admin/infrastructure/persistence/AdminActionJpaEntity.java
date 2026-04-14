@@ -75,6 +75,13 @@ public class AdminActionJpaEntity {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    // TASK-BE-029-2 (V0013): set TRUE on login audit rows where the operator
+    // produced a valid TOTP code. For 2FA enroll/verify rows it is FALSE —
+    // those are not login events. The V0013 finalize-only trigger guards this
+    // column against mutation after the IN_PROGRESS → terminal transition.
+    @Column(name = "twofa_used", nullable = false)
+    private boolean twofaUsed;
+
     /**
      * Legacy 13-arg factory retained for call sites that do not carry the
      * operator BIGINT FK yet (UUID→BIGINT mapping lands in TASK-BE-028b2).
