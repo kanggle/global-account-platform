@@ -3,6 +3,7 @@ package com.example.admin.presentation.aspect;
 import com.example.admin.application.AccountAdminUseCase;
 import com.example.admin.application.ActionCode;
 import com.example.admin.application.AdminActionAuditor;
+import com.example.admin.application.BulkLockAccountUseCase;
 import com.example.admin.application.LockAccountResult;
 import com.example.admin.domain.rbac.Permission;
 import com.example.admin.domain.rbac.PermissionEvaluator;
@@ -63,6 +64,7 @@ class RequiresPermissionAspectTest {
 
     @Autowired MockMvc mockMvc;
     @MockBean AccountAdminUseCase useCase;
+    @MockBean BulkLockAccountUseCase bulkLockUseCase;
     @MockBean PermissionEvaluator permissionEvaluator;
     @MockBean AdminActionAuditor auditor;
 

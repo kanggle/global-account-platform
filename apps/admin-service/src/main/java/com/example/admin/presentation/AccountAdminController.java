@@ -1,6 +1,9 @@
 package com.example.admin.presentation;
 
 import com.example.admin.application.AccountAdminUseCase;
+import com.example.admin.application.BulkLockAccountCommand;
+import com.example.admin.application.BulkLockAccountResult;
+import com.example.admin.application.BulkLockAccountUseCase;
 import com.example.admin.application.LockAccountCommand;
 import com.example.admin.application.LockAccountResult;
 import com.example.admin.application.UnlockAccountCommand;
@@ -9,10 +12,13 @@ import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.domain.rbac.Permission;
 import com.example.admin.infrastructure.security.OperatorContextHolder;
 import com.example.admin.presentation.aspect.RequiresPermission;
+import com.example.admin.presentation.dto.BulkLockRequest;
+import com.example.admin.presentation.dto.BulkLockResponse;
 import com.example.admin.presentation.dto.LockAccountRequest;
 import com.example.admin.presentation.dto.LockAccountResponse;
 import com.example.admin.presentation.dto.UnlockAccountRequest;
 import com.example.admin.presentation.dto.UnlockAccountResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,12 +28,16 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/admin/accounts")
 @RequiredArgsConstructor
 public class AccountAdminController {
 
     private final AccountAdminUseCase useCase;
+    private final BulkLockAccountUseCase bulkLockUseCase;
 
     @PostMapping("/{accountId}/lock")
     @RequiresPermission(Permission.ACCOUNT_LOCK)
@@ -61,6 +71,36 @@ public class AccountAdminController {
         return ResponseEntity.ok(new UnlockAccountResponse(
                 r.accountId(), r.previousStatus(), r.currentStatus(),
                 r.operatorId(), r.unlockedAt(), r.auditId()));
+    }
+
+    @PostMapping("/bulk-lock")
+    @RequiresPermission(Permission.ACCOUNT_LOCK)
+    public ResponseEntity<BulkLockResponse> bulkLock(
+            @RequestHeader("X-Operator-Reason") String headerReason,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody BulkLockRequest body) {
+
+        // Header reason is the audit trail; body.reason (≥8 chars) is the
+        // operator-facing justification persisted to admin_actions. Both must
+        // be present, matching the single-lock contract.
+        if (headerReason == null || headerReason.isBlank()) {
+            throw new ReasonRequiredException();
+        }
+
+        BulkLockAccountResult r = bulkLockUseCase.execute(new BulkLockAccountCommand(
+                body.accountIds(),
+                body.reason(),
+                body.ticketId(),
+                idempotencyKey,
+                OperatorContextHolder.require()));
+
+        List<BulkLockResponse.ResultItem> items = new ArrayList<>(r.results().size());
+        for (var it : r.results()) {
+            BulkLockResponse.ErrorDetail err = it.errorCode() == null ? null
+                    : new BulkLockResponse.ErrorDetail(it.errorCode(), it.errorMessage());
+            items.add(new BulkLockResponse.ResultItem(it.accountId(), it.outcome(), err));
+        }
+        return ResponseEntity.ok(new BulkLockResponse(items));
     }
 
     private static String resolveReason(String headerReason, String bodyReason) {

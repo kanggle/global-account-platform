@@ -1,7 +1,9 @@
 package com.example.admin.presentation.advice;
 
 import com.example.admin.application.exception.AuditFailureException;
+import com.example.admin.application.exception.BatchSizeExceededException;
 import com.example.admin.application.exception.DownstreamFailureException;
+import com.example.admin.application.exception.IdempotencyKeyConflictException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
@@ -73,6 +75,18 @@ public class AdminExceptionHandler {
         log.error("fail-closed: audit write failed, command aborted", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("AUDIT_FAILURE", "Audit write failed; command aborted"));
+    }
+
+    @ExceptionHandler(BatchSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleBatchSizeExceeded(BatchSizeExceededException e) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ErrorResponse.of("BATCH_SIZE_EXCEEDED", e.getMessage()));
+    }
+
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    public ResponseEntity<ErrorResponse> handleIdempotencyConflict(IdempotencyKeyConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("IDEMPOTENCY_KEY_CONFLICT", e.getMessage()));
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
