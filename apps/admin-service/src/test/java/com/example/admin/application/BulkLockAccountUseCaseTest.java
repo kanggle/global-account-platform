@@ -5,15 +5,11 @@ import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.IdempotencyKeyConflictException;
 import com.example.admin.application.exception.NonRetryableDownstreamException;
 import com.example.admin.application.exception.ReasonRequiredException;
-import com.example.admin.infrastructure.persistence.BulkLockIdempotencyJpaEntity;
-import com.example.admin.infrastructure.persistence.BulkLockIdempotencyJpaRepository;
-import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
-import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
+import com.example.admin.application.port.BulkLockIdempotencyPort;
+import com.example.admin.application.port.OperatorLookupPort;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -30,7 +26,9 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -42,8 +40,8 @@ import static org.mockito.Mockito.when;
 class BulkLockAccountUseCaseTest {
 
     @Mock AccountAdminUseCase accountAdminUseCase;
-    @Mock BulkLockIdempotencyJpaRepository idempotencyRepository;
-    @Mock AdminOperatorJpaRepository operatorRepository;
+    @Mock BulkLockIdempotencyPort idempotencyPort;
+    @Mock OperatorLookupPort operatorLookupPort;
     @Spy ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks BulkLockAccountUseCase useCase;
@@ -58,9 +56,7 @@ class BulkLockAccountUseCaseTest {
     }
 
     private void stubOperatorResolution() {
-        AdminOperatorJpaEntity op = org.mockito.Mockito.mock(AdminOperatorJpaEntity.class);
-        when(op.getId()).thenReturn(42L);
-        when(operatorRepository.findByOperatorId("op-uuid-1")).thenReturn(Optional.of(op));
+        when(operatorLookupPort.findInternalId("op-uuid-1")).thenReturn(Optional.of(42L));
     }
 
     @Test
@@ -78,7 +74,7 @@ class BulkLockAccountUseCaseTest {
     void batch_exactly_100_is_accepted() {
         stubOperatorResolution();
         List<String> ids = IntStream.range(0, 100).mapToObj(i -> "acc-" + i).collect(Collectors.toList());
-        when(idempotencyRepository.findById(any())).thenReturn(Optional.empty());
+        when(idempotencyPort.find(anyLong(), anyString())).thenReturn(Optional.empty());
         when(accountAdminUseCase.lock(any())).thenAnswer(inv -> {
             LockAccountCommand cmd = inv.getArgument(0);
             return okResult(cmd.accountId());
@@ -101,7 +97,7 @@ class BulkLockAccountUseCaseTest {
     @Test
     void duplicate_account_ids_are_deduped_preserving_first_order() {
         stubOperatorResolution();
-        when(idempotencyRepository.findById(any())).thenReturn(Optional.empty());
+        when(idempotencyPort.find(anyLong(), anyString())).thenReturn(Optional.empty());
         when(accountAdminUseCase.lock(any())).thenAnswer(inv ->
                 okResult(((LockAccountCommand) inv.getArgument(0)).accountId()));
 
@@ -115,16 +111,19 @@ class BulkLockAccountUseCaseTest {
     }
 
     @Test
-    void per_row_failures_isolated_not_found_already_locked_failure_locked() {
+    void per_row_failures_isolated_classified_by_type_fields_not_message() {
         stubOperatorResolution();
-        when(idempotencyRepository.findById(any())).thenReturn(Optional.empty());
+        when(idempotencyPort.find(anyLong(), anyString())).thenReturn(Optional.empty());
         when(accountAdminUseCase.lock(any())).thenAnswer(inv -> {
             String id = ((LockAccountCommand) inv.getArgument(0)).accountId();
             return switch (id) {
                 case "acc-ok" -> okResult(id);
-                case "acc-404" -> throw new NonRetryableDownstreamException("account-service error 404", null);
-                case "acc-409" -> throw new NonRetryableDownstreamException("account-service error 409", null);
-                case "acc-500" -> throw new DownstreamFailureException("account-service error 500", null);
+                // 4xx classification uses httpStatus/errorCode — NOT getMessage() text
+                case "acc-404" -> throw new NonRetryableDownstreamException(
+                        "downstream-refused", null, 404, "ACCOUNT_NOT_FOUND");
+                case "acc-409" -> throw new NonRetryableDownstreamException(
+                        "downstream-refused", null, 409, "STATE_TRANSITION_INVALID");
+                case "acc-500" -> throw new DownstreamFailureException("boom", null);
                 default -> okResult(id);
             };
         });
@@ -141,28 +140,43 @@ class BulkLockAccountUseCaseTest {
     }
 
     @Test
+    void classification_falls_back_to_http_status_when_error_code_absent() {
+        stubOperatorResolution();
+        when(idempotencyPort.find(anyLong(), anyString())).thenReturn(Optional.empty());
+        when(accountAdminUseCase.lock(any())).thenAnswer(inv -> {
+            String id = ((LockAccountCommand) inv.getArgument(0)).accountId();
+            return switch (id) {
+                case "acc-404-blank" -> throw new NonRetryableDownstreamException(
+                        "downstream-refused", null, 404, null);
+                case "acc-400-blank" -> throw new NonRetryableDownstreamException(
+                        "downstream-refused", null, 400, null);
+                default -> okResult(id);
+            };
+        });
+
+        BulkLockAccountResult r = useCase.execute(new BulkLockAccountCommand(
+                List.of("acc-404-blank", "acc-400-blank"),
+                "http-status-fallback-reason", null, "idemp-fallback", operator()));
+
+        assertThat(r.results().get(0).outcome()).isEqualTo("NOT_FOUND");
+        assertThat(r.results().get(1).outcome()).isEqualTo("ALREADY_LOCKED");
+    }
+
+    @Test
     void identical_retry_returns_stored_response_without_reexecuting() throws Exception {
         stubOperatorResolution();
 
-        // Compute the canonical request hash exactly how the use-case does so
-        // we can pre-seed a matching idempotency row and verify the replay path.
-        List<String> sorted = new java.util.ArrayList<>(List.of("acc-a"));
-        java.util.Collections.sort(sorted);
-        java.util.Map<String, Object> canonical = new java.util.LinkedHashMap<>();
-        canonical.put("accountIds", sorted);
-        canonical.put("reason", "replay-test-reason");
-        canonical.put("ticketId", null);
-        byte[] json = new ObjectMapper().writeValueAsBytes(canonical);
-        String hash = java.util.HexFormat.of().formatHex(
-                java.security.MessageDigest.getInstance("SHA-256").digest(json));
+        // Delegate to the use-case's canonical hash method instead of re-deriving it.
+        String hash = useCase.computeRequestHash(List.of("acc-a"), "replay-test-reason", null);
 
         List<BulkLockAccountResult.Item> stored = List.of(
                 new BulkLockAccountResult.Item("acc-a", "LOCKED", null, null));
         String storedBody = new ObjectMapper().writeValueAsString(stored);
 
-        BulkLockIdempotencyJpaEntity existing = BulkLockIdempotencyJpaEntity.create(
+        BulkLockIdempotencyPort.Record existing = new BulkLockIdempotencyPort.Record(
                 42L, "idemp-replay", hash, storedBody, Instant.now());
-        when(idempotencyRepository.findById(any())).thenReturn(Optional.of(existing));
+        when(idempotencyPort.find(eq(42L), eq("idemp-replay")))
+                .thenReturn(Optional.of(existing));
 
         BulkLockAccountResult replayed = useCase.execute(new BulkLockAccountCommand(
                 List.of("acc-a"), "replay-test-reason", null, "idemp-replay", operator()));
@@ -171,20 +185,77 @@ class BulkLockAccountUseCaseTest {
         assertThat(replayed.results()).hasSize(1);
         assertThat(replayed.results().get(0).outcome()).isEqualTo("LOCKED");
         verify(accountAdminUseCase, never()).lock(any());
-        verify(idempotencyRepository, never()).save(any());
+        verify(idempotencyPort, never()).save(anyLong(), anyString(), anyString(), anyString(), any());
     }
 
     @Test
     void same_key_different_payload_raises_idempotency_key_conflict() {
         stubOperatorResolution();
-        BulkLockIdempotencyJpaEntity existing = BulkLockIdempotencyJpaEntity.create(
+        BulkLockIdempotencyPort.Record existing = new BulkLockIdempotencyPort.Record(
                 42L, "idemp-conflict", "deadbeef".repeat(8), "[]", Instant.now());
-        when(idempotencyRepository.findById(any())).thenReturn(Optional.of(existing));
+        when(idempotencyPort.find(anyLong(), anyString())).thenReturn(Optional.of(existing));
 
         assertThatThrownBy(() -> useCase.execute(new BulkLockAccountCommand(
                 List.of("acc-z"), "divergent-payload", null, "idemp-conflict", operator())))
                 .isInstanceOf(IdempotencyKeyConflictException.class);
 
         verify(accountAdminUseCase, never()).lock(any());
+    }
+
+    @Test
+    void concurrent_first_request_race_resolves_via_replay_of_winner() throws Exception {
+        stubOperatorResolution();
+        List<String> ids = List.of("acc-race");
+
+        // No prior record on the initial fast-path lookup.
+        String hash = useCase.computeRequestHash(ids, "race-reason-ok", null);
+        List<BulkLockAccountResult.Item> winnerItems = List.of(
+                new BulkLockAccountResult.Item("acc-race", "LOCKED", null, null));
+        String winnerBody = new ObjectMapper().writeValueAsString(winnerItems);
+        BulkLockIdempotencyPort.Record winner = new BulkLockIdempotencyPort.Record(
+                42L, "idemp-race", hash, winnerBody, Instant.now());
+
+        when(idempotencyPort.find(eq(42L), eq("idemp-race")))
+                .thenReturn(Optional.empty())     // fast-path miss
+                .thenReturn(Optional.of(winner)); // race resolution read
+
+        when(accountAdminUseCase.lock(any())).thenAnswer(inv ->
+                okResult(((LockAccountCommand) inv.getArgument(0)).accountId()));
+
+        // Losing-side save races and loses the PK race.
+        doThrow(new BulkLockIdempotencyPort.DuplicateKeyException(new RuntimeException("pk collision")))
+                .when(idempotencyPort).save(anyLong(), anyString(), anyString(), anyString(), any());
+
+        BulkLockAccountResult r = useCase.execute(new BulkLockAccountCommand(
+                ids, "race-reason-ok", null, "idemp-race", operator()));
+
+        // Winner's response body is replayed.
+        assertThat(r.replayed()).isTrue();
+        assertThat(r.results().get(0).outcome()).isEqualTo("LOCKED");
+        verify(idempotencyPort, times(2)).find(eq(42L), eq("idemp-race"));
+    }
+
+    @Test
+    void concurrent_race_with_divergent_payload_raises_409() throws Exception {
+        stubOperatorResolution();
+        List<String> ids = List.of("acc-race-bad");
+
+        // Winner's stored hash intentionally does not match the loser's request.
+        BulkLockIdempotencyPort.Record winner = new BulkLockIdempotencyPort.Record(
+                42L, "idemp-race-bad", "deadbeef".repeat(8), "[]", Instant.now());
+
+        when(idempotencyPort.find(eq(42L), eq("idemp-race-bad")))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(winner));
+
+        when(accountAdminUseCase.lock(any())).thenAnswer(inv ->
+                okResult(((LockAccountCommand) inv.getArgument(0)).accountId()));
+
+        doThrow(new BulkLockIdempotencyPort.DuplicateKeyException(new RuntimeException("pk collision")))
+                .when(idempotencyPort).save(anyLong(), anyString(), anyString(), anyString(), any());
+
+        assertThatThrownBy(() -> useCase.execute(new BulkLockAccountCommand(
+                ids, "race-divergent-reason", null, "idemp-race-bad", operator())))
+                .isInstanceOf(IdempotencyKeyConflictException.class);
     }
 }

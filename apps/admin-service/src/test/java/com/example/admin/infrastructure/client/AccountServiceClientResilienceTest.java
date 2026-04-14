@@ -135,6 +135,34 @@ class AccountServiceClientResilienceTest {
     }
 
     @Test
+    void four_xx_populates_http_status_and_error_code_fields() {
+        wireMock.stubFor(post(urlPathMatching("/internal/accounts/.*/lock"))
+                .willReturn(aResponse().withStatus(404)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\":\"ACCOUNT_NOT_FOUND\",\"message\":\"nope\"}")));
+
+        assertThatThrownBy(() -> callLockWithResilience("acc-404", "idemp-404"))
+                .isInstanceOfSatisfying(NonRetryableDownstreamException.class, ex -> {
+                    assertThat(ex.getHttpStatus()).isEqualTo(404);
+                    assertThat(ex.getErrorCode()).isEqualTo("ACCOUNT_NOT_FOUND");
+                });
+    }
+
+    @Test
+    void four_xx_with_nested_error_object_extracts_code() {
+        wireMock.stubFor(post(urlPathMatching("/internal/accounts/.*/lock"))
+                .willReturn(aResponse().withStatus(409)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"error\":{\"code\":\"STATE_TRANSITION_INVALID\"}}")));
+
+        assertThatThrownBy(() -> callLockWithResilience("acc-409", "idemp-409"))
+                .isInstanceOfSatisfying(NonRetryableDownstreamException.class, ex -> {
+                    assertThat(ex.getHttpStatus()).isEqualTo(409);
+                    assertThat(ex.getErrorCode()).isEqualTo("STATE_TRANSITION_INVALID");
+                });
+    }
+
+    @Test
     void exhausts_retries_and_propagates_downstream_failure() {
         wireMock.stubFor(post(urlPathMatching("/internal/accounts/.*/lock"))
                 .willReturn(aResponse().withStatus(503)));

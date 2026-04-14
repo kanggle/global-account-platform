@@ -19,8 +19,10 @@ import com.example.admin.presentation.dto.LockAccountResponse;
 import com.example.admin.presentation.dto.UnlockAccountRequest;
 import com.example.admin.presentation.dto.UnlockAccountResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,6 +36,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/accounts")
 @RequiredArgsConstructor
+@Validated
 public class AccountAdminController {
 
     private final AccountAdminUseCase useCase;
@@ -77,7 +80,8 @@ public class AccountAdminController {
     @RequiresPermission(Permission.ACCOUNT_LOCK)
     public ResponseEntity<BulkLockResponse> bulkLock(
             @RequestHeader("X-Operator-Reason") String headerReason,
-            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestHeader("Idempotency-Key")
+            @Size(max = 64, message = "Idempotency-Key must be ≤64 characters") String idempotencyKey,
             @Valid @RequestBody BulkLockRequest body) {
 
         // Header reason is the audit trail; body.reason (≥8 chars) is the

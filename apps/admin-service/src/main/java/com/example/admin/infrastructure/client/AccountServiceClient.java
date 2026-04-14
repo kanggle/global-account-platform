@@ -2,6 +2,8 @@ package com.example.admin.infrastructure.client;
 
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.NonRetryableDownstreamException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +31,7 @@ public class AccountServiceClient {
 
     private final RestClient restClient;
     private final String internalToken;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AccountServiceClient(
             @Value("${admin.account-service.base-url}") String baseUrl,
@@ -104,14 +107,39 @@ public class AccountServiceClient {
         } catch (RestClientResponseException e) {
             log.warn("account-service returned {} on {}: {}", e.getStatusCode(), path, e.getMessage());
             if (e.getStatusCode().is4xxClientError()) {
+                String code = extractErrorCode(e.getResponseBodyAsByteArray());
                 throw new NonRetryableDownstreamException(
-                        "account-service error " + e.getStatusCode().value(), e);
+                        "account-service error " + e.getStatusCode().value(), e,
+                        e.getStatusCode().value(), code);
             }
             throw new DownstreamFailureException(
                     "account-service error " + e.getStatusCode().value(), e);
         } catch (Exception e) {
             log.error("account-service call failed on {}", path, e);
             throw new DownstreamFailureException("account-service unavailable", e);
+        }
+    }
+
+    /**
+     * Extract {@code code} (or nested {@code error.code}) from a downstream
+     * error body. Returns {@code null} when the body is empty or unparseable —
+     * callers must not depend on this being non-null.
+     */
+    private String extractErrorCode(byte[] body) {
+        if (body == null || body.length == 0) return null;
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            if (root == null || root.isMissingNode() || root.isNull()) return null;
+            JsonNode code = root.get("code");
+            if (code != null && code.isTextual()) return code.asText();
+            JsonNode error = root.get("error");
+            if (error != null && error.isObject()) {
+                JsonNode nested = error.get("code");
+                if (nested != null && nested.isTextual()) return nested.asText();
+            }
+            return null;
+        } catch (Exception ignore) {
+            return null;
         }
     }
 
