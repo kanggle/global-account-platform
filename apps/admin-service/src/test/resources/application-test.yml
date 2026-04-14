@@ -13,7 +13,10 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # Include migration-dev so AdminLoginControllerTest and other tests that
+    # depend on the dev SUPER_ADMIN seed (V0014) can boot. Prod profile
+    # deliberately excludes this path.
+    locations: classpath:db/migration,classpath:db/migration-dev
     baseline-on-migrate: false
 
   kafka:

@@ -1,3 +1,4 @@
+-- !!! DEV/LOCAL ONLY — DO NOT run in production. Loaded via spring.flyway.locations only in non-prod profiles. !!!
 -- TASK-BE-029-3: seed dev SUPER_ADMIN operator with a fixed Argon2id password
 -- hash so the /api/admin/auth/login endpoint has a usable identity in local
 -- and integration environments.

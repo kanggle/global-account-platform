@@ -23,7 +23,10 @@ spring:
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # Default (dev/local) locations include migration-dev which holds seed-only
+    # migrations (e.g. V0014 dev SUPER_ADMIN password). The prod profile
+    # overrides this to classpath:db/migration only. See application-prod.yml.
+    locations: classpath:db/migration,classpath:db/migration-dev
     baseline-on-migrate: false
 
   data:

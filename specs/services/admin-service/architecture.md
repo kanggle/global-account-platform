@@ -192,3 +192,10 @@ admin-service는 일반 사용자 JWT와 **물리적으로 분리된 자체 IdP(
 2. 권한 모델(role) 추가·변경은 [specs/features/admin-operations.md](../../features/)의 role matrix 갱신
 3. 감사 스키마 변경은 [rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A2 표준 필드 준수 확인 + Flyway migration
 4. 이 서비스는 **도메인 로직을 수용하지 않는다**. 운영 명령이 복잡해지면 해당 도메인 소유 서비스(auth / account / security)로 로직을 이동하고 admin-service는 호출만 유지
+
+## Overrides
+
+- **rule**: rules/traits/audit-heavy.md#A10
+- **reason**: login failure audit error는 원래 401 에러를 500으로 변형시키지 않아야 한다 (관측성·UX). 성공 경로만 fail-closed 유지.
+- **scope**: admin-service login controller 실패 경로 (AdminAuthController.safeRecordLogin FAILURE 분기)
+- **expiry**: permanent

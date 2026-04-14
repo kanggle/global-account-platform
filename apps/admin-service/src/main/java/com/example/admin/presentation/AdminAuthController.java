@@ -169,6 +169,13 @@ public class AdminAuthController {
         }
     }
 
+    /**
+     * Records the login audit row. Success path propagates
+     * {@code AuditFailureException} (fail-closed per audit-heavy A10).
+     * FAILURE path swallows secondary audit errors so the original 401/400
+     * user-visible status is not masked — this is a documented override
+     * against A10. See architecture.md#Overrides A10.
+     */
     private void safeRecordLogin(String auditId,
                                  String operatorId,
                                  Outcome outcome,

@@ -182,6 +182,24 @@ class AdminLoginControllerTest {
         verifyAuditOutcome(Outcome.FAILURE, false);
     }
 
+    @Test
+    void loginWithout2faWhenRequired_returns_400_badRequest() throws Exception {
+        // require_2fa=TRUE operator + enrollment completed + totp/recovery both
+        // omitted → AdminLoginService throws InvalidLoginRequestException per
+        // admin-api.md contract. See TASK-BE-029-3 AC Revision.
+        when(loginService.login(eq(OPERATOR_ID), eq("devpassword123!"), isNull(), isNull()))
+                .thenThrow(new InvalidLoginRequestException(
+                        "Exactly one of totpCode or recoveryCode must be provided"));
+
+        mockMvc.perform(post("/api/admin/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"operatorId\":\"" + OPERATOR_ID + "\",\"password\":\"devpassword123!\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        verifyAuditOutcome(Outcome.FAILURE, false);
+    }
+
     private void verifyAuditOutcome(Outcome expected, boolean expectedTwofaUsed) {
         ArgumentCaptor<AdminActionAuditor.LoginAuditRecord> captor =
                 ArgumentCaptor.forClass(AdminActionAuditor.LoginAuditRecord.class);

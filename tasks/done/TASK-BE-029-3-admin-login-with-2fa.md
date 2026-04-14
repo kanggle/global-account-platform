@@ -139,3 +139,15 @@ operator 로그인 엔드포인트를 완성하고, role 기반 2FA 강제 및 r
 
 - [ ] 구현 + 테스트 완료
 - [ ] Ready for review
+
+---
+
+# Acceptance Criteria (Revision, post-review)
+
+본 AC는 구현·계약(`specs/contracts/http/admin-api.md`) 및 후속 리뷰 결과와 정렬한다.
+
+- enrollment 완료 상태(`admin_operator_totp` row 존재) + `require_2fa=TRUE` operator에 대해 `totpCode`·`recoveryCode`가 **둘 다 미제공**이면 **400 `BAD_REQUEST`** 를 반환한다 (`AdminLoginService`가 `InvalidLoginRequestException` 발생). 기존 원 AC의 "2FA 미제출 → 401" 표현은 enrollment 미완료(→ 401 `ENROLLMENT_REQUIRED`) 케이스와 혼동을 유발하므로 본 Revision을 정본으로 삼는다.
+- 둘 다 제공되는 경우에도 동일하게 400 `BAD_REQUEST` (택일 정책).
+- 잘못된 TOTP/Recovery 값 → 401 `INVALID_2FA_CODE` / `INVALID_RECOVERY_CODE` (원 AC 유지).
+
+상세 후속: `TASK-BE-029-3-fix-audit-failclosed-ac-align-seed-guard`.
