@@ -15,7 +15,7 @@ public interface AdminOperatorRefreshTokenJpaRepository
      * Used on rotated-token reuse detection (specs/services/admin-service/security.md
      * §Session Lifecycle).
      */
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE AdminOperatorRefreshTokenJpaEntity t " +
             "SET t.revokedAt = :at, t.revokeReason = :reason " +
             "WHERE t.operatorId = :operatorId AND t.revokedAt IS NULL")

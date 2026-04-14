@@ -212,3 +212,8 @@ operator session 수명은 다음 두 토큰으로 구성된다:
 - **reason**: login failure audit error는 원래 401 에러를 500으로 변형시키지 않아야 한다 (관측성·UX). 성공 경로만 fail-closed 유지.
 - **scope**: admin-service login controller 실패 경로 (AdminAuthController.safeRecordLogin FAILURE 분기)
 - **expiry**: permanent
+
+- **rule**: rules/traits/audit-heavy.md#A2
+- **reason**: `POST /api/admin/auth/refresh`의 `InvalidRefreshTokenException` 경로(서명 검증 실패 / jti 미등록 / sub·jti 누락)에서는 operator id를 **신뢰할 수 있는 소스**(검증된 레지스트리 row)에서 얻을 수 없다. TASK-BE-040-fix 이후 컨트롤러는 미검증 JWT payload의 Base64 디코딩을 금지하므로, 이 경로의 감사 row는 `operator_id=null`(A2 표준 필드 중 actor 식별자 공백)로 기록되거나, `admin_operators` FK 해석 실패로 {@code AuditFailureException}이 던져지면 FAILURE 분기의 `safeRecordSession`이 이를 swallow하여 감사가 생략된다. 401 응답의 가시성은 그대로 유지된다. 성공 경로(`RefreshResult.operatorId`)와 재사용 탐지 경로(`RefreshTokenReuseDetectedException.operatorId`)는 검증된 UUID를 전달하므로 A2 준수.
+- **scope**: AdminAuthController.refresh — `InvalidRefreshTokenException` catch 블록 한정
+- **expiry**: permanent

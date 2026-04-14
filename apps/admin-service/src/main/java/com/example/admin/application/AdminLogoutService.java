@@ -1,10 +1,9 @@
 package com.example.admin.application;
 
+import com.example.admin.application.port.AdminRefreshTokenPort;
+import com.example.admin.application.port.OperatorLookupPort;
 import com.example.admin.application.port.TokenBlacklistPort;
 import com.example.admin.infrastructure.config.AdminJwtProperties;
-import com.example.admin.infrastructure.persistence.AdminOperatorRefreshTokenJpaEntity;
-import com.example.admin.infrastructure.persistence.AdminOperatorRefreshTokenJpaRepository;
-import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
 import com.gap.security.jwt.JwtVerificationException;
 import com.gap.security.jwt.JwtVerifier;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +24,10 @@ import java.util.Map;
  * can reject any subsequent use of the same access token. If the caller
  * supplies a refresh token, its registry row is revoked with reason=LOGOUT
  * (best-effort — failure does not undo the blacklist write).
+ *
+ * <p>TASK-BE-040-fix — uses {@link AdminRefreshTokenPort} /
+ * {@link OperatorLookupPort} instead of JPA repositories, removing the
+ * application→infrastructure import previously present.
  */
 @Slf4j
 @Service
@@ -34,8 +37,8 @@ public class AdminLogoutService {
     private final TokenBlacklistPort blacklist;
     private final AdminJwtProperties jwtProperties;
     private final JwtVerifier jwtVerifier;
-    private final AdminOperatorRefreshTokenJpaRepository tokenRepository;
-    private final AdminOperatorJpaRepository operatorRepository;
+    private final AdminRefreshTokenPort tokenPort;
+    private final OperatorLookupPort operatorLookup;
 
     @Transactional
     public void logout(String operatorUuid, String accessJti, Instant accessExp, String refreshTokenJwt) {
@@ -60,6 +63,21 @@ public class AdminLogoutService {
         }
     }
 
+    /**
+     * Computes the TTL (seconds) for the Redis blacklist entry.
+     *
+     * <ul>
+     *   <li>When {@code accessExp} is {@code null} (the upstream
+     *       {@code OperatorAuthenticationFilter} did not populate the request
+     *       attribute — e.g. in tests or on an exception path) we fall back to
+     *       the configured access-token TTL. This yields a slightly conservative
+     *       over-long blacklist entry but preserves fail-closed semantics for
+     *       audit-heavy A10.</li>
+     *   <li>When {@code accessExp} is in the past we still write a 1-second
+     *       entry so concurrent requests using the same jti observe the
+     *       revocation before natural expiry propagates through any caches.</li>
+     * </ul>
+     */
     private long computeTtlSeconds(Instant accessExp) {
         if (accessExp == null) {
             return jwtProperties.getAccessTokenTtlSeconds();
@@ -83,14 +101,13 @@ public class AdminLogoutService {
         if (jtiObj == null) return;
         String jti = jtiObj.toString();
 
-        tokenRepository.findById(jti).ifPresent(row -> {
+        tokenPort.findByJti(jti).ifPresent(row -> {
             // Sanity: ensure the refresh token belongs to the operator that
             // owns the access token. Mismatch is silently ignored to avoid
             // leaking presence of someone else's jti.
-            operatorRepository.findByOperatorId(operatorUuid).ifPresent(op -> {
-                if (op.getId().equals(row.getOperatorId()) && !row.isRevoked()) {
-                    row.revoke(Instant.now(), AdminOperatorRefreshTokenJpaEntity.REASON_LOGOUT);
-                    tokenRepository.save(row);
+            operatorLookup.findByOperatorId(operatorUuid).ifPresent(op -> {
+                if (op.internalId().equals(row.operatorInternalId()) && !row.isRevoked()) {
+                    tokenPort.revoke(jti, Instant.now(), AdminRefreshTokenPort.REASON_LOGOUT);
                 }
             });
         });

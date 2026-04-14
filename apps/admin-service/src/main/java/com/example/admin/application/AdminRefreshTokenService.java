@@ -2,11 +2,9 @@ package com.example.admin.application;
 
 import com.example.admin.application.exception.InvalidRefreshTokenException;
 import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
+import com.example.admin.application.port.AdminRefreshTokenPort;
+import com.example.admin.application.port.OperatorLookupPort;
 import com.example.admin.infrastructure.config.AdminJwtProperties;
-import com.example.admin.infrastructure.persistence.AdminOperatorRefreshTokenJpaEntity;
-import com.example.admin.infrastructure.persistence.AdminOperatorRefreshTokenJpaRepository;
-import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
-import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
 import com.example.admin.infrastructure.security.JwtSigner;
 import com.example.common.id.UuidV7;
 import com.gap.security.jwt.JwtVerificationException;
@@ -30,7 +28,8 @@ import java.util.Map;
  *       row is treated as invalid.</li>
  *   <li>If the row is already revoked → reuse detected: bulk-revoke all the
  *       operator's remaining refresh tokens with reason=REUSE_DETECTED and
- *       throw {@link RefreshTokenReuseDetectedException}.</li>
+ *       throw {@link RefreshTokenReuseDetectedException} carrying the
+ *       verified operator UUID (for audit row enrichment).</li>
  *   <li>Otherwise revoke the presented row (reason=ROTATED) and issue a
  *       fresh access+refresh pair via {@link AdminRefreshTokenIssuer} (rotated_from set).</li>
  * </ol>
@@ -38,6 +37,11 @@ import java.util.Map;
  * <p>The reuse-detection bulk revoke and the rotation insert run inside the
  * same transaction so partial failure cannot leave the operator with both
  * the old chain and a freshly issued token.
+ *
+ * <p>TASK-BE-040-fix — JPA repositories no longer imported here. Persistence
+ * goes through {@link AdminRefreshTokenPort} / {@link OperatorLookupPort}.
+ * The result and reuse-detection exception carry the operator UUID so the
+ * controller audit path never decodes unverified JWT payload.
  */
 @Slf4j
 @Service
@@ -46,8 +50,8 @@ public class AdminRefreshTokenService {
 
     private final JwtVerifier jwtVerifier;
     private final AdminJwtProperties jwtProperties;
-    private final AdminOperatorRefreshTokenJpaRepository tokenRepository;
-    private final AdminOperatorJpaRepository operatorRepository;
+    private final AdminRefreshTokenPort tokenPort;
+    private final OperatorLookupPort operatorLookup;
     private final AdminRefreshTokenIssuer refreshIssuer;
     private final JwtSigner jwtSigner;
 
@@ -77,40 +81,44 @@ public class AdminRefreshTokenService {
         String operatorUuid = subObj.toString();
         String jti = jtiObj.toString();
 
-        AdminOperatorRefreshTokenJpaEntity row = tokenRepository.findById(jti)
+        AdminRefreshTokenPort.TokenRecord row = tokenPort.findByJti(jti)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Refresh token jti not registered"));
 
-        AdminOperatorJpaEntity operator = operatorRepository.findByOperatorId(operatorUuid)
+        OperatorLookupPort.OperatorSummary operator = operatorLookup.findByOperatorId(operatorUuid)
                 .orElseThrow(() -> new InvalidRefreshTokenException("Operator not found for sub"));
 
-        if (!operator.getId().equals(row.getOperatorId())) {
+        if (!operator.internalId().equals(row.operatorInternalId())) {
             throw new InvalidRefreshTokenException("Refresh token operator mismatch");
         }
 
         Instant now = Instant.now();
         if (row.isRevoked()) {
             // Reuse of a rotated/revoked jti — treat as compromise of the chain.
-            int revoked = tokenRepository.revokeAllForOperator(
-                    row.getOperatorId(), now,
-                    AdminOperatorRefreshTokenJpaEntity.REASON_REUSE_DETECTED);
+            int revoked = tokenPort.revokeAllForOperator(
+                    row.operatorInternalId(), now,
+                    AdminRefreshTokenPort.REASON_REUSE_DETECTED);
             log.warn("Refresh-token reuse detected: operatorId={} jti={} revokedCount={}",
                     operatorUuid, jti, revoked);
+            // The operator UUID passed here was JUST verified via signature +
+            // registry row lookup — the controller can safely use it for audit
+            // enrichment without re-decoding the raw JWT.
             throw new RefreshTokenReuseDetectedException(
-                    "Refresh token has already been revoked; chain invalidated");
+                    "Refresh token has already been revoked; chain invalidated",
+                    operator.operatorId());
         }
 
         // Normal rotation.
-        row.revoke(now, AdminOperatorRefreshTokenJpaEntity.REASON_ROTATED);
-        tokenRepository.save(row);
+        tokenPort.revoke(jti, now, AdminRefreshTokenPort.REASON_ROTATED);
 
         AdminRefreshTokenIssuer.Issued newRefresh = refreshIssuer.issue(
-                row.getOperatorId(), operatorUuid, jti);
+                row.operatorInternalId(), operatorUuid, jti);
         String accessToken = mintAccessToken(operatorUuid);
         return new RefreshResult(
                 accessToken,
                 jwtProperties.getAccessTokenTtlSeconds(),
                 newRefresh.token(),
-                newRefresh.ttlSeconds());
+                newRefresh.ttlSeconds(),
+                operator.operatorId());
     }
 
     private String mintAccessToken(String operatorUuid) {
@@ -126,10 +134,17 @@ public class AdminRefreshTokenService {
         return jwtSigner.sign(claims);
     }
 
+    /**
+     * @param operatorId the verified external UUID of the operator whose chain
+     *                   was rotated. Always non-null on success — read from the
+     *                   registry row after signature verification, NOT from the
+     *                   raw JWT payload.
+     */
     public record RefreshResult(
             String accessToken,
             long expiresIn,
             String refreshToken,
-            long refreshExpiresIn
+            long refreshExpiresIn,
+            String operatorId
     ) {}
 }

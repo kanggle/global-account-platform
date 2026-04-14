@@ -22,4 +22,10 @@ public class OperatorLookupJpaAdapter implements OperatorLookupPort {
     public Optional<Long> findInternalId(String operatorId) {
         return repository.findByOperatorId(operatorId).map(AdminOperatorJpaEntity::getId);
     }
+
+    @Override
+    public Optional<OperatorSummary> findByOperatorId(String operatorId) {
+        return repository.findByOperatorId(operatorId)
+                .map(e -> new OperatorSummary(e.getId(), e.getOperatorId()));
+    }
 }

@@ -1,8 +1,7 @@
 package com.example.admin.application;
 
+import com.example.admin.application.port.AdminRefreshTokenPort;
 import com.example.admin.infrastructure.config.AdminJwtProperties;
-import com.example.admin.infrastructure.persistence.AdminOperatorRefreshTokenJpaEntity;
-import com.example.admin.infrastructure.persistence.AdminOperatorRefreshTokenJpaRepository;
 import com.example.admin.infrastructure.security.JwtSigner;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -17,18 +16,21 @@ import java.util.UUID;
  * single transaction so the JWT is never returned to the client without a
  * matching {@code admin_operator_refresh_tokens} entry.
  *
- * <p>Used by {@link AdminLoginService#login(String, String, String, String)}
- * (no {@code rotated_from}) and {@link AdminRefreshTokenService} (sets
- * {@code rotated_from} = previous jti). Both call sites are already inside
- * a {@code @Transactional} boundary; this component declares
- * {@link Propagation#MANDATORY} so the contract is enforced at runtime.
+ * <p>Used by {@code AdminLoginService#login(...)} (no {@code rotated_from}) and
+ * {@link AdminRefreshTokenService} (sets {@code rotated_from} = previous jti).
+ * Both call sites are already inside a {@code @Transactional} boundary; this
+ * component declares {@link Propagation#MANDATORY} so the contract is enforced
+ * at runtime.
+ *
+ * <p>TASK-BE-040-fix — writes through {@link AdminRefreshTokenPort}; no JPA
+ * repository is imported here (architecture.md Allowed Dependencies).
  */
 @Component
 @RequiredArgsConstructor
 public class AdminRefreshTokenIssuer {
 
     private final JwtSigner jwtSigner;
-    private final AdminOperatorRefreshTokenJpaRepository repository;
+    private final AdminRefreshTokenPort tokenPort;
     private final AdminJwtProperties properties;
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -38,9 +40,8 @@ public class AdminRefreshTokenIssuer {
         Instant exp = now.plusSeconds(ttl);
         String jti = UUID.randomUUID().toString();
 
-        AdminOperatorRefreshTokenJpaEntity row = AdminOperatorRefreshTokenJpaEntity.issue(
-                jti, operatorPk, now, exp, rotatedFromJti);
-        repository.save(row);
+        tokenPort.insert(new AdminRefreshTokenPort.NewTokenRecord(
+                jti, operatorPk, now, exp, rotatedFromJti));
 
         String token = jwtSigner.signRefresh(operatorUuid, jti, properties.getRefreshTokenType(), now, exp);
         return new Issued(token, jti, ttl, exp);

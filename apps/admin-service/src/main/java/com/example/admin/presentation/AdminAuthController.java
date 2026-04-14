@@ -109,43 +109,30 @@ public class AdminAuthController {
     public ResponseEntity<AdminRefreshResponse> refresh(@Valid @RequestBody AdminRefreshRequest body) {
         Instant startedAt = Instant.now();
         String auditId = auditor.newAuditId();
-        String operatorIdForAudit = "<unknown>";
         try {
             AdminRefreshTokenService.RefreshResult result = refreshService.refresh(body.refreshToken());
-            // sub claim was validated inside the service — re-derive operator id from the
-            // SecurityContext if available, otherwise leave the audit row's operator
-            // resolved through the JWT path (auditor.recordLogin uses the supplied id).
-            // Because /refresh runs with no SecurityContext, we depend on the service to
-            // populate the new tokens; the only operator id we can audit is the one
-            // returned via the new access token's sub. For a single-shot audit it is
-            // enough to extract it from the request body's refresh token claim — but
-            // the service already rejected invalid tokens, so we re-parse here is
-            // unnecessary. Use the result's underlying operator via re-verification by
-            // the service is overkill: instead, capture it from the rotated chain via
-            // the response's accessToken sub. For audit, we record the operator id by
-            // decoding the new access token's claims is also overkill; here we keep the
-            // detail compact. The service emits a structured log with the operator id;
-            // the audit row uses target_id from the SecurityContext when present and
-            // otherwise "<unknown>" — acceptable for SUCCESS audit completeness on the
-            // unauthenticated sub-tree.
-            operatorIdForAudit = extractOperatorIdSafely(body.refreshToken());
-            safeRecordSession(auditId, ActionCode.OPERATOR_REFRESH, operatorIdForAudit,
+            // The operator UUID on `result` was read from the verified registry
+            // row inside the service — never from the raw JWT payload.
+            safeRecordSession(auditId, ActionCode.OPERATOR_REFRESH, result.operatorId(),
                     Outcome.SUCCESS, null, AdminActionAuditor.REASON_SELF_REFRESH,
                     "refresh:" + auditId, startedAt);
             return ResponseEntity.ok(new AdminRefreshResponse(
                     result.accessToken(), result.expiresIn(),
                     result.refreshToken(), result.refreshExpiresIn()));
         } catch (RefreshTokenReuseDetectedException ex) {
-            operatorIdForAudit = extractOperatorIdSafely(body.refreshToken());
-            safeRecordSession(auditId, ActionCode.OPERATOR_REFRESH, operatorIdForAudit,
+            // `ex.operatorId()` is taken from the verified registry row; the
+            // presented JWT signature was valid for that row.
+            safeRecordSession(auditId, ActionCode.OPERATOR_REFRESH, ex.operatorId(),
                     Outcome.FAILURE, "REUSE_DETECTED", AdminActionAuditor.REASON_SELF_REFRESH,
                     "refresh:" + auditId + ":reuse", startedAt);
             throw ex;
         } catch (InvalidRefreshTokenException ex) {
-            // Best-effort decode for audit; if the token is so malformed that we can't
-            // even read sub, fall back to "<unknown>".
-            operatorIdForAudit = extractOperatorIdSafely(body.refreshToken());
-            safeRecordSession(auditId, ActionCode.OPERATOR_REFRESH, operatorIdForAudit,
+            // Signature / decode / registry lookup failed: the operator UUID
+            // cannot be established from a trusted source. Per architecture.md
+            // Overrides (audit-heavy A2 relaxation for /refresh), the audit row
+            // is emitted without an operator id — the security log already
+            // captures the raw failure.
+            safeRecordSession(auditId, ActionCode.OPERATOR_REFRESH, null,
                     Outcome.FAILURE, "INVALID_REFRESH_TOKEN", AdminActionAuditor.REASON_SELF_REFRESH,
                     "refresh:" + auditId + ":invalid", startedAt);
             throw ex;
@@ -192,33 +179,6 @@ public class AdminAuthController {
             // no security context
         }
         return null;
-    }
-
-    /**
-     * Extracts {@code sub} from the JWT payload without verifying the
-     * signature — used purely for audit row enrichment. The signature path
-     * has already either accepted or rejected the token in the surrounding
-     * service call; if decoding fails we fall back to {@code "<unknown>"}.
-     */
-    private static String extractOperatorIdSafely(String jwt) {
-        try {
-            if (jwt == null) return "<unknown>";
-            int dot1 = jwt.indexOf('.');
-            int dot2 = jwt.indexOf('.', dot1 + 1);
-            if (dot1 < 0 || dot2 < 0) return "<unknown>";
-            String payload = jwt.substring(dot1 + 1, dot2);
-            byte[] decoded = java.util.Base64.getUrlDecoder().decode(payload);
-            String json = new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
-            int idx = json.indexOf("\"sub\"");
-            if (idx < 0) return "<unknown>";
-            int colon = json.indexOf(':', idx);
-            int q1 = json.indexOf('"', colon + 1);
-            int q2 = json.indexOf('"', q1 + 1);
-            if (q1 < 0 || q2 < 0) return "<unknown>";
-            return json.substring(q1 + 1, q2);
-        } catch (RuntimeException ignored) {
-            return "<unknown>";
-        }
     }
 
     /**
