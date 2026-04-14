@@ -61,10 +61,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
       show-details: always
+      group:
+        circuitbreakers:
+          include: circuitBreakers
+  health:
+    circuitbreakers:
+      enabled: true
   metrics:
     tags:
       service: ${spring.application.name}
@@ -104,25 +110,59 @@ resilience4j:
         exponential-backoff-multiplier: 2
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
+      securityService:
+        max-attempts: 2
+        wait-duration: 300ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
   circuitbreaker:
+    configs:
+      default:
+        register-health-indicator: true
+        slow-call-rate-threshold: 60
+        slow-call-duration-threshold: 5s
     instances:
       accountService:
+        base-config: default
         failure-rate-threshold: 50
+        slow-call-rate-threshold: 60
+        slow-call-duration-threshold: 5s
         sliding-window-type: TIME_BASED
         sliding-window-size: 10
         minimum-number-of-calls: 5
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
       authService:
+        base-config: default
         failure-rate-threshold: 50
+        slow-call-rate-threshold: 60
+        slow-call-duration-threshold: 5s
         sliding-window-type: TIME_BASED
         sliding-window-size: 10
         minimum-number-of-calls: 5
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
         automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
+      securityService:
+        base-config: default
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 60
+        slow-call-duration-threshold: 5s
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException

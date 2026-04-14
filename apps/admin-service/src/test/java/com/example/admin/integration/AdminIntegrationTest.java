@@ -227,8 +227,8 @@ class AdminIntegrationTest {
     }
 
     @Test
-    @DisplayName("Lock downstream 500: retries exhausted → 502 + audit FAILURE")
-    void lockDownstreamFailureRecordsFailureAndReturns502() throws Exception {
+    @DisplayName("Lock downstream 500: retries exhausted → 503 + audit FAILURE")
+    void lockDownstreamFailureRecordsFailureAndReturns503() throws Exception {
         wireMock.stubFor(WireMock.post(urlPathEqualTo("/internal/accounts/acc-002/lock"))
                 .willReturn(aResponse()
                         .withStatus(500)
@@ -241,7 +241,7 @@ class AdminIntegrationTest {
                         .header("X-Operator-Reason", "fraud-investigation")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isBadGateway())
+                .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("DOWNSTREAM_ERROR"));
 
         // Audit row must still exist, with outcome=FAILURE after retries are exhausted.

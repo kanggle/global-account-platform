@@ -65,6 +65,12 @@ resilience4j:
         enable-exponential-backoff: false
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
+      securityService:
+        max-attempts: 2
+        wait-duration: 100ms
+        enable-exponential-backoff: false
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
   circuitbreaker:
     instances:
       accountService:
@@ -78,6 +84,16 @@ resilience4j:
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
       authService:
+        failure-rate-threshold: 99
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 100
+        minimum-number-of-calls: 100
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        ignore-exceptions:
+          - com.example.admin.application.exception.NonRetryableDownstreamException
+      securityService:
         failure-rate-threshold: 99
         sliding-window-type: COUNT_BASED
         sliding-window-size: 100

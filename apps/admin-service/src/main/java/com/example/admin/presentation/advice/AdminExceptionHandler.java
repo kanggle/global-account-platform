@@ -49,8 +49,23 @@ public class AdminExceptionHandler {
     @ExceptionHandler(DownstreamFailureException.class)
     public ResponseEntity<ErrorResponse> handleDownstream(DownstreamFailureException e) {
         log.warn("downstream failure: {}", e.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ErrorResponse.of("DOWNSTREAM_ERROR", "Downstream service unavailable"));
+    }
+
+    /**
+     * Resilience4j CircuitBreaker in OPEN state rejects calls with
+     * {@link io.github.resilience4j.circuitbreaker.CallNotPermittedException}
+     * (a subclass of RuntimeException, not DownstreamFailureException).
+     * Surface as 503 SERVICE_UNAVAILABLE with a distinct code so operators and
+     * dashboards can distinguish "circuit open" from raw downstream failures.
+     */
+    @ExceptionHandler(io.github.resilience4j.circuitbreaker.CallNotPermittedException.class)
+    public ResponseEntity<ErrorResponse> handleCircuitOpen(
+            io.github.resilience4j.circuitbreaker.CallNotPermittedException e) {
+        log.warn("circuit breaker OPEN, rejecting call: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("CIRCUIT_OPEN", "Downstream circuit is open; try again shortly"));
     }
 
     @ExceptionHandler(AuditFailureException.class)
