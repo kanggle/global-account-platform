@@ -70,7 +70,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,metrics
   endpoint:
     health:
       show-details: always
@@ -88,11 +88,14 @@ security:
     velocity:
       threshold: ${DETECT_VELOCITY_THRESHOLD:10}
       window-seconds: ${DETECT_VELOCITY_WINDOW_SECONDS:3600}
+      score-weight: ${DETECT_VELOCITY_SCORE_WEIGHT:80}
     geo:
       speed-km-per-hour: ${DETECT_GEO_MAX_SPEED:900}
       min-score: ${DETECT_GEO_MIN_SCORE:85}
+      score-slope: ${DETECT_GEO_SCORE_SLOPE:15}
     device:
       score: ${DETECT_DEVICE_SCORE:50}
+      alert-on-new: ${DETECT_DEVICE_ALERT_ON_NEW:true}
     auto-lock:
       account-service-base-url: ${ACCOUNT_SERVICE_BASE_URL:http://localhost:8081}
       max-attempts: ${AUTO_LOCK_MAX_ATTEMPTS:3}
