@@ -152,6 +152,31 @@ class BulkLockControllerTest {
     }
 
     @Test
+    void bulk_lock_idempotency_key_over_64_chars_returns_400_validation_error() throws Exception {
+        String longKey = "k".repeat(65);
+        mockMvc.perform(post("/api/admin/accounts/bulk-lock")
+                        .header("Authorization", bearer())
+                        .header("Idempotency-Key", longKey)
+                        .header("X-Operator-Reason", "incident-size")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accountIds\":[\"a\"],\"reason\":\"fraud-wave\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void bulk_lock_empty_account_ids_returns_400_validation_error() throws Exception {
+        mockMvc.perform(post("/api/admin/accounts/bulk-lock")
+                        .header("Authorization", bearer())
+                        .header("Idempotency-Key", "idemp-empty")
+                        .header("X-Operator-Reason", "incident-empty")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accountIds\":[],\"reason\":\"fraud-wave\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     void bulk_lock_idempotency_conflict_returns_409() throws Exception {
         when(bulkLockUseCase.execute(any())).thenThrow(
                 new IdempotencyKeyConflictException("payload mismatch"));
