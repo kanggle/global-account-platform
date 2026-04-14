@@ -61,9 +61,10 @@ base path: `/api/admin`
 | 400 | `STATE_TRANSITION_INVALID` | 이미 LOCKED 또는 DELETED 상태 |
 | 400 | `REASON_REQUIRED` | X-Operator-Reason 또는 body reason 누락 |
 | 404 | `ACCOUNT_NOT_FOUND` | 대상 계정 미존재 |
-| 502 | `DOWNSTREAM_ERROR` | account-service 호출 실패 |
+| 503 | `DOWNSTREAM_ERROR` | account-service 호출 실패 (5xx/timeout) |
+| 503 | `CIRCUIT_OPEN` | account-service circuit breaker OPEN (호출 자체 거부) |
 
-**Side Effects**: admin_actions 감사 기록 + `admin.action.performed` 이벤트 + account-service에 내부 HTTP lock 명령
+**Side Effects**: admin_actions 감사 기록 + `admin.action.performed` 이벤트 + account-service에 내부 HTTP lock 명령. `503 DOWNSTREAM_ERROR`/`503 CIRCUIT_OPEN` 시에도 `admin_actions`에 `outcome=FAILURE` 행이 기록된다 (A10 fail-closed).
 
 ---
 
@@ -162,7 +163,7 @@ base path: `/api/admin`
 }
 ```
 
-**Errors**: lock과 동일 구조. `STATE_TRANSITION_INVALID`는 LOCKED가 아닌 상태에서 unlock 시도 시.
+**Errors**: lock과 동일 구조 (503 `DOWNSTREAM_ERROR` + 503 `CIRCUIT_OPEN` 포함). `STATE_TRANSITION_INVALID`는 LOCKED가 아닌 상태에서 unlock 시도 시.
 
 ---
 
@@ -201,9 +202,10 @@ base path: `/api/admin`
 | 401 | `TOKEN_INVALID` | — |
 | 403 | `PERMISSION_DENIED` | — |
 | 404 | `ACCOUNT_NOT_FOUND` | — |
-| 502 | `DOWNSTREAM_ERROR` | auth-service 호출 실패 |
+| 503 | `DOWNSTREAM_ERROR` | auth-service 호출 실패 (5xx/timeout) |
+| 503 | `CIRCUIT_OPEN` | auth-service circuit breaker OPEN (호출 자체 거부) |
 
-**Side Effects**: auth-service에 내부 HTTP force-logout 명령 + admin_actions 기록
+**Side Effects**: auth-service에 내부 HTTP force-logout 명령 + admin_actions 기록. `503 DOWNSTREAM_ERROR`/`503 CIRCUIT_OPEN` 시에도 `admin_actions`에 `outcome=FAILURE` 행이 기록된다 (A10 fail-closed).
 
 ---
 

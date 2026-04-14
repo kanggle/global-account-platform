@@ -3,6 +3,7 @@ package com.example.admin.application;
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AuthServiceClient;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,17 @@ public class SessionAdminUseCase {
                     cmd.operator().operatorId(),
                     cmd.reason(),
                     cmd.idempotencyKey());
+        } catch (CallNotPermittedException ex) {
+            // Circuit breaker OPEN on auth-service force-logout: record FAILURE
+            // completion before re-throw so AdminExceptionHandler maps to 503
+            // CIRCUIT_OPEN (A10 fail-closed).
+            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
+                    auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
+                    "SESSION", cmd.accountId(),
+                    cmd.reason(), null, cmd.idempotencyKey(),
+                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
+                    startedAt, Instant.now()));
+            throw ex;
         } catch (DownstreamFailureException ex) {
             auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
