@@ -101,6 +101,10 @@ resilience4j:
         wait-duration: 500ms
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2
+        # Integration-heavy I3: randomize backoff to avoid retry storms
+        # (thundering herd on downstream recovery).
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
       authService:
@@ -108,6 +112,8 @@ resilience4j:
         wait-duration: 500ms
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
       securityService:
@@ -115,6 +121,8 @@ resilience4j:
         wait-duration: 300ms
         enable-exponential-backoff: true
         exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
         ignore-exceptions:
           - com.example.admin.application.exception.NonRetryableDownstreamException
   circuitbreaker:

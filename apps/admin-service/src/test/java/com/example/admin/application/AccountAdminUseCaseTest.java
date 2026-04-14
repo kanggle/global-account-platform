@@ -4,6 +4,9 @@ import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AccountServiceClient;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -17,8 +20,10 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -85,6 +90,47 @@ class AccountAdminUseCaseTest {
 
         verify(auditor, never()).recordStart(any());
         verify(auditor, never()).recordCompletion(any());
+    }
+
+    @Test
+    void lock_circuit_open_records_failure_completion_and_rethrows() {
+        // Regression for TASK-BE-033-fix: CallNotPermittedException must not be
+        // swallowed by the generic RuntimeException branch — it must trigger an
+        // outcome=FAILURE completion row (A10 fail-closed) and re-throw so the
+        // presentation layer maps it to 503 CIRCUIT_OPEN.
+        when(auditor.newAuditId()).thenReturn("audit-cb-1");
+        CallNotPermittedException cbEx = CallNotPermittedException.createCallNotPermittedException(
+                CircuitBreaker.of("accountService", CircuitBreakerConfig.ofDefaults()));
+        doThrow(cbEx).when(accountServiceClient)
+                .lock(anyString(), anyString(), anyString(), any(), anyString());
+
+        assertThatExceptionOfType(CallNotPermittedException.class)
+                .isThrownBy(() -> useCase.lock(new LockAccountCommand(
+                        "acc-1", "fraud", null, "idemp-cb-1", operator())));
+
+        var captor = forClass(AdminActionAuditor.CompletionRecord.class);
+        verify(auditor, times(1)).recordStart(any());
+        verify(auditor, times(1)).recordCompletion(captor.capture());
+        assertThat(captor.getValue().outcome()).isEqualTo(Outcome.FAILURE);
+        assertThat(captor.getValue().downstreamDetail()).contains("CIRCUIT_OPEN");
+    }
+
+    @Test
+    void unlock_circuit_open_records_failure_completion_and_rethrows() {
+        when(auditor.newAuditId()).thenReturn("audit-cb-2");
+        CallNotPermittedException cbEx = CallNotPermittedException.createCallNotPermittedException(
+                CircuitBreaker.of("accountService", CircuitBreakerConfig.ofDefaults()));
+        doThrow(cbEx).when(accountServiceClient)
+                .unlock(anyString(), anyString(), anyString(), any(), anyString());
+
+        assertThatExceptionOfType(CallNotPermittedException.class)
+                .isThrownBy(() -> useCase.unlock(new UnlockAccountCommand(
+                        "acc-1", "restore", null, "idemp-cb-2", operator())));
+
+        var captor = forClass(AdminActionAuditor.CompletionRecord.class);
+        verify(auditor, times(1)).recordCompletion(captor.capture());
+        assertThat(captor.getValue().outcome()).isEqualTo(Outcome.FAILURE);
+        assertThat(captor.getValue().downstreamDetail()).contains("CIRCUIT_OPEN");
     }
 
     @Test

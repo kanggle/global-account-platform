@@ -3,6 +3,7 @@ package com.example.admin.application;
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AccountServiceClient;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,6 +47,18 @@ public class AccountAdminUseCase {
                     cmd.reason(),
                     cmd.ticketId(),
                     cmd.idempotencyKey());
+        } catch (CallNotPermittedException ex) {
+            // Circuit breaker OPEN: downstream call was rejected. Record FAILURE
+            // audit row before re-throwing so AdminExceptionHandler maps to 503
+            // CIRCUIT_OPEN. A10 fail-closed requires a completion row for every
+            // started action, including CB-rejected ones.
+            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
+                    auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
+                    "ACCOUNT", cmd.accountId(),
+                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
+                    startedAt, Instant.now()));
+            throw ex;
         } catch (DownstreamFailureException ex) {
             auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
@@ -92,6 +105,14 @@ public class AccountAdminUseCase {
                     cmd.reason(),
                     cmd.ticketId(),
                     cmd.idempotencyKey());
+        } catch (CallNotPermittedException ex) {
+            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
+                    auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
+                    "ACCOUNT", cmd.accountId(),
+                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
+                    startedAt, Instant.now()));
+            throw ex;
         } catch (DownstreamFailureException ex) {
             auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),

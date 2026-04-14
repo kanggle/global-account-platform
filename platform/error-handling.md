@@ -109,7 +109,8 @@ All services must return errors in the following JSON format:
 |---|---|---|
 | NOT_FOUND | 404 | Requested resource does not exist |
 | INTERNAL_ERROR | 500 | Unexpected server-side error |
-| DOWNSTREAM_ERROR | 502 | A downstream internal service returned an error or timed out |
+| DOWNSTREAM_ERROR | 503 | A downstream internal service returned 5xx/timed out after retries exhausted (fail-fast for audit-heavy paths) |
+| CIRCUIT_OPEN | 503 | Downstream circuit breaker is OPEN; the call was rejected without reaching the dependency. Distinct from DOWNSTREAM_ERROR so dashboards can separate "we tried and it failed" from "we shed load". Operators should wait for the CB half-open probe before retrying. |
 | SERVICE_UNAVAILABLE | 503 | A required upstream service is unavailable |
 
 ---
