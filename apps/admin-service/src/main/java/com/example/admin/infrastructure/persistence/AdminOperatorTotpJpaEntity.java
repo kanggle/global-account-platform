@@ -43,7 +43,7 @@ public class AdminOperatorTotpJpaEntity {
 
     @Version
     @Column(name = "version", nullable = false)
-    private long version;
+    private int version;
 
     public static AdminOperatorTotpJpaEntity create(long operatorId,
                                                     byte[] secretEncrypted,

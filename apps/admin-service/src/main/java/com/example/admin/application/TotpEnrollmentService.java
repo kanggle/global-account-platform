@@ -1,7 +1,7 @@
 package com.example.admin.application;
 
-import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
+import com.example.admin.application.exception.OperatorNotFoundException;
 import com.example.admin.infrastructure.persistence.AdminOperatorTotpJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminOperatorTotpJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
@@ -44,7 +44,6 @@ public class TotpEnrollmentService {
     private static final int RECOVERY_CODE_COUNT = 10;
     private static final char[] RECOVERY_ALPHABET =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray();
-    private static final SecureRandom RECOVERY_RANDOM = new SecureRandom();
 
     private final AdminOperatorJpaRepository operatorRepository;
     private final AdminOperatorTotpJpaRepository totpRepository;
@@ -52,6 +51,7 @@ public class TotpEnrollmentService {
     private final TotpSecretCipher cipher;
     private final PasswordHasher passwordHasher;
     private final ObjectMapper objectMapper;
+    private final SecureRandom recoveryRandom;
 
     @Value("${admin.totp.issuer:admin-service}")
     private String issuer;
@@ -63,7 +63,7 @@ public class TotpEnrollmentService {
     @Transactional
     public EnrollmentResult enroll(String operatorUuid) {
         AdminOperatorJpaEntity operator = operatorRepository.findByOperatorId(operatorUuid)
-                .orElseThrow(() -> new AuditFailureException(
+                .orElseThrow(() -> new OperatorNotFoundException(
                         "admin_operators row not found for operatorId=" + operatorUuid));
         long operatorPk = operator.getId();
 
@@ -73,7 +73,7 @@ public class TotpEnrollmentService {
         List<String> plainRecovery = new ArrayList<>(RECOVERY_CODE_COUNT);
         List<String> hashed = new ArrayList<>(RECOVERY_CODE_COUNT);
         for (int i = 0; i < RECOVERY_CODE_COUNT; i++) {
-            String plain = generateRecoveryCode();
+            String plain = generateRecoveryCode(recoveryRandom);
             plainRecovery.add(plain);
             hashed.add(passwordHasher.hash(plain));
         }
@@ -134,13 +134,13 @@ public class TotpEnrollmentService {
         }
     }
 
-    private static String generateRecoveryCode() {
+    private static String generateRecoveryCode(SecureRandom random) {
         char[] buf = new char[14]; // 4-4-4 with two dashes
         for (int i = 0; i < 14; i++) {
             if (i == 4 || i == 9) {
                 buf[i] = '-';
             } else {
-                buf[i] = RECOVERY_ALPHABET[RECOVERY_RANDOM.nextInt(RECOVERY_ALPHABET.length)];
+                buf[i] = RECOVERY_ALPHABET[random.nextInt(RECOVERY_ALPHABET.length)];
             }
         }
         return new String(buf);
