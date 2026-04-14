@@ -4,12 +4,12 @@ import com.example.admin.domain.rbac.PermissionEvaluator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.lettuce.core.RedisException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
-import org.springframework.dao.QueryTimeoutException;
-import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -30,11 +30,16 @@ import java.util.Set;
  *       / operator-deactivation paths.</li>
  * </ul>
  *
- * <p>Graceful degrade: when Redis is unreachable
- * ({@link RedisConnectionFailureException}, {@link QueryTimeoutException}, or any
- * IO/serialization error) the decorator falls back to the origin DB path and
- * logs at WARN — stale permission checks are preferable to total outage
- * (task Edge Cases).
+ * <p>Graceful degrade: when Redis is unreachable the decorator catches both
+ * Spring's {@link DataAccessException} hierarchy (covers
+ * {@code RedisConnectionFailureException}, {@code QueryTimeoutException}, and
+ * Spring-translated Redis errors) and Lettuce's {@link RedisException}
+ * hierarchy (covers {@code RedisCommandTimeoutException},
+ * {@code RedisConnectionException}, and raw socket-level failures that bubble
+ * up before Spring's translation layer), falls back to the origin DB path,
+ * and logs at WARN — stale permission checks are preferable to total outage
+ * (task Edge Cases). Non-Redis {@code RuntimeException}s are intentionally
+ * allowed to propagate so real bugs are not silently swallowed.
  */
 @Slf4j
 @Primary
@@ -87,7 +92,7 @@ public class CachingPermissionEvaluator implements PermissionEvaluator {
         if (operatorId == null) return;
         try {
             redis.delete(cacheKey(operatorId));
-        } catch (RedisConnectionFailureException | QueryTimeoutException ex) {
+        } catch (DataAccessException | RedisException ex) {
             log.warn("Redis unavailable during invalidate, skipping: operatorId={} cause={}",
                     operatorId, ex.getClass().getSimpleName());
         }
@@ -102,7 +107,7 @@ public class CachingPermissionEvaluator implements PermissionEvaluator {
             if (cached != null) {
                 return objectMapper.readValue(cached, SET_OF_STRING);
             }
-        } catch (RedisConnectionFailureException | QueryTimeoutException ex) {
+        } catch (DataAccessException | RedisException ex) {
             log.warn("Redis unavailable on GET, degrading to DB: operatorId={} cause={}",
                     operatorId, ex.getClass().getSimpleName());
             return origin.loadPermissions(operatorId);
@@ -122,7 +127,7 @@ public class CachingPermissionEvaluator implements PermissionEvaluator {
         try {
             String json = objectMapper.writeValueAsString(perms);
             redis.opsForValue().set(key, json, ttl);
-        } catch (RedisConnectionFailureException | QueryTimeoutException ex) {
+        } catch (DataAccessException | RedisException ex) {
             log.warn("Redis unavailable on SET, continuing without cache: operatorId={} cause={}",
                     operatorId, ex.getClass().getSimpleName());
         } catch (JsonProcessingException ex) {

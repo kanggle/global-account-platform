@@ -41,8 +41,12 @@ public final class UuidV7 {
         long msb = (timestampMs & 0xFFFFFFFFFFFFL) << 16;
         // version = 7 in the high nibble of byte 6
         msb |= (0x7L << 12);
-        // 12 bits rand_a
-        msb |= ((randomBytes[0] & 0x0FL) << 8) | (randomBytes[1] & 0xFFL);
+        // 12 bits rand_a — use the full 12-bit entropy window (RFC 9562 §5.7).
+        // Combine all 8 bits of randomBytes[0] with the low 4 bits of
+        // randomBytes[1]; masking to 0xFFF ensures we do not collide with the
+        // version nibble.
+        long randA = (((randomBytes[0] & 0xFFL) << 4) | ((randomBytes[1] & 0xF0L) >>> 4)) & 0xFFFL;
+        msb |= randA;
 
         long lsb = 0L;
         // variant bits = 10

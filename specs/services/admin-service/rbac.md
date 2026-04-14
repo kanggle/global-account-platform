@@ -235,7 +235,7 @@ function evaluateAuditRead(operator, permissionSet, request):
 - `@RequiresPermission` annotation + `AspectJ` 또는 `HandlerInterceptor` 중 선택
 - Permission 상수 클래스 배치 (application 레이어 vs infrastructure/security)
 
-> TASK-BE-028c에서 확정됨: 다중 인스턴스 간 캐시 무효화 전파는 **TTL 10초 단독 의존**으로 결정. Pub/Sub 기반 push invalidation은 TASK-BE-030 또는 후속 태스크로 이월. 프로세스-로컬 `invalidate(operatorId)`는 현재 인스턴스의 Redis 키를 즉시 DELETE하여 클러스터 전체에 반영된다(같은 Redis 인스턴스를 공유).
+> TASK-BE-028c에서 확정됨: 다중 인스턴스 간 캐시 무효화 전파는 **TTL 10초 단독 의존**으로 결정. Pub/Sub 기반 push invalidation은 추후 backlog 항목(미지정 태스크)으로 이월. 프로세스-로컬 `invalidate(operatorId)`는 공유 Redis 인스턴스의 키를 즉시 DELETE하므로 같은 Redis를 바라보는 모든 admin-service 인스턴스에 반영된다. TTL 단독 의존의 한계(최대 10초 stale window)는 별도 backlog에서 다룬다.
 
 ---
 
