@@ -1,5 +1,6 @@
 package com.example.admin.infrastructure.persistence.rbac;
 
+import com.example.common.id.UuidV7;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -55,4 +56,15 @@ public class AdminOperatorJpaEntity {
     @Version
     @Column(name = "version", nullable = false)
     private int version;
+
+    /**
+     * Allocate a new external {@code operator_id} (UUID v7). Time-ordered per
+     * RFC 9562 — see {@code specs/services/admin-service/rbac.md} D4 and task
+     * TASK-BE-028c. Callers that persist a new operator row MUST obtain the
+     * external id via this factory so that the 48-bit ms timestamp invariant
+     * holds across provisioning paths.
+     */
+    public static String newOperatorId() {
+        return UuidV7.randomString();
+    }
 }

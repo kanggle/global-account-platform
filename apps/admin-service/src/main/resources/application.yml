@@ -26,6 +26,13 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: false
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 1s
+      connect-timeout: 1s
+
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
     producer:
@@ -63,6 +70,9 @@ management:
       service: ${spring.application.name}
 
 admin:
+  permission-cache:
+    ttl-seconds: ${ADMIN_PERM_CACHE_TTL_SECONDS:10}
+    key-prefix: ${ADMIN_PERM_CACHE_KEY_PREFIX:admin:operator:perm:}
   jwt:
     public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:keys/public.pem}
     expected-token-type: ${JWT_EXPECTED_TOKEN_TYPE:admin}
