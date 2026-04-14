@@ -2,7 +2,6 @@ package com.example.admin.application;
 
 import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.application.exception.DownstreamFailureException;
-import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AccountServiceClient;
 import org.junit.jupiter.api.Test;
@@ -15,7 +14,6 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.time.Instant;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,12 +39,8 @@ class AccountAdminUseCaseTest {
     @InjectMocks
     AccountAdminUseCase useCase;
 
-    private OperatorContext accountAdmin() {
-        return new OperatorContext("op-1", Set.of(OperatorRole.ACCOUNT_ADMIN));
-    }
-
-    private OperatorContext auditorOnly() {
-        return new OperatorContext("op-1", Set.of(OperatorRole.AUDITOR));
+    private OperatorContext operator() {
+        return new OperatorContext("op-1", "jti-1");
     }
 
     @Test
@@ -57,7 +51,7 @@ class AccountAdminUseCaseTest {
                         "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
 
         LockAccountResult r = useCase.lock(new LockAccountCommand(
-                "acc-1", "fraud", "T-1", "idemp-1", accountAdmin()));
+                "acc-1", "fraud", "T-1", "idemp-1", operator()));
 
         assertThat(r.auditId()).isEqualTo("audit-1");
         assertThat(r.currentStatus()).isEqualTo("LOCKED");
@@ -76,7 +70,7 @@ class AccountAdminUseCaseTest {
                 .when(accountServiceClient).lock(anyString(), anyString(), anyString(), any(), anyString());
 
         assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
-                "acc-1", "fraud", null, "idemp-2", accountAdmin())))
+                "acc-1", "fraud", null, "idemp-2", operator())))
                 .isInstanceOf(DownstreamFailureException.class);
 
         verify(auditor, times(1)).recordStart(any());
@@ -86,20 +80,11 @@ class AccountAdminUseCaseTest {
     @Test
     void lock_missing_reason_throws_reason_required_before_any_audit() {
         assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
-                "acc-1", "", null, "idemp-3", accountAdmin())))
+                "acc-1", "", null, "idemp-3", operator())))
                 .isInstanceOf(ReasonRequiredException.class);
 
         verify(auditor, never()).recordStart(any());
         verify(auditor, never()).recordCompletion(any());
-    }
-
-    @Test
-    void lock_auditor_role_is_forbidden_and_skips_audit() {
-        assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
-                "acc-1", "fraud", null, "idemp-4", auditorOnly())))
-                .isInstanceOf(PermissionDeniedException.class);
-
-        verify(auditor, never()).recordStart(any());
     }
 
     @Test
@@ -109,24 +94,10 @@ class AccountAdminUseCaseTest {
                 .when(auditor).recordStart(any());
 
         assertThatThrownBy(() -> useCase.lock(new LockAccountCommand(
-                "acc-1", "fraud", null, "idemp-5", accountAdmin())))
+                "acc-1", "fraud", null, "idemp-5", operator())))
                 .isInstanceOf(AuditFailureException.class);
 
         // A10 fail-closed: downstream must NOT be called when audit INSERT fails.
         verify(accountServiceClient, never()).lock(anyString(), anyString(), anyString(), any(), anyString());
-    }
-
-    @Test
-    void super_admin_can_lock() {
-        OperatorContext superAdmin = new OperatorContext("op-9", Set.of(OperatorRole.SUPER_ADMIN));
-        when(auditor.newAuditId()).thenReturn("audit-10");
-        when(accountServiceClient.lock(anyString(), anyString(), anyString(), any(), anyString()))
-                .thenReturn(new AccountServiceClient.LockResponse(
-                        "acc-1", "ACTIVE", "LOCKED", Instant.now(), null));
-
-        LockAccountResult r = useCase.lock(new LockAccountCommand(
-                "acc-1", "fraud", null, "idemp-sa", superAdmin));
-
-        assertThat(r.currentStatus()).isEqualTo("LOCKED");
     }
 }

@@ -1,6 +1,7 @@
 package com.example.admin.presentation.aspect;
 
 import com.example.admin.application.AccountAdminUseCase;
+import com.example.admin.application.ActionCode;
 import com.example.admin.application.AdminActionAuditor;
 import com.example.admin.application.LockAccountResult;
 import com.example.admin.domain.rbac.Permission;
@@ -23,7 +24,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
-import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,13 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * TASK-BE-028a: verifies that {@link RequiresPermissionAspect} denies when
- * the evaluator reports false (SUPPORT_READONLY for account.lock) and records
- * a DENIED audit row, and allows when the evaluator reports true (SUPER_ADMIN).
- *
- * Tokens carry SUPER_ADMIN so Spring Security's @PreAuthorize always passes;
- * the RBAC permission decision is driven exclusively by the mocked evaluator,
- * isolating this slice to aspect behavior.
+ * Verifies {@link RequiresPermissionAspect} denies when the evaluator reports
+ * false (records a DENIED audit row) and allows when it reports true.
  */
 @WebMvcTest(controllers = AccountAdminController.class)
 @ImportAutoConfiguration(AopAutoConfiguration.class)
@@ -72,7 +67,7 @@ class RequiresPermissionAspectTest {
     @MockBean AdminActionAuditor auditor;
 
     private String tokenFor(String operatorId) {
-        return "Bearer " + jwt.operatorToken(operatorId, List.of("SUPER_ADMIN"));
+        return "Bearer " + jwt.operatorToken(operatorId);
     }
 
     @Test
@@ -90,7 +85,7 @@ class RequiresPermissionAspectTest {
                 .andExpect(jsonPath("$.code").value("PERMISSION_DENIED"));
 
         verify(auditor).recordDenied(
-                eq("op-readonly"),
+                eq(ActionCode.ACCOUNT_LOCK),
                 eq(Permission.ACCOUNT_LOCK),
                 eq("/api/admin/accounts/acc-1/lock"),
                 eq("POST"),

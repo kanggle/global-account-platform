@@ -15,7 +15,6 @@ import com.example.admin.presentation.dto.UnlockAccountRequest;
 import com.example.admin.presentation.dto.UnlockAccountResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,7 +30,6 @@ public class AccountAdminController {
     private final AccountAdminUseCase useCase;
 
     @PostMapping("/{accountId}/lock")
-    @PreAuthorize("hasAnyRole('ACCOUNT_ADMIN','SUPER_ADMIN')")
     @RequiresPermission(Permission.ACCOUNT_LOCK)
     public ResponseEntity<LockAccountResponse> lock(
             @PathVariable String accountId,
@@ -49,7 +47,6 @@ public class AccountAdminController {
     }
 
     @PostMapping("/{accountId}/unlock")
-    @PreAuthorize("hasAnyRole('ACCOUNT_ADMIN','SUPER_ADMIN')")
     @RequiresPermission(Permission.ACCOUNT_UNLOCK)
     public ResponseEntity<UnlockAccountResponse> unlock(
             @PathVariable String accountId,

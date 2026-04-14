@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,16 +16,25 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 import java.time.Instant;
 
+/**
+ * Admin-service security configuration.
+ *
+ * <p>Authorization is enforced exclusively by {@code RequiresPermissionAspect}
+ * (see rbac.md "Permission Evaluation Algorithm"). Spring Security handles only
+ * authentication (JWT verification via {@link OperatorAuthenticationFilter})
+ * and the final fallthrough denyAll. {@code @EnableMethodSecurity} is
+ * intentionally NOT present: all authorization decisions flow through the
+ * single aspect path (one decision site, one audit write).
+ */
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
 public class SecurityConfig {
 
     @Bean
     public OperatorAuthenticationFilter operatorAuthenticationFilter(
             JwtVerifier operatorJwtVerifier,
-            @Value("${admin.jwt.expected-scope:admin}") String expectedScope) {
-        return new OperatorAuthenticationFilter(operatorJwtVerifier, expectedScope);
+            @Value("${admin.jwt.expected-token-type:admin}") String expectedTokenType) {
+        return new OperatorAuthenticationFilter(operatorJwtVerifier, expectedTokenType);
     }
 
     @Bean

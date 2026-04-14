@@ -1,7 +1,6 @@
 package com.example.admin.application;
 
 import com.example.admin.application.exception.DownstreamFailureException;
-import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AccountServiceClient;
 import lombok.RequiredArgsConstructor;
@@ -11,14 +10,13 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 
 /**
- * Orchestrates lock/unlock operator commands. Each command:
- *   1. validates operator role + reason
- *   2. INSERTs an IN_PROGRESS audit row BEFORE the downstream call (A10 fail-closed)
- *   3. calls account-service internal HTTP (with Idempotency-Key)
- *   4. finalizes the audit row (SUCCESS or FAILURE) and emits the outbox event
+ * Orchestrates lock/unlock operator commands. Authorization is enforced
+ * upstream by {@code RequiresPermissionAspect}; this layer only validates
+ * request payloads and drives the audit + downstream flow.
  *
- * If the IN_PROGRESS insert fails {@link com.example.admin.application.exception.AuditFailureException}
- * propagates and no downstream call is made.
+ * <p>Flow per command: validate reason → INSERT IN_PROGRESS audit row (A10
+ * fail-closed) → call account-service internal HTTP (with Idempotency-Key) →
+ * finalize audit row (SUCCESS or FAILURE) and emit the outbox event.
  */
 @Slf4j
 @Service
@@ -30,14 +28,13 @@ public class AccountAdminUseCase {
 
     public LockAccountResult lock(LockAccountCommand cmd) {
         requireReason(cmd.reason());
-        requireRole(cmd.operator(), OperatorRole.ACCOUNT_ADMIN);
 
         String auditId = auditor.newAuditId();
         Instant startedAt = Instant.now();
 
         auditor.recordStart(new AdminActionAuditor.StartRecord(
                 auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
-                "account", cmd.accountId(),
+                "ACCOUNT", cmd.accountId(),
                 cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
                 startedAt));
 
@@ -52,7 +49,7 @@ public class AccountAdminUseCase {
         } catch (DownstreamFailureException ex) {
             auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
-                    "account", cmd.accountId(),
+                    "ACCOUNT", cmd.accountId(),
                     cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
                     Outcome.FAILURE, ex.getMessage(),
                     startedAt, Instant.now()));
@@ -62,7 +59,7 @@ public class AccountAdminUseCase {
         Instant completedAt = Instant.now();
         auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                 auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
-                "account", cmd.accountId(),
+                "ACCOUNT", cmd.accountId(),
                 cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
                 Outcome.SUCCESS, null, startedAt, completedAt));
 
@@ -77,14 +74,13 @@ public class AccountAdminUseCase {
 
     public UnlockAccountResult unlock(UnlockAccountCommand cmd) {
         requireReason(cmd.reason());
-        requireRole(cmd.operator(), OperatorRole.ACCOUNT_ADMIN);
 
         String auditId = auditor.newAuditId();
         Instant startedAt = Instant.now();
 
         auditor.recordStart(new AdminActionAuditor.StartRecord(
                 auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
-                "account", cmd.accountId(),
+                "ACCOUNT", cmd.accountId(),
                 cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
                 startedAt));
 
@@ -99,7 +95,7 @@ public class AccountAdminUseCase {
         } catch (DownstreamFailureException ex) {
             auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
-                    "account", cmd.accountId(),
+                    "ACCOUNT", cmd.accountId(),
                     cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
                     Outcome.FAILURE, ex.getMessage(),
                     startedAt, Instant.now()));
@@ -109,7 +105,7 @@ public class AccountAdminUseCase {
         Instant completedAt = Instant.now();
         auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                 auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
-                "account", cmd.accountId(),
+                "ACCOUNT", cmd.accountId(),
                 cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
                 Outcome.SUCCESS, null, startedAt, completedAt));
 
@@ -125,15 +121,6 @@ public class AccountAdminUseCase {
     private static void requireReason(String reason) {
         if (reason == null || reason.isBlank()) {
             throw new ReasonRequiredException();
-        }
-    }
-
-    private static void requireRole(OperatorContext op, OperatorRole required) {
-        if (op == null) {
-            throw new PermissionDeniedException("operator context missing");
-        }
-        if (!op.hasRole(required)) {
-            throw new PermissionDeniedException("operator lacks role " + required);
         }
     }
 }

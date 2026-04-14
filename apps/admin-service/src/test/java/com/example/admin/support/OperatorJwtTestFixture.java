@@ -10,14 +10,14 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Lightweight helper that generates an RSA key pair in-memory and mints
- * operator JWTs for slice/integration tests. Pairs with
- * {@link Rs256JwtVerifier} exposed via the {@link #verifier()} accessor so
- * tests can replace the production {@code operatorJwtVerifier} bean.
+ * operator JWTs for slice/integration tests. Mints only the canonical claim
+ * set required by rbac.md: {@code sub}, {@code jti}, {@code token_type=admin}
+ * (plus standard {@code iss}/{@code iat}/{@code exp}).
  */
 public final class OperatorJwtTestFixture {
 
@@ -45,28 +45,33 @@ public final class OperatorJwtTestFixture {
         return verifier;
     }
 
-    public String operatorToken(String sub, List<String> roles) {
-        return operatorToken(sub, roles, "admin");
+    /** Mints a canonical operator token with a freshly generated {@code jti}. */
+    public String operatorToken(String sub) {
+        return operatorToken(sub, UUID.randomUUID().toString(), "admin");
     }
 
-    public String operatorToken(String sub, List<String> roles, String scope) {
+    public String operatorToken(String sub, String jti) {
+        return operatorToken(sub, jti, "admin");
+    }
+
+    public String operatorToken(String sub, String jti, String tokenType) {
         Instant now = Instant.now();
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("sub", sub);
-        claims.put("scope", scope);
-        claims.put("roles", roles);
+        claims.put("jti", jti);
+        claims.put("token_type", tokenType);
         claims.put("iss", "auth-service");
         claims.put("iat", now);
         claims.put("exp", now.plus(30, ChronoUnit.MINUTES));
         return signer.sign(claims);
     }
 
-    public String expiredToken(String sub, List<String> roles) {
+    public String expiredToken(String sub) {
         Instant past = Instant.now().minus(1, ChronoUnit.HOURS);
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("sub", sub);
-        claims.put("scope", "admin");
-        claims.put("roles", roles);
+        claims.put("jti", UUID.randomUUID().toString());
+        claims.put("token_type", "admin");
         claims.put("iss", "auth-service");
         claims.put("iat", past);
         claims.put("exp", past.plus(1, ChronoUnit.MINUTES));

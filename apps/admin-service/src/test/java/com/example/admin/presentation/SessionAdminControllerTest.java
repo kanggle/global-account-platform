@@ -24,7 +24,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -74,17 +73,17 @@ class SessionAdminControllerTest {
         when(permissionEvaluator.hasAllPermissions(anyString(), any(Collection.class))).thenReturn(true);
     }
 
-    private String bearer(List<String> roles) {
-        return "Bearer " + jwt.operatorToken("op-1", roles);
+    private String bearer() {
+        return "Bearer " + jwt.operatorToken("op-1");
     }
 
     @Test
-    void revoke_success_with_accountAdmin_returns_200() throws Exception {
+    void revoke_success_returns_200() throws Exception {
         when(useCase.revoke(any())).thenReturn(new RevokeSessionResult(
                 "acc-1", 3, "op-1", Instant.now(), "audit-1"));
 
         mockMvc.perform(post("/api/admin/sessions/acc-1/revoke")
-                        .header("Authorization", bearer(List.of("ACCOUNT_ADMIN")))
+                        .header("Authorization", bearer())
                         .header("Idempotency-Key", "idemp-1")
                         .header("X-Operator-Reason", "security-incident")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -95,23 +94,9 @@ class SessionAdminControllerTest {
     }
 
     @Test
-    void revoke_with_superAdmin_returns_200() throws Exception {
-        when(useCase.revoke(any())).thenReturn(new RevokeSessionResult(
-                "acc-1", 0, "op-1", Instant.now(), "audit-sa"));
-
-        mockMvc.perform(post("/api/admin/sessions/acc-1/revoke")
-                        .header("Authorization", bearer(List.of("SUPER_ADMIN")))
-                        .header("Idempotency-Key", "idemp-sa")
-                        .header("X-Operator-Reason", "compliance")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
     void revoke_missing_idempotency_key_returns_400_validation_error() throws Exception {
         mockMvc.perform(post("/api/admin/sessions/acc-1/revoke")
-                        .header("Authorization", bearer(List.of("ACCOUNT_ADMIN")))
+                        .header("Authorization", bearer())
                         .header("X-Operator-Reason", "fraud")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -122,7 +107,7 @@ class SessionAdminControllerTest {
     @Test
     void revoke_missing_reason_returns_400_reason_required() throws Exception {
         mockMvc.perform(post("/api/admin/sessions/acc-1/revoke")
-                        .header("Authorization", bearer(List.of("ACCOUNT_ADMIN")))
+                        .header("Authorization", bearer())
                         .header("Idempotency-Key", "idemp-2")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -131,9 +116,11 @@ class SessionAdminControllerTest {
     }
 
     @Test
-    void revoke_auditor_role_only_returns_403_permission_denied() throws Exception {
+    void revoke_without_required_permission_returns_403() throws Exception {
+        when(permissionEvaluator.hasPermission(anyString(), anyString())).thenReturn(false);
+
         mockMvc.perform(post("/api/admin/sessions/acc-1/revoke")
-                        .header("Authorization", bearer(List.of("AUDITOR")))
+                        .header("Authorization", bearer())
                         .header("Idempotency-Key", "idemp-3")
                         .header("X-Operator-Reason", "fraud")
                         .contentType(MediaType.APPLICATION_JSON)

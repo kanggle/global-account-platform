@@ -101,15 +101,18 @@ RBAC의 의사결정(권한 평가 알고리즘, seed role 매트릭스, missing
 | `ticket_id` | VARCHAR(64) | NULL | internal | 내부 티켓 연결 |
 | `request_id` | VARCHAR(64) | NOT NULL, INDEX | internal | Idempotency 및 로그 상관관계 키 |
 | `outcome` | VARCHAR(20) | NOT NULL | internal | `SUCCESS` / `FAILURE` / **`DENIED`** (신규). 기존 enum 확장 — DB는 VARCHAR + 애플리케이션 제약 |
-| `detail` | TEXT | NULL | internal | 실패/거부 상세 (downstream error code, denied permission 등). PII 금지 |
-| `occurred_at` | DATETIME(6) | NOT NULL, INDEX | internal | 액션 발생 시각 |
+| `detail` | TEXT | NULL | internal | 실패/거부 상세 (downstream error code, denied permission 등). PII 금지 (`admin_actions.downstream_detail` 컬럼으로 구현) |
+| `started_at` | DATETIME(6) | NOT NULL, INDEX | internal | 액션 시작 시각. IN_PROGRESS INSERT 시점. 감사 타임라인의 canonical timestamp |
+| `completed_at` | DATETIME(6) | NULL | internal | 터미널 outcome(SUCCESS/FAILURE/DENIED) 확정 시각. DENIED row는 start=end 동일 값 기록 |
+
+> `occurred_at` 컬럼은 별도로 존재하지 않는다. TASK-BE-028b 통과 후 본 스펙은 실제 테이블(`started_at`/`completed_at`)을 canonical로 유지한다. envelope `occurredAt`은 아래 매핑 표에 따라 `started_at`에서 파생한다.
 
 **인덱스**:
-- `idx_admin_actions_operator_time` (`operator_id`, `occurred_at`) — 특정 운영자 활동 타임라인
-- `idx_admin_actions_target_time` (`target_type`, `target_id`, `occurred_at`) — 특정 계정 대상 감사
+- `idx_admin_actions_operator_time` (`operator_id`, `started_at`) — 특정 운영자 활동 타임라인
+- `idx_admin_actions_target_time` (`target_type`, `target_id`, `started_at`) — 특정 계정 대상 감사
 - `idx_admin_actions_action_code` (`action_code`)
 - `idx_admin_actions_request_id` (`request_id`) — 멱등성 조회
-- `idx_admin_actions_outcome_time` (`outcome`, `occurred_at`) — DENIED 빈도 모니터링
+- `idx_admin_actions_outcome_time` (`outcome`, `started_at`) — DENIED 빈도 모니터링
 
 **Immutability**: UPDATE/DELETE는 DB 레벨 권한 제거 또는 트리거로 차단 ([architecture.md](./architecture.md) Forbidden Dependencies).
 
@@ -173,7 +176,7 @@ RBAC의 의사결정(권한 평가 알고리즘, seed role 매트릭스, missing
 | Envelope field | Source (admin_actions column) | 비고 |
 |---|---|---|
 | `eventId` | (신규 UUID v7, outbox row 생성 시) | `admin_actions.id`와 별개 |
-| `occurredAt` | `admin_actions.occurred_at` | UTC ISO-8601 ms+ 정밀도 (A6) |
+| `occurredAt` | `admin_actions.started_at` | UTC ISO-8601 ms+ 정밀도 (A6). `started_at`이 canonical 시각 |
 | `actor.type` | (상수 `"operator"`) | — |
 | `actor.id` | `admin_operators.operator_id` (JOIN via `admin_actions.operator_id → admin_operators.id`) | 외부 UUID 사용 (내부 BIGINT PK 노출 금지) |
 | `actor.sessionId` | operator JWT `jti` (request context) | admin_actions에 별도 컬럼은 두지 않음 |
@@ -210,7 +213,7 @@ RBAC의 의사결정(권한 평가 알고리즘, seed role 매트릭스, missing
 |---|---|
 | **restricted** | `admin_operators.password_hash`, `admin_operators.totp_secret_encrypted` |
 | **confidential** | `admin_operators.email`, `admin_operators.display_name`, `admin_actions.reason` |
-| **internal** | 위에 명시되지 않은 모든 컬럼 — `admin_operators` 나머지 (id, operator_id, status, totp_enrolled_at, last_login_at, created_at, updated_at, version), `admin_roles`의 모든 컬럼, `admin_role_permissions`의 모든 컬럼, `admin_operator_roles`의 모든 컬럼, `admin_actions`의 나머지 (id, action_code, operator_id, permission_used, target_type, target_id, ticket_id, request_id, outcome, detail, occurred_at), `outbox` 테이블의 나머지 컬럼 |
+| **internal** | 위에 명시되지 않은 모든 컬럼 — `admin_operators` 나머지 (id, operator_id, status, totp_enrolled_at, last_login_at, created_at, updated_at, version), `admin_roles`의 모든 컬럼, `admin_role_permissions`의 모든 컬럼, `admin_operator_roles`의 모든 컬럼, `admin_actions`의 나머지 (id, action_code, operator_id, permission_used, target_type, target_id, ticket_id, request_id, outcome, detail, started_at, completed_at), `outbox` 테이블의 나머지 컬럼 |
 | **internal (special)** | `outbox.payload` — `admin.action.performed` envelope을 직렬화하여 포함. `target.displayHint`처럼 **upstream에서 이미 마스킹된** confidential 원본의 파생값을 포함할 수 있다 ([rules/traits/regulated.md](../../../rules/traits/regulated.md) R4 — 중앙 masking utility 경유 강제). 원문 PII는 포함되지 않음을 스펙 레벨에서 보장하므로 분류는 `internal`. 단, `reason` 필드(운영자 입력 원문) 전달 시 소비자 측에서 필요에 따라 추가 필터링을 고려한다. |
 | **public** | 없음 |
 

@@ -10,8 +10,9 @@ import java.lang.annotation.Target;
  *
  * <p>Either {@link #value()} (single) or {@link #allOf()} (every key required)
  * may be used; specifying both sets makes the effective requirement the union.
- * The evaluation occurs AFTER Spring Security's {@code @PreAuthorize} — both
- * checks must pass.
+ * Evaluation is performed centrally by {@code RequiresPermissionAspect};
+ * this service does not layer Spring Security method-level authorization on
+ * top of the aspect.
  *
  * <p>See specs/services/admin-service/rbac.md Permission Evaluation Algorithm.
  */

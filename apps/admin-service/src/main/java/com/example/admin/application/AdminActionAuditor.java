@@ -12,29 +12,40 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * Writes the audit row for an admin command in two phases to enforce
- * audit-before-downstream (A10 fail-closed):
+ * Writes the audit row for an admin command. Two flows:
  *
  * <ol>
- *   <li>{@link #recordStart(StartRecord)} — INSERT with {@code outcome=IN_PROGRESS}
- *       BEFORE the downstream HTTP call. If this fails, the command is aborted
- *       via {@link AuditFailureException} before any side effect occurs.</li>
- *   <li>{@link #recordCompletion(CompletionRecord)} — UPDATE outcome to SUCCESS/FAILURE
- *       and emit the {@code admin.action.performed} outbox event. Runs in a separate
- *       transaction so the start-row commit is durable even if downstream stalls.</li>
+ *   <li>Successful/failed mutations: {@link #recordStart(StartRecord)} INSERTs
+ *       an IN_PROGRESS row BEFORE the downstream HTTP call (A10 fail-closed);
+ *       {@link #recordCompletion(CompletionRecord)} UPDATEs to
+ *       SUCCESS/FAILURE and emits the canonical outbox event.</li>
+ *   <li>Permission denied: {@link #recordDenied(ActionCode, String, String, String, String)}
+ *       INSERTs a single DENIED row and emits the canonical outbox event in
+ *       one REQUIRES_NEW transaction.</li>
  * </ol>
  *
- * The DB trigger {@code trg_admin_actions_finalize_only} enforces that only a
- * row whose current outcome is {@code IN_PROGRESS} may be updated, and only on
- * the {@code outcome}, {@code downstream_detail}, and {@code completed_at} columns.
+ * <p>The DB trigger {@code trg_admin_actions_finalize_only} (V0010) enforces
+ * that only a row whose current outcome is {@code IN_PROGRESS} may be updated,
+ * and only on the {@code outcome}, {@code downstream_detail}, and
+ * {@code completed_at} columns — {@code operator_id} and {@code permission_used}
+ * are also guarded.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AdminActionAuditor {
+
+    /** Canonical actionCode → target.type mapping used for DENIED rows. */
+    private static final Map<ActionCode, String> ACTION_TARGET_TYPE = Map.of(
+            ActionCode.ACCOUNT_LOCK, "ACCOUNT",
+            ActionCode.ACCOUNT_UNLOCK, "ACCOUNT",
+            ActionCode.SESSION_REVOKE, "SESSION",
+            ActionCode.AUDIT_QUERY, "AUDIT_QUERY"
+    );
 
     private final AdminActionJpaRepository repository;
     private final AdminEventPublisher eventPublisher;
@@ -45,7 +56,6 @@ public class AdminActionAuditor {
 
     /**
      * @deprecated Use {@link #newAuditId()} plus {@link #recordStart(StartRecord)}.
-     *             Retained for backward compatibility with older callers/tests.
      */
     @Deprecated
     public String reserveAuditId() {
@@ -59,9 +69,9 @@ public class AdminActionAuditor {
                     record.auditId(),
                     record.actionCode().name(),
                     record.operator().operatorId(),
-                    primaryRole(record.operator()),
-                    null, // operator_id BIGINT FK — resolution deferred to TASK-BE-028b2
-                    permissionForActionCode(record.actionCode()), // TASK-BE-028a
+                    "UNKNOWN", // actor_role retained as legacy column; no longer carried in JWT
+                    null, // operator_id BIGINT FK resolution via PermissionEvaluator lookup is deferred
+                    permissionForActionCode(record.actionCode()),
                     record.targetType(),
                     record.targetId(),
                     record.reason(),
@@ -90,7 +100,7 @@ public class AdminActionAuditor {
                     record.downstreamDetail(),
                     record.completedAt());
             repository.save(entity);
-            eventPublisher.publishActionPerformed(record.toLegacyRecord());
+            eventPublisher.publishAdminActionPerformed(toEnvelope(record));
         } catch (AuditFailureException ex) {
             throw ex;
         } catch (RuntimeException ex) {
@@ -101,8 +111,9 @@ public class AdminActionAuditor {
     }
 
     /**
-     * Legacy single-shot audit write. Retained so that existing tests still compile;
-     * new code paths should use {@link #recordStart} + {@link #recordCompletion}.
+     * Single-shot audit write used by read paths (e.g. the AUDIT_QUERY
+     * meta-audit). Writes the row at a terminal outcome and emits the
+     * canonical outbox event in the same transaction.
      */
     @Transactional
     public void record(AuditRecord record) {
@@ -111,8 +122,8 @@ public class AdminActionAuditor {
                     record.auditId(),
                     record.actionCode().name(),
                     record.operator().operatorId(),
-                    primaryRole(record.operator()),
-                    null, // operator_id BIGINT FK — resolution deferred to TASK-BE-028b2
+                    "UNKNOWN",
+                    null,
                     permissionForActionCode(record.actionCode()),
                     record.targetType(),
                     record.targetId(),
@@ -124,7 +135,17 @@ public class AdminActionAuditor {
                     record.startedAt(),
                     record.completedAt());
             repository.save(entity);
-            eventPublisher.publishActionPerformed(record);
+            eventPublisher.publishAdminActionPerformed(new AdminEventPublisher.Envelope(
+                    record.operator().operatorId(),
+                    record.operator().jti(),
+                    permissionForActionCode(record.actionCode()),
+                    currentEndpoint(),
+                    currentMethod(),
+                    normalizeTargetType(record.targetType(), record.actionCode()),
+                    record.targetId(),
+                    record.outcome(),
+                    record.downstreamDetail(),
+                    record.startedAt()));
         } catch (RuntimeException ex) {
             log.error("Failed to write admin_actions audit row (fail-closed): auditId={}", record.auditId(), ex);
             throw new AuditFailureException("Failed to record admin action audit", ex);
@@ -132,40 +153,43 @@ public class AdminActionAuditor {
     }
 
     /**
-     * TASK-BE-028a: Records a DENIED admin_actions row directly (no IN_PROGRESS phase).
-     * Invoked by {@code RequiresPermissionAspect} when permission evaluation fails.
+     * Records a DENIED row and emits the canonical admin.action.performed
+     * outbox event. Uses REQUIRES_NEW so the deny row is durable even if the
+     * surrounding controller request is rolled back.
      *
-     * <p>Writes in a REQUIRES_NEW transaction so that the deny audit row is durable
-     * even if the controller request is rolled back. No outbox event is emitted in
-     * this increment (envelope reshape deferred to TASK-BE-028b).
+     * <p>The target_type is derived from {@code actionCode} via
+     * {@link #ACTION_TARGET_TYPE}; callers may pass {@code targetId=null}
+     * when no path variable is present.
      */
-    // TODO(TASK-BE-028b): emit admin.action.performed outbox event for DENIED rows
-    //                    with the new actor/action/target/outcome envelope.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void recordDenied(String operatorId,
+    public void recordDenied(ActionCode actionCode,
                              String permissionUsed,
                              String endpoint,
                              String method,
-                             String targetDescription) {
-        try {
-            Instant now = Instant.now();
-            String auditId = UUID.randomUUID().toString();
-            String actionCode = actionCodeForPermission(permissionUsed);
-            String targetType = targetDescription != null ? "TARGET" : "AUDIT_QUERY";
-            String targetId = targetDescription != null ? targetDescription : "-";
-            String reason = "<not_provided>";
-            String idempotencyKey = "denied:" + auditId; // unique sentinel
-            String detail = "PERMISSION_NOT_GRANTED endpoint=" + endpoint + " method=" + method;
+                             String targetId) {
+        OperatorContext op = tryReadOperatorContext();
+        String operatorId = op != null ? op.operatorId() : "unknown";
+        String jti = op != null ? op.jti() : null;
 
+        Instant now = Instant.now();
+        String auditId = UUID.randomUUID().toString();
+        String targetType = targetTypeFor(actionCode);
+        String resolvedTargetId = targetId != null ? targetId : "-";
+        String reason = "<not_provided>";
+        String idempotencyKey = "denied:" + auditId;
+        String resolvedPermission = permissionUsed != null ? permissionUsed : Permission.MISSING;
+        String detail = "PERMISSION_NOT_GRANTED endpoint=" + endpoint + " method=" + method;
+
+        try {
             AdminActionJpaEntity entity = AdminActionJpaEntity.create(
                     auditId,
-                    actionCode,
-                    operatorId != null ? operatorId : "unknown",
+                    actionCode != null ? actionCode.name() : "UNKNOWN",
+                    operatorId,
                     "UNKNOWN",
-                    (Long) null, // operator_id BIGINT FK — resolution deferred to TASK-BE-028b2
-                    permissionUsed != null ? permissionUsed : Permission.MISSING,
+                    null,
+                    resolvedPermission,
                     targetType,
-                    targetId,
+                    resolvedTargetId,
                     reason,
                     null,
                     idempotencyKey,
@@ -174,11 +198,94 @@ public class AdminActionAuditor {
                     now,
                     now);
             repository.save(entity);
+
+            eventPublisher.publishAdminActionPerformed(new AdminEventPublisher.Envelope(
+                    operatorId,
+                    jti,
+                    resolvedPermission,
+                    endpoint,
+                    method,
+                    targetType,
+                    targetId,
+                    Outcome.DENIED,
+                    detail,
+                    now));
         } catch (RuntimeException ex) {
             log.error("Failed to write DENIED admin_actions row (fail-closed): operatorId={} permission={}",
-                    operatorId, permissionUsed, ex);
+                    operatorId, resolvedPermission, ex);
             throw new AuditFailureException("Failed to record DENIED admin action audit", ex);
         }
+    }
+
+    /**
+     * Resolves {@link OperatorContext} from the security context if available.
+     * Returns {@code null} when called outside a request scope (e.g. tests that
+     * exercise recordDenied in isolation).
+     */
+    private static OperatorContext tryReadOperatorContext() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder
+                    .getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof OperatorContext ctx) {
+                return ctx;
+            }
+        } catch (RuntimeException ignored) {
+            // no security context (e.g. direct unit test) — fall through
+        }
+        return null;
+    }
+
+    private static AdminEventPublisher.Envelope toEnvelope(CompletionRecord r) {
+        String jti = r.operator() != null ? r.operator().jti() : null;
+        String operatorId = r.operator() != null ? r.operator().operatorId() : null;
+        String endpoint = r.endpoint() != null ? r.endpoint() : currentEndpoint();
+        String method = r.method() != null ? r.method() : currentMethod();
+        return new AdminEventPublisher.Envelope(
+                operatorId,
+                jti,
+                permissionForActionCode(r.actionCode()),
+                endpoint,
+                method,
+                normalizeTargetType(r.targetType(), r.actionCode()),
+                r.targetId(),
+                r.outcome(),
+                r.downstreamDetail(),
+                r.startedAt());
+    }
+
+    private static String currentEndpoint() {
+        var req = currentRequest();
+        return req != null ? req.getRequestURI() : null;
+    }
+
+    private static String currentMethod() {
+        var req = currentRequest();
+        return req != null ? req.getMethod() : null;
+    }
+
+    private static jakarta.servlet.http.HttpServletRequest currentRequest() {
+        try {
+            var attrs = (org.springframework.web.context.request.ServletRequestAttributes)
+                    org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            return attrs != null ? attrs.getRequest() : null;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String targetTypeFor(ActionCode code) {
+        if (code == null) return "UNKNOWN";
+        return ACTION_TARGET_TYPE.getOrDefault(code, "UNKNOWN");
+    }
+
+    /** Upper-cases legacy lowercase target_type passed by existing use-cases. */
+    private static String normalizeTargetType(String raw, ActionCode code) {
+        if (raw == null || raw.isBlank()) return targetTypeFor(code);
+        String upper = raw.toUpperCase(java.util.Locale.ROOT);
+        // historical use-cases passed "account"/"audit" — remap to envelope spec
+        if ("ACCOUNT".equals(upper) && code == ActionCode.SESSION_REVOKE) return "SESSION";
+        if ("AUDIT".equals(upper)) return "AUDIT_QUERY";
+        return upper;
     }
 
     private static String permissionForActionCode(ActionCode code) {
@@ -189,27 +296,6 @@ public class AdminActionAuditor {
             case SESSION_REVOKE -> Permission.ACCOUNT_FORCE_LOGOUT;
             case AUDIT_QUERY -> Permission.AUDIT_READ;
         };
-    }
-
-    private static String actionCodeForPermission(String permissionKey) {
-        if (permissionKey == null) return "UNKNOWN";
-        return switch (permissionKey) {
-            case Permission.ACCOUNT_LOCK -> ActionCode.ACCOUNT_LOCK.name();
-            case Permission.ACCOUNT_UNLOCK -> ActionCode.ACCOUNT_UNLOCK.name();
-            case Permission.ACCOUNT_FORCE_LOGOUT -> ActionCode.SESSION_REVOKE.name();
-            case Permission.AUDIT_READ, Permission.SECURITY_EVENT_READ -> ActionCode.AUDIT_QUERY.name();
-            default -> {
-                if (permissionKey.contains("+")) yield ActionCode.AUDIT_QUERY.name();
-                yield "UNKNOWN";
-            }
-        };
-    }
-
-    private static String primaryRole(OperatorContext ctx) {
-        if (ctx.roles().contains(OperatorRole.SUPER_ADMIN)) return OperatorRole.SUPER_ADMIN.name();
-        if (ctx.roles().contains(OperatorRole.ACCOUNT_ADMIN)) return OperatorRole.ACCOUNT_ADMIN.name();
-        if (ctx.roles().contains(OperatorRole.AUDITOR)) return OperatorRole.AUDITOR.name();
-        return "UNKNOWN";
     }
 
     public record StartRecord(
@@ -236,16 +322,21 @@ public class AdminActionAuditor {
             Outcome outcome,
             String downstreamDetail,
             Instant startedAt,
-            Instant completedAt
+            Instant completedAt,
+            String endpoint,
+            String method
     ) {
-        AuditRecord toLegacyRecord() {
-            return new AuditRecord(
-                    auditId, actionCode, operator, targetType, targetId,
-                    reason, ticketId, idempotencyKey,
-                    outcome, downstreamDetail, startedAt, completedAt);
+        /** Backwards-compatible constructor for call sites that do not supply HTTP context. */
+        public CompletionRecord(String auditId, ActionCode actionCode, OperatorContext operator,
+                                String targetType, String targetId, String reason, String ticketId,
+                                String idempotencyKey, Outcome outcome, String downstreamDetail,
+                                Instant startedAt, Instant completedAt) {
+            this(auditId, actionCode, operator, targetType, targetId, reason, ticketId,
+                    idempotencyKey, outcome, downstreamDetail, startedAt, completedAt, null, null);
         }
     }
 
+    /** Single-shot record for {@link #record(AuditRecord)}. */
     public record AuditRecord(
             String auditId,
             ActionCode actionCode,

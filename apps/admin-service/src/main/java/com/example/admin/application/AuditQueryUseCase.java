@@ -1,6 +1,5 @@
 package com.example.admin.application;
 
-import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.infrastructure.client.SecurityServiceClient;
 import com.example.admin.infrastructure.persistence.AdminActionJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminActionJpaRepository;
@@ -32,10 +31,9 @@ public class AuditQueryUseCase {
     private final AdminActionAuditor auditor;
 
     public AuditQueryResult query(QueryAuditCommand cmd) {
-        if (!cmd.operator().hasRole(OperatorRole.AUDITOR)
-                && !cmd.operator().hasRole(OperatorRole.ACCOUNT_ADMIN)) {
-            throw new PermissionDeniedException("operator lacks role AUDITOR");
-        }
+        // Authorization is enforced by RequiresPermissionAspect on the
+        // controller (base audit.read + conditional security.event.read for
+        // security-event sources). This use-case is invoked only after grant.
 
         int size = Math.min(Math.max(cmd.size(), 1), 100);
         int page = Math.max(cmd.page(), 0);

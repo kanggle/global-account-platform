@@ -82,6 +82,11 @@ backend
 ### 028a TODO 제거
 - `rg "TODO\(TASK-BE-028b\)" apps/admin-service/` 결과 0건 되도록 모두 처리
 
+### 028b1 리뷰에서 이관된 항목
+- **`trg_admin_actions_finalize_only` 트리거 guard 확장**: 현재 트리거는 V0001 컬럼만 보호하고 V0005가 추가한 `operator_id`, `permission_used`를 guard하지 않음. 두 컬럼도 mutation 시 예외 발생하도록 트리거 본문 확장 (신규 마이그레이션 V00XX으로 CREATE OR REPLACE).
+- **`data-model.md` 컬럼명 수렴**: spec은 `occurred_at`, 실제 테이블은 `started_at`/`completed_at`. 실제를 canonical로 받아들이고 data-model.md 전반(인덱스 선언·envelope 매핑·분류 요약)을 `started_at` 기준으로 수정. 또는 컬럼 rename이 더 적절하면 마이그레이션으로 rename — 판단은 envelope 매핑 시점에 결정.
+- **`admin_operators.version` 타입 정렬**: spec은 `INT`, 실제 DDL은 `BIGINT`. JPA entity 필드 타입(Long)과 spec(INT) 중 하나로 수렴. 기존 데이터 영향이 없으므로 `INT`로 ALTER 권장(spec 준수).
+
 ## Out of Scope
 
 - Redis 10s 권한 캐시 (028c)
@@ -99,6 +104,9 @@ backend
 - [ ] AuditController cross-permission DENIED에서 `admin_actions` row 생성
 - [ ] Outbox payload가 canonical envelope 준수 (actor/action/target/outcome/reason + eventId + occurredAt)
 - [ ] `AdminPiiMaskingUtils`의 displayHint 적용으로 target.id가 이메일 원문 노출 없음
+- [ ] `trg_admin_actions_finalize_only`가 `operator_id`, `permission_used` mutation을 차단
+- [ ] `data-model.md` 컬럼명(`started_at`/`completed_at`)이 실제 테이블과 일치
+- [ ] `admin_operators.version`이 spec과 타입 정렬
 - [ ] `./gradlew :apps:admin-service:test` 통과
 
 ---

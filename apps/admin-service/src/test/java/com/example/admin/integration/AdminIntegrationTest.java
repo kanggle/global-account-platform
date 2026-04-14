@@ -143,8 +143,34 @@ class AdminIntegrationTest {
         wireMock.resetAll();
     }
 
+    private static final String OPERATOR_UUID = "00000000-0000-7000-8000-000000000001";
+
     private String operatorToken() {
-        return "Bearer " + jwt.operatorToken("op-integ-1", List.of("ACCOUNT_ADMIN"));
+        return "Bearer " + jwt.operatorToken(OPERATOR_UUID);
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void seedOperatorAndRoles() {
+        // Idempotent insert of an operator + SUPER_ADMIN binding so the
+        // DB-backed PermissionEvaluator grants all permissions during the test.
+        Integer existing = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM admin_operators WHERE operator_id = ?",
+                Integer.class, OPERATOR_UUID);
+        if (existing == null || existing == 0) {
+            jdbcTemplate.update("""
+                    INSERT INTO admin_operators
+                      (operator_id, email, password_hash, display_name, status,
+                       created_at, updated_at, version)
+                    VALUES (?, ?, ?, ?, 'ACTIVE', NOW(6), NOW(6), 0)
+                    """,
+                    OPERATOR_UUID, "integ@example.com", "x", "Integ Op");
+        }
+        jdbcTemplate.update("""
+                INSERT IGNORE INTO admin_operator_roles (operator_id, role_id, granted_at, granted_by)
+                SELECT o.id, r.id, NOW(6), NULL
+                  FROM admin_operators o CROSS JOIN admin_roles r
+                 WHERE o.operator_id = ? AND r.name = 'SUPER_ADMIN'
+                """, OPERATOR_UUID);
     }
 
     @Test

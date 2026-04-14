@@ -51,7 +51,8 @@ public class AdminOperatorJpaEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    // INT per data-model.md. Optimistic lock counter; monotonically increasing.
     @Version
     @Column(name = "version", nullable = false)
-    private long version;
+    private int version;
 }

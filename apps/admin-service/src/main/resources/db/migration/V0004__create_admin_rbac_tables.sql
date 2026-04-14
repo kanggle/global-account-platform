@@ -1,5 +1,5 @@
 -- RBAC core tables for admin-service (TASK-BE-028a).
--- NOTE: task scope keeps admin_operators.id as VARCHAR(36). The data-model.md spec
+-- NOTE: this increment keeps admin_operators.id as VARCHAR(36). The data-model.md spec
 -- declares BIGINT PK — the BIGINT migration is deferred to TASK-BE-028b so that
 -- admin_actions.id (VARCHAR(36) UUID) and operator_id (FK target) share the same
 -- string type for this increment.

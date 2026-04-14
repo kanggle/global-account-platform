@@ -65,7 +65,7 @@ management:
 admin:
   jwt:
     public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:keys/public.pem}
-    expected-scope: ${JWT_EXPECTED_SCOPE:admin}
+    expected-token-type: ${JWT_EXPECTED_TOKEN_TYPE:admin}
   downstream:
     connect-timeout-ms: ${DOWNSTREAM_CONNECT_TIMEOUT:3000}
     read-timeout-ms: ${DOWNSTREAM_READ_TIMEOUT:10000}

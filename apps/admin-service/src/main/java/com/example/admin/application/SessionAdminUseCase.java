@@ -1,7 +1,6 @@
 package com.example.admin.application;
 
 import com.example.admin.application.exception.DownstreamFailureException;
-import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.infrastructure.client.AuthServiceClient;
 import lombok.RequiredArgsConstructor;
@@ -20,16 +19,13 @@ public class SessionAdminUseCase {
         if (cmd.reason() == null || cmd.reason().isBlank()) {
             throw new ReasonRequiredException();
         }
-        if (!cmd.operator().hasRole(OperatorRole.ACCOUNT_ADMIN)) {
-            throw new PermissionDeniedException("operator lacks role ACCOUNT_ADMIN");
-        }
 
         String auditId = auditor.newAuditId();
         Instant startedAt = Instant.now();
 
         auditor.recordStart(new AdminActionAuditor.StartRecord(
                 auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
-                "account", cmd.accountId(),
+                "SESSION", cmd.accountId(),
                 cmd.reason(), null, cmd.idempotencyKey(),
                 startedAt));
 
@@ -43,7 +39,7 @@ public class SessionAdminUseCase {
         } catch (DownstreamFailureException ex) {
             auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                     auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
-                    "account", cmd.accountId(),
+                    "SESSION", cmd.accountId(),
                     cmd.reason(), null, cmd.idempotencyKey(),
                     Outcome.FAILURE, ex.getMessage(),
                     startedAt, Instant.now()));
@@ -53,7 +49,7 @@ public class SessionAdminUseCase {
         Instant completedAt = Instant.now();
         auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
                 auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
-                "account", cmd.accountId(),
+                "SESSION", cmd.accountId(),
                 cmd.reason(), null, cmd.idempotencyKey(),
                 Outcome.SUCCESS, null, startedAt, completedAt));
 

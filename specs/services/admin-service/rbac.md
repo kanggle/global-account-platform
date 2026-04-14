@@ -158,7 +158,7 @@ function evaluate(request, annotationPermission):
 | `request_id` | 요청 상관관계 ID (header 또는 생성) |
 | `outcome` | `DENIED` |
 | `detail` | 거부 사유 코드 (예: `MISSING_ANNOTATION`, `PERMISSION_NOT_GRANTED`) |
-| `occurred_at` | NOW() |
+| `started_at` / `completed_at` | NOW() (DENIED row는 start=end 동일 값) |
 
 DENIED row 기록과 403 응답은 **단일 트랜잭션**이어야 한다 ([rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A10 fail-closed). 감사 기록 실패 시 응답도 실패(500)하여 로그 누락을 방지한다.
 

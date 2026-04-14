@@ -25,7 +25,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.Collection;
-import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -40,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         RequiresPermissionAspect.class,
         AccountAdminControllerTest.JwtBeans.class})
 @TestPropertySource(properties = {
-        "admin.jwt.expected-scope=admin"
+        "admin.jwt.expected-token-type=admin"
 })
 class AccountAdminControllerTest {
 
@@ -78,17 +77,17 @@ class AccountAdminControllerTest {
         when(permissionEvaluator.hasAllPermissions(anyString(), any(Collection.class))).thenReturn(true);
     }
 
-    private String bearer(List<String> roles) {
-        return "Bearer " + jwt.operatorToken("op-1", roles);
+    private String bearer() {
+        return "Bearer " + jwt.operatorToken("op-1");
     }
 
     @Test
-    void lock_success_with_accountAdmin_role_returns_200() throws Exception {
+    void lock_success_returns_200() throws Exception {
         when(useCase.lock(any())).thenReturn(new LockAccountResult(
                 "acc-1", "ACTIVE", "LOCKED", "op-1", Instant.parse("2026-01-01T00:00:00Z"), "audit-1"));
 
         mockMvc.perform(post("/api/admin/accounts/acc-1/lock")
-                        .header("Authorization", bearer(List.of("ACCOUNT_ADMIN")))
+                        .header("Authorization", bearer())
                         .header("Idempotency-Key", "idemp-1")
                         .header("X-Operator-Reason", "fraud")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -100,23 +99,9 @@ class AccountAdminControllerTest {
     }
 
     @Test
-    void lock_with_superAdmin_role_returns_200() throws Exception {
-        when(useCase.lock(any())).thenReturn(new LockAccountResult(
-                "acc-1", "ACTIVE", "LOCKED", "op-1", Instant.now(), "audit-sa"));
-
-        mockMvc.perform(post("/api/admin/accounts/acc-1/lock")
-                        .header("Authorization", bearer(List.of("SUPER_ADMIN")))
-                        .header("Idempotency-Key", "idemp-sa")
-                        .header("X-Operator-Reason", "compliance")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
     void lock_missing_idempotency_key_returns_400_validation_error() throws Exception {
         mockMvc.perform(post("/api/admin/accounts/acc-1/lock")
-                        .header("Authorization", bearer(List.of("ACCOUNT_ADMIN")))
+                        .header("Authorization", bearer())
                         .header("X-Operator-Reason", "fraud")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -127,7 +112,7 @@ class AccountAdminControllerTest {
     @Test
     void lock_missing_operator_reason_returns_400_reason_required() throws Exception {
         mockMvc.perform(post("/api/admin/accounts/acc-1/lock")
-                        .header("Authorization", bearer(List.of("ACCOUNT_ADMIN")))
+                        .header("Authorization", bearer())
                         .header("Idempotency-Key", "idemp-2")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
@@ -136,9 +121,11 @@ class AccountAdminControllerTest {
     }
 
     @Test
-    void lock_auditor_role_only_returns_403_permission_denied() throws Exception {
+    void lock_without_required_permission_returns_403() throws Exception {
+        when(permissionEvaluator.hasPermission(anyString(), anyString())).thenReturn(false);
+
         mockMvc.perform(post("/api/admin/accounts/acc-1/lock")
-                        .header("Authorization", bearer(List.of("AUDITOR")))
+                        .header("Authorization", bearer())
                         .header("Idempotency-Key", "idemp-3")
                         .header("X-Operator-Reason", "fraud")
                         .contentType(MediaType.APPLICATION_JSON)
