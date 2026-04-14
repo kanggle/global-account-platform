@@ -94,6 +94,9 @@ admin:
     expected-token-type: ${JWT_EXPECTED_TOKEN_TYPE:admin}
     # Operator access token TTL (seconds). 029-3 default 1 hour.
     access-token-ttl-seconds: ${ADMIN_JWT_ACCESS_TTL:3600}
+    # Operator refresh token TTL (seconds). 040 default 30 days.
+    refresh-token-ttl-seconds: ${ADMIN_JWT_REFRESH_TTL:2592000}
+    refresh-token-type: ${ADMIN_JWT_REFRESH_TYPE:admin_refresh}
   totp:
     # otpauth issuer label presented to the operator's authenticator app.
     issuer: ${ADMIN_TOTP_ISSUER:admin-service}

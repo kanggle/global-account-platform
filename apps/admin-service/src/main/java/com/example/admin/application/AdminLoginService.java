@@ -74,6 +74,7 @@ public class AdminLoginService {
     private final JwtSigner jwtSigner;
     private final ObjectMapper objectMapper;
     private final AdminJwtProperties jwtProperties;
+    private final AdminRefreshTokenIssuer refreshTokenIssuer;
 
     private volatile String cachedDummyHash;
 
@@ -134,7 +135,13 @@ public class AdminLoginService {
         }
 
         String accessToken = mintAccessToken(operatorUuid);
-        return new LoginResult(accessToken, jwtProperties.getAccessTokenTtlSeconds(), twofaUsed);
+        AdminRefreshTokenIssuer.Issued refresh = refreshTokenIssuer.issue(operator.getId(), operatorUuid, null);
+        return new LoginResult(
+                accessToken,
+                jwtProperties.getAccessTokenTtlSeconds(),
+                refresh.token(),
+                refresh.ttlSeconds(),
+                twofaUsed);
     }
 
     private boolean roleSetRequires2fa(long operatorPk) {
@@ -232,5 +239,11 @@ public class AdminLoginService {
     }
 
     /** Return shape of a successful login. */
-    public record LoginResult(String accessToken, long expiresIn, boolean twofaUsed) {}
+    public record LoginResult(
+            String accessToken,
+            long expiresIn,
+            String refreshToken,
+            long refreshExpiresIn,
+            boolean twofaUsed
+    ) {}
 }

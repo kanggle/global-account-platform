@@ -60,6 +60,8 @@ class AdminLoginControllerTest {
     // Referenced by AdminAuthController (enroll/verify paths) — unused in login tests.
     @MockBean TotpEnrollmentService totpService;
     @MockBean BootstrapTokenService bootstrapTokenService;
+    @MockBean com.example.admin.application.AdminRefreshTokenService refreshService;
+    @MockBean com.example.admin.application.AdminLogoutService logoutService;
 
     @BeforeEach
     void setup() {
@@ -100,14 +102,16 @@ class AdminLoginControllerTest {
     @Test
     void validTotpReturns200WithTokenAndTwofaUsedTrue() throws Exception {
         when(loginService.login(eq(OPERATOR_ID), eq("devpassword123!"), eq("123456"), isNull()))
-                .thenReturn(new AdminLoginService.LoginResult("jwt.access.token", 3600L, true));
+                .thenReturn(new AdminLoginService.LoginResult("jwt.access.token", 3600L, "jwt.refresh.token", 2_592_000L, true));
 
         mockMvc.perform(post("/api/admin/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"operatorId\":\"" + OPERATOR_ID + "\",\"password\":\"devpassword123!\",\"totpCode\":\"123456\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("jwt.access.token"))
-                .andExpect(jsonPath("$.expiresIn").value(3600));
+                .andExpect(jsonPath("$.expiresIn").value(3600))
+                .andExpect(jsonPath("$.refreshToken").value("jwt.refresh.token"))
+                .andExpect(jsonPath("$.refreshExpiresIn").value(2_592_000));
 
         verifyAuditOutcome(Outcome.SUCCESS, true);
     }
@@ -153,7 +157,7 @@ class AdminLoginControllerTest {
     @Test
     void operatorWithoutRequire2faReturns200WithoutTotp() throws Exception {
         when(loginService.login(eq(OPERATOR_ID), eq("devpassword123!"), isNull(), isNull()))
-                .thenReturn(new AdminLoginService.LoginResult("jwt.access.token", 3600L, false));
+                .thenReturn(new AdminLoginService.LoginResult("jwt.access.token", 3600L, "jwt.refresh.token", 2_592_000L, false));
 
         mockMvc.perform(post("/api/admin/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

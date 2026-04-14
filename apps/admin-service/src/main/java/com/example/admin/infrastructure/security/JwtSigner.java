@@ -44,4 +44,25 @@ public final class JwtSigner {
     public String activeKid() {
         return keyStore.activeKid();
     }
+
+    /**
+     * Convenience helper for the operator refresh JWT (TASK-BE-040). Mints
+     * a token with the canonical claim set required by
+     * {@code POST /api/admin/auth/refresh}: {@code sub}, {@code jti},
+     * {@code token_type=admin_refresh}, plus standard {@code iss}/{@code iat}/{@code exp}.
+     */
+    public String signRefresh(String operatorUuid,
+                              String jti,
+                              String tokenType,
+                              java.time.Instant issuedAt,
+                              java.time.Instant expiresAt) {
+        Map<String, Object> claims = new LinkedHashMap<>();
+        claims.put("sub", Objects.requireNonNull(operatorUuid, "operatorUuid"));
+        claims.put("iss", issuer);
+        claims.put("jti", Objects.requireNonNull(jti, "jti"));
+        claims.put("token_type", Objects.requireNonNull(tokenType, "tokenType"));
+        claims.put("iat", Objects.requireNonNull(issuedAt, "issuedAt"));
+        claims.put("exp", Objects.requireNonNull(expiresAt, "expiresAt"));
+        return delegate.sign(claims);
+    }
 }

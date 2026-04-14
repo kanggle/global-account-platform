@@ -24,6 +24,13 @@ public final class IssuerEnforcingJwtVerifier implements JwtVerifier {
         this.expectedIssuer = Objects.requireNonNull(expectedIssuer, "expectedIssuer");
     }
 
+    /**
+     * TASK-BE-040 — admin-service mints two token_types from the same kid:
+     * {@code admin} (access) and {@code admin_refresh}. Signature/iss
+     * verification is the same for both; per-endpoint code enforces the
+     * required {@code token_type} after this verifier returns.
+     */
+
     @Override
     public Map<String, Object> verify(String token) throws JwtVerificationException {
         Map<String, Object> claims = delegate.verify(token);

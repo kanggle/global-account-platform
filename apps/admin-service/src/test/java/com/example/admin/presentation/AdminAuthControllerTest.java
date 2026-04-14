@@ -54,6 +54,8 @@ class AdminAuthControllerTest {
     @MockBean AdminLoginService loginService;
     @MockBean AdminActionAuditor auditor;
     @MockBean BootstrapTokenService bootstrapTokenService;
+    @MockBean com.example.admin.application.AdminRefreshTokenService refreshService;
+    @MockBean com.example.admin.application.AdminLogoutService logoutService;
 
     @BeforeEach
     void setup() {

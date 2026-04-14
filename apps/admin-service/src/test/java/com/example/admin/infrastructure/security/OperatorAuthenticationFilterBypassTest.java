@@ -43,6 +43,18 @@ class OperatorAuthenticationFilterBypassTest {
     }
 
     @Test
+    void bypasses_refresh_endpoint() throws Exception {
+        // TASK-BE-040 — refresh runs without an operator access JWT.
+        assertThat(shouldNotFilter("POST", "/api/admin/auth/refresh")).isTrue();
+    }
+
+    @Test
+    void does_not_bypass_logout_endpoint() throws Exception {
+        // TASK-BE-040 — logout requires the operator JWT (caller proves identity).
+        assertThat(shouldNotFilter("POST", "/api/admin/auth/logout")).isFalse();
+    }
+
+    @Test
     void bypasses_jwks_endpoint() throws Exception {
         assertThat(shouldNotFilter("GET", "/.well-known/admin/jwks.json")).isTrue();
     }

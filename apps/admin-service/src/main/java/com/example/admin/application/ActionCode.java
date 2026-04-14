@@ -10,5 +10,9 @@ public enum ActionCode {
     OPERATOR_2FA_VERIFY,
     // TASK-BE-029-3: operator self-login (password + optional 2FA). target_type=OPERATOR,
     // permission_used=auth.login, twofa_used is set per-outcome on the audit row.
-    OPERATOR_LOGIN
+    OPERATOR_LOGIN,
+    // TASK-BE-040: operator refresh-token rotation + self-logout.
+    // target_type=OPERATOR, target_id=operator_id, permission_used=auth.refresh|auth.logout.
+    OPERATOR_REFRESH,
+    OPERATOR_LOGOUT
 }

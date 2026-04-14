@@ -1,5 +1,6 @@
 package com.example.admin.infrastructure.config;
 
+import com.example.admin.application.port.TokenBlacklistPort;
 import com.example.admin.infrastructure.security.BootstrapAuthenticationFilter;
 import com.example.admin.infrastructure.security.BootstrapTokenService;
 import com.example.admin.infrastructure.security.OperatorAuthenticationFilter;
@@ -35,8 +36,9 @@ public class SecurityConfig {
     @Bean
     public OperatorAuthenticationFilter operatorAuthenticationFilter(
             JwtVerifier operatorJwtVerifier,
-            @Value("${admin.jwt.expected-token-type:admin}") String expectedTokenType) {
-        return new OperatorAuthenticationFilter(operatorJwtVerifier, expectedTokenType);
+            @Value("${admin.jwt.expected-token-type:admin}") String expectedTokenType,
+            TokenBlacklistPort tokenBlacklist) {
+        return new OperatorAuthenticationFilter(operatorJwtVerifier, expectedTokenType, tokenBlacklist);
     }
 
     @Bean
@@ -64,7 +66,9 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.POST,
                                 "/api/admin/auth/login",
                                 "/api/admin/auth/2fa/enroll",
-                                "/api/admin/auth/2fa/verify").permitAll()
+                                "/api/admin/auth/2fa/verify",
+                                // TASK-BE-040: refresh runs without operator JWT.
+                                "/api/admin/auth/refresh").permitAll()
                         .requestMatchers("/api/admin/**").authenticated()
                         .anyRequest().denyAll()
                 )

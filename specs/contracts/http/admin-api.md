@@ -25,6 +25,7 @@ base path: `/api/admin`
 | `POST` | `/api/admin/auth/login` | 없음 (username + password + 선택적 TOTP 코드 body) | 요구 없음 |
 | `POST` | `/api/admin/auth/2fa/enroll` | **bootstrap token 필수** | 요구 없음 |
 | `POST` | `/api/admin/auth/2fa/verify` | **bootstrap token 필수** | 요구 없음 |
+| `POST` | `/api/admin/auth/refresh` | 없음 (refresh JWT body) | 요구 없음 |
 | `GET` | `/.well-known/admin/jwks.json` | 없음 (public key 노출) | 요구 없음 |
 
 위 경로 외의 어떤 `/api/admin/*` 요청도 operator JWT + `X-Operator-Reason`이 없으면 401/400으로 거부된다.
@@ -333,12 +334,16 @@ base path: `/api/admin`
 ```json
 {
   "accessToken": "eyJhbGciOi... (operator JWT)",
-  "expiresIn": 3600
+  "expiresIn": 3600,
+  "refreshToken": "eyJhbGciOi... (operator refresh JWT)",
+  "refreshExpiresIn": 2592000
 }
 ```
 
 - `accessToken`: `{sub: operator_uuid, iss: "admin-service", jti: uuidV7, iat, exp, token_type: "admin"}`.
 - `expiresIn`: 초 단위 TTL (기본 3600, `admin.jwt.access-token-ttl-seconds`로 조정).
+- `refreshToken`: `{sub: operator_uuid, iss: "admin-service", jti: uuid, iat, exp, token_type: "admin_refresh"}`. 발급 시 `admin_operator_refresh_tokens(jti)` row가 함께 INSERT 된다(같은 트랜잭션). TASK-BE-040.
+- `refreshExpiresIn`: 초 단위 TTL (기본 2,592,000 = 30일, `admin.jwt.refresh-token-ttl-seconds`로 조정).
 
 **Response 401 (ENROLLMENT_REQUIRED, 2FA 등록이 필요한 경우 body 확장)**:
 ```json
@@ -365,6 +370,87 @@ base path: `/api/admin`
 | 500 | `AUDIT_FAILURE` | 성공 경로 감사 row 기록 실패 (fail-closed). 실패 경로의 secondary 감사 실패는 삼켜지고 원래 응답이 유지됨 |
 
 감사: `action_code = OPERATOR_LOGIN`, `target_type = OPERATOR`, `target_id = operator_id`, `permission_used = auth.login`, `reason = "<self_login>"`, `twofa_used = TRUE|FALSE` (2FA 경로 여부), `outcome = SUCCESS|FAILURE`.
+
+---
+
+## POST /api/admin/auth/refresh
+
+운영자 refresh JWT를 회전시켜 새 access + refresh 쌍을 발급한다. TASK-BE-040.
+
+**Auth required**: 없음 (body의 refresh JWT가 인증 수단)
+**Required permission**: 없음 (self-managed session)
+**X-Operator-Reason**: 요구 없음 (`admin_actions.reason = "<self_refresh>"` 상수 기록)
+
+**Headers**: 없음
+
+**Request**:
+```json
+{
+  "refreshToken": "string (required, operator refresh JWT)"
+}
+```
+
+**Behavior**:
+1. JWT 서명/exp/iss 검증 + `token_type=admin_refresh` 확인
+2. `admin_operator_refresh_tokens.findByJti(jti)` 조회 — 미존재 → 401 `INVALID_REFRESH_TOKEN`
+3. row.`revoked_at != null` → **재사용 탐지**: 해당 operator의 모든 미revoked refresh token을 `revoke_reason=REUSE_DETECTED`로 일괄 revoke + 401 `REFRESH_TOKEN_REUSE_DETECTED`
+4. 정상: 기존 jti를 `revoke_reason=ROTATED`로 revoke, 새 access + 새 refresh 발급, 새 row insert(`rotated_from`=기존 jti)
+
+**Response 200**:
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "expiresIn": 3600,
+  "refreshToken": "eyJhbGciOi...",
+  "refreshExpiresIn": 2592000
+}
+```
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | `refreshToken` 누락 |
+| 401 | `INVALID_REFRESH_TOKEN` | 서명/exp/issuer 실패, `token_type` 불일치, jti 미등록, operator 불일치 |
+| 401 | `REFRESH_TOKEN_REUSE_DETECTED` | 이미 revoked된 jti의 재사용 — 체인 전체 invalidate |
+
+감사: `action_code = OPERATOR_REFRESH`, `target_type = OPERATOR`, `target_id = operator_id`, `permission_used = auth.refresh`, `reason = "<self_refresh>"`, `outcome = SUCCESS|FAILURE`(REUSE_DETECTED 시 `downstream_detail = "REUSE_DETECTED"`).
+
+---
+
+## POST /api/admin/auth/logout
+
+운영자 자체 logout. access JWT의 jti를 Redis 블랙리스트에 등록하고(잔여 TTL), 선택적으로 제공된 refresh token을 revoke한다. 204를 응답. TASK-BE-040.
+
+**Auth required**: Yes (operator JWT, `token_type=admin`) — 본인 확인 위해 인증 필요. 029-1 bypass 목록에 포함되지 않는다.
+**Required permission**: 없음 (self-managed session)
+**X-Operator-Reason**: 요구 없음 (`admin_actions.reason = "<self_logout>"` 상수 기록)
+
+**Headers**:
+- `Authorization: Bearer <operator-token>`
+
+**Request** (optional body):
+```json
+{
+  "refreshToken": "string (optional)"
+}
+```
+
+**Behavior**:
+- access JWT의 jti를 Redis SETEX `admin:jti:blacklist:{jti}`, TTL = (access exp - now). `OperatorAuthenticationFilter`는 이 키를 매 요청마다 확인하여 hit 시 401 `TOKEN_REVOKED` 반환. Redis 다운 시 fail-closed (401).
+- `refreshToken`이 제공되면 그 jti를 `revoke_reason=LOGOUT`으로 revoke. 미제공이거나 검증 실패 시 무시 (best-effort).
+
+**Response 204**: 본문 없음
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 401 | `TOKEN_INVALID` | operator JWT 누락/만료/변조 |
+| 401 | `TOKEN_REVOKED` | 이미 logout된 jti로 재호출 |
+| 500 | `INTERNAL_ERROR` | Redis blacklist 쓰기 실패 — 클라이언트 재시도 |
+
+감사: `action_code = OPERATOR_LOGOUT`, `target_type = OPERATOR`, `target_id = operator_id`, `permission_used = auth.logout`, `reason = "<self_logout>"`, `outcome = SUCCESS|FAILURE`.
 
 ---
 

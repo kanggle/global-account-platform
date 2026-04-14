@@ -155,6 +155,19 @@ admin-service는 일반 사용자 JWT와 **물리적으로 분리된 자체 IdP(
 - JWKS 응답은 현재 활성 kid + grace period 중인 직전 kid를 모두 포함.
 - cache-control: `public, max-age=300` 권장 (rotation 시 stale window 최대 5분).
 
+### Session Lifecycle (TASK-BE-040)
+
+operator session 수명은 다음 두 토큰으로 구성된다:
+
+- **access JWT** — `token_type=admin`, TTL 1시간 (`admin.jwt.access-token-ttl-seconds`).
+- **refresh JWT** — `token_type=admin_refresh`, TTL 30일 (`admin.jwt.refresh-token-ttl-seconds`). 발급 시 `admin_operator_refresh_tokens(jti)` row가 함께 INSERT 된다(같은 트랜잭션). refresh JWT 본문은 self-contained 하므로 서버는 `jti`만 트래킹.
+
+`POST /api/admin/auth/refresh`는 기존 refresh를 회전한다 — 기존 jti는 `revoke_reason=ROTATED`로 revoke되고 `rotated_from` 필드가 새 row에 기록된다. 이미 revoked된 jti가 다시 제시되면 (재사용 탐지) 해당 operator의 모든 미revoked refresh token이 `REUSE_DETECTED`로 일괄 revoke 되며 401 `REFRESH_TOKEN_REUSE_DETECTED`가 반환된다.
+
+`POST /api/admin/auth/logout`은 access JWT의 jti를 Redis blacklist(`admin:jti:blacklist:{jti}`)에 잔여 TTL 만큼 등록한다. `OperatorAuthenticationFilter`가 매 요청마다 이 키를 확인하여 hit 시 401 `TOKEN_REVOKED`를 반환한다. Redis 다운 시 fail-closed (audit-heavy A10).
+
+이 절은 [security.md §Session Lifecycle](./security.md)에서 더 상세히 규정된다.
+
 ### Migration Trigger (re-open conditions)
 
 다음 조건 중 하나가 충족되면 본 섹션을 재작성:

@@ -49,6 +49,13 @@ public class AdminJwtProperties {
     /** Operator access token TTL (seconds). TASK-BE-029-3 default: 1 hour. */
     private long accessTokenTtlSeconds = 3600L;
 
+    /** Operator refresh token TTL (seconds). TASK-BE-040 default: 30 days. */
+    private long refreshTokenTtlSeconds = 2_592_000L;
+
+    /** Token type written into refresh JWTs. TASK-BE-040. */
+    @NotBlank
+    private String refreshTokenType = "admin_refresh";
+
     public String getActiveSigningKid() {
         return activeSigningKid;
     }
@@ -87,5 +94,21 @@ public class AdminJwtProperties {
 
     public void setAccessTokenTtlSeconds(long accessTokenTtlSeconds) {
         this.accessTokenTtlSeconds = accessTokenTtlSeconds;
+    }
+
+    public long getRefreshTokenTtlSeconds() {
+        return refreshTokenTtlSeconds;
+    }
+
+    public void setRefreshTokenTtlSeconds(long refreshTokenTtlSeconds) {
+        this.refreshTokenTtlSeconds = refreshTokenTtlSeconds;
+    }
+
+    public String getRefreshTokenType() {
+        return refreshTokenType;
+    }
+
+    public void setRefreshTokenType(String refreshTokenType) {
+        this.refreshTokenType = refreshTokenType;
     }
 }

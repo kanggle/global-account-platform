@@ -230,6 +230,9 @@ All services must return errors in the following JSON format:
 | ENROLLMENT_REQUIRED | 401 | Operator's role set requires 2FA but no `admin_operator_totp` row exists. Response body carries a single-use bootstrap token authorising the `/2fa/enroll` sub-tree |
 | INVALID_RECOVERY_CODE | 401 | Submitted recovery code does not match any stored Argon2id hash after normalization (upper-case trim) and optimistic-lock retry |
 | BAD_REQUEST | 400 | Login request body violates the `totpCode` / `recoveryCode` mutual exclusion (both present, or both absent when 2FA is required) |
+| INVALID_REFRESH_TOKEN | 401 | Operator refresh JWT failed signature/exp/issuer/`token_type=admin_refresh` validation, the jti is not registered in `admin_operator_refresh_tokens`, or the operator id does not match the registered row (TASK-BE-040) |
+| REFRESH_TOKEN_REUSE_DETECTED | 401 | An already-revoked refresh jti was presented again — the operator's entire refresh-token chain is bulk-revoked with reason `REUSE_DETECTED` (TASK-BE-040) |
+| TOKEN_REVOKED | 401 | The operator access JWT's jti is on the Redis logout blacklist (`admin:jti:blacklist:{jti}`), or the blacklist lookup itself failed — fail-closed per audit-heavy A10 (TASK-BE-040) |
 
 ---
 

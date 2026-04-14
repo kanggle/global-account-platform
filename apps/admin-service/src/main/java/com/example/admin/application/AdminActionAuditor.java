@@ -51,7 +51,10 @@ public class AdminActionAuditor {
             ActionCode.OPERATOR_2FA_ENROLL, "OPERATOR",
             ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR",
             // TASK-BE-029-3 — login audit rows target the operator themselves.
-            ActionCode.OPERATOR_LOGIN, "OPERATOR"
+            ActionCode.OPERATOR_LOGIN, "OPERATOR",
+            // TASK-BE-040 — refresh rotation + self-logout target the operator themselves.
+            ActionCode.OPERATOR_REFRESH, "OPERATOR",
+            ActionCode.OPERATOR_LOGOUT, "OPERATOR"
     );
 
     /** Reason constant for self-enrollment audit rows (admin-api.md §X-Operator-Reason exceptions). */
@@ -63,6 +66,12 @@ public class AdminActionAuditor {
     public static final String PERMISSION_LOGIN = "auth.login";
     /** Reason constant stamped on self-login audit rows (no X-Operator-Reason header). */
     public static final String REASON_SELF_LOGIN = "<self_login>";
+    /** Synthetic permission strings for self-managed session lifecycle (TASK-BE-040). */
+    public static final String PERMISSION_REFRESH = "auth.refresh";
+    public static final String PERMISSION_LOGOUT = "auth.logout";
+    /** Reason constants stamped on session-lifecycle audit rows (no X-Operator-Reason). */
+    public static final String REASON_SELF_REFRESH = "<self_refresh>";
+    public static final String REASON_SELF_LOGOUT = "<self_logout>";
 
     private final AdminActionJpaRepository repository;
     private final AdminOperatorJpaRepository operatorRepository;
@@ -338,6 +347,8 @@ public class AdminActionAuditor {
             case OPERATOR_2FA_ENROLL -> PERMISSION_2FA_ENROLL;
             case OPERATOR_2FA_VERIFY -> PERMISSION_2FA_VERIFY;
             case OPERATOR_LOGIN -> PERMISSION_LOGIN;
+            case OPERATOR_REFRESH -> PERMISSION_REFRESH;
+            case OPERATOR_LOGOUT -> PERMISSION_LOGOUT;
         };
     }
 

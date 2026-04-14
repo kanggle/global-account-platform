@@ -9,7 +9,10 @@ import com.example.admin.application.exception.InvalidBootstrapTokenException;
 import com.example.admin.application.exception.InvalidCredentialsException;
 import com.example.admin.application.exception.InvalidLoginRequestException;
 import com.example.admin.application.exception.InvalidRecoveryCodeException;
+import com.example.admin.application.exception.InvalidRefreshTokenException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
+import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
+import com.example.admin.application.exception.TokenRevokedException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
@@ -73,6 +76,26 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("INVALID_CREDENTIALS", "Operator credentials are invalid"));
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRefresh(InvalidRefreshTokenException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_REFRESH_TOKEN", "Refresh token is invalid"));
+    }
+
+    @ExceptionHandler(RefreshTokenReuseDetectedException.class)
+    public ResponseEntity<ErrorResponse> handleRefreshReuse(RefreshTokenReuseDetectedException e) {
+        log.warn("refresh token reuse detected: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("REFRESH_TOKEN_REUSE_DETECTED",
+                        "Refresh token chain has been invalidated"));
+    }
+
+    @ExceptionHandler(TokenRevokedException.class)
+    public ResponseEntity<ErrorResponse> handleTokenRevoked(TokenRevokedException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("TOKEN_REVOKED", "Operator token has been revoked"));
     }
 
     @ExceptionHandler(InvalidRecoveryCodeException.class)
