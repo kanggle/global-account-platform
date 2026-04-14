@@ -80,7 +80,14 @@ admin:
     ttl-seconds: ${ADMIN_PERM_CACHE_TTL_SECONDS:10}
     key-prefix: ${ADMIN_PERM_CACHE_KEY_PREFIX:admin:operator:perm:}
   jwt:
-    public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:keys/public.pem}
+    # Active kid used for newly minted operator tokens. Rotation: register a
+    # new kid under signing-keys, flip active-signing-kid, retire old kid
+    # once no tokens remain.
+    active-signing-kid: ${ADMIN_JWT_ACTIVE_KID:v1}
+    # kid -> PKCS#8 PEM private key. Override per environment.
+    signing-keys:
+      v1: ${ADMIN_JWT_V1_PEM:dev-only-placeholder-pkcs8}
+    issuer: ${ADMIN_JWT_ISSUER:admin-service}
     expected-token-type: ${JWT_EXPECTED_TOKEN_TYPE:admin}
   downstream:
     connect-timeout-ms: ${DOWNSTREAM_CONNECT_TIMEOUT:3000}

@@ -45,6 +45,22 @@ public class OperatorAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
+        String method = request.getMethod();
+        // Unauthenticated sub-tree per specs/contracts/http/admin-api.md
+        // "Authentication Exceptions". These endpoints either predate the
+        // operator JWT (login, 2FA bootstrap) or expose only public keys
+        // (JWKS). X-Operator-Reason and RBAC aspect are also skipped for
+        // these paths — see SecurityConfig.filterChain and
+        // RequiresPermissionAspect pointcuts.
+        if ("POST".equalsIgnoreCase(method) && (
+                "/api/admin/auth/login".equals(path)
+                        || "/api/admin/auth/2fa/enroll".equals(path)
+                        || "/api/admin/auth/2fa/verify".equals(path))) {
+            return true;
+        }
+        if ("GET".equalsIgnoreCase(method) && "/.well-known/admin/jwks.json".equals(path)) {
+            return true;
+        }
         return !path.startsWith("/api/admin/");
     }
 

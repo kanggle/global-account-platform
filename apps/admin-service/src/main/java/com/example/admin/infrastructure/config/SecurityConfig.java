@@ -46,6 +46,13 @@ public class SecurityConfig {
                 .addFilterBefore(operatorFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
+                        // Unauthenticated sub-tree (admin-api.md Authentication Exceptions).
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/.well-known/admin/jwks.json").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/api/admin/auth/login",
+                                "/api/admin/auth/2fa/enroll",
+                                "/api/admin/auth/2fa/verify").permitAll()
                         .requestMatchers("/api/admin/**").authenticated()
                         .anyRequest().denyAll()
                 )
