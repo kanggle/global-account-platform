@@ -20,6 +20,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -75,6 +76,11 @@ class AdminIntegrationTest {
     static KafkaContainer kafka = new KafkaContainer(
             DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
 
+    @Container
+    @SuppressWarnings("resource")
+    static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+            .withExposedPorts(6379);
+
     static WireMockServer wireMock;
     static OperatorJwtTestFixture jwt;
     static Path publicKeyFile;
@@ -123,6 +129,8 @@ class AdminIntegrationTest {
         registry.add("spring.datasource.username", mysql::getUsername);
         registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("admin.jwt.public-key-path", () -> "file:" + publicKeyFile.toAbsolutePath().toString().replace('\\', '/'));
         registry.add("admin.auth-service.base-url", () -> "http://localhost:18085");
         registry.add("admin.account-service.base-url", () -> "http://localhost:18085");

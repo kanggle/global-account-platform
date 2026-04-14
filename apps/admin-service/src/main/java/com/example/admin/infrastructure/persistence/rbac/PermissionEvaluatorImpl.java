@@ -15,13 +15,18 @@ import java.util.Set;
 /**
  * DB-backed permission evaluator. Resolves:
  *   admin_operators (status=ACTIVE) → admin_operator_roles → admin_role_permissions
- * on every invocation; no cache (Redis 10s TTL deferred to TASK-BE-028c).
+ * on every invocation.
  *
- * Fail-closed: any unexpected exception during evaluation is treated as deny and
- * logged for operational triage.
+ * <p>Since TASK-BE-028c this is the <em>origin</em> (no cache) — the Redis-backed
+ * 10s TTL cache is applied by {@code CachingPermissionEvaluator}, which is the
+ * {@code @Primary} {@link PermissionEvaluator} bean and delegates to this class
+ * on miss / degrade.
+ *
+ * <p>Fail-closed: any unexpected exception during evaluation is treated as deny
+ * and logged for operational triage.
  */
 @Slf4j
-@Component
+@Component("originPermissionEvaluator")
 @RequiredArgsConstructor
 public class PermissionEvaluatorImpl implements PermissionEvaluator {
 
@@ -61,7 +66,12 @@ public class PermissionEvaluatorImpl implements PermissionEvaluator {
         }
     }
 
-    private Set<String> loadPermissions(String operatorId) {
+    /**
+     * Public so the caching decorator can fetch the canonical permission set
+     * on cache miss without re-implementing the join logic.
+     */
+    @Transactional(readOnly = true)
+    public Set<String> loadPermissions(String operatorId) {
         // operatorId is the external UUID (JWT `sub`). Translate to the internal
         // BIGINT PK before joining role/permission tables (TASK-BE-028b1).
         Optional<AdminOperatorJpaEntity> op = operators.findByOperatorId(operatorId);

@@ -2,6 +2,7 @@ package com.example.admin.application.event;
 
 import com.example.admin.application.Outcome;
 import com.example.admin.application.util.AdminPiiMaskingUtils;
+import com.example.common.id.UuidV7;
 import com.example.messaging.outbox.OutboxWriter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,7 +12,6 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Publishes {@code admin.action.performed} events to the shared outbox in the
@@ -47,7 +47,9 @@ public class AdminEventPublisher {
 
     public void publishAdminActionPerformed(Envelope env) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("eventId", UUID.randomUUID().toString());
+        // UUID v7 carries a 48-bit ms timestamp in its MSBs; improves outbox
+        // index locality and natural time ordering (TASK-BE-028c).
+        payload.put("eventId", UuidV7.randomString());
         payload.put("occurredAt", env.occurredAt() == null ? null : env.occurredAt().toString());
 
         Map<String, Object> actor = new LinkedHashMap<>();
