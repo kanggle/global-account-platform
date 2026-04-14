@@ -44,21 +44,23 @@ public final class AdminPiiMaskingUtils {
     }
 
     /**
-     * Mask a phone number: keep country/prefix up to the first 3 digits and
-     * the last 2 digits; replace the middle with {@code "***"}. Non-digit
-     * separators are preserved.
+     * Mask a phone number per {@code rules/traits/regulated.md} R4 canonical
+     * format {@code "010-****-1234"}: strip separators, keep the first 3
+     * digits, replace the middle with {@code "****"}, and keep the last 4
+     * digits. Numbers with 7 or fewer digits are returned unchanged (consistent
+     * with the existing short-number guard).
      *
      * <pre>
-     *   "+82-10-1234-5678" -> "+82-10-***-78"
-     *   "01012345678"      -> "010***78"
+     *   "01012345678"      -> "010-****-5678"
+     *   "+82-10-1234-5678" -> "821-****-5678"
      * </pre>
      */
     public static String maskPhone(String phone) {
         if (phone == null) return null;
         String digits = phone.replaceAll("\\D", "");
-        if (digits.length() <= 5) return phone;
+        if (digits.length() <= 7) return phone;
         String head = digits.substring(0, 3);
-        String tail = digits.substring(digits.length() - 2);
-        return head + "***" + tail;
+        String tail = digits.substring(digits.length() - 4);
+        return head + "-****-" + tail;
     }
 }

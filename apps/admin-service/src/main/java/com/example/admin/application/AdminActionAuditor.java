@@ -5,6 +5,7 @@ import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.domain.rbac.Permission;
 import com.example.admin.infrastructure.persistence.AdminActionJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminActionJpaRepository;
+import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,7 +49,25 @@ public class AdminActionAuditor {
     );
 
     private final AdminActionJpaRepository repository;
+    private final AdminOperatorJpaRepository operatorRepository;
     private final AdminEventPublisher eventPublisher;
+
+    /**
+     * Resolves the external operator UUID (JWT {@code sub}) to the internal
+     * {@code admin_operators.id} BIGINT FK. Fail-closed per audit-heavy A10:
+     * if the operator row is missing, throw {@link AuditFailureException}
+     * rather than writing a null FK.
+     */
+    private Long resolveOperatorPk(String operatorUuid) {
+        if (operatorUuid == null) {
+            throw new AuditFailureException(
+                    "Cannot resolve admin_operators.id: operator UUID is null");
+        }
+        return operatorRepository.findByOperatorId(operatorUuid)
+                .orElseThrow(() -> new AuditFailureException(
+                        "admin_operators row not found for operatorId=" + operatorUuid))
+                .getId();
+    }
 
     public String newAuditId() {
         return UUID.randomUUID().toString();
@@ -65,12 +84,13 @@ public class AdminActionAuditor {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordStart(StartRecord record) {
         try {
+            Long operatorPk = resolveOperatorPk(record.operator().operatorId());
             AdminActionJpaEntity entity = AdminActionJpaEntity.create(
                     record.auditId(),
                     record.actionCode().name(),
                     record.operator().operatorId(),
                     "UNKNOWN", // actor_role retained as legacy column; no longer carried in JWT
-                    null, // operator_id BIGINT FK resolution via PermissionEvaluator lookup is deferred
+                    operatorPk,
                     permissionForActionCode(record.actionCode()),
                     record.targetType(),
                     record.targetId(),
@@ -118,12 +138,13 @@ public class AdminActionAuditor {
     @Transactional
     public void record(AuditRecord record) {
         try {
+            Long operatorPk = resolveOperatorPk(record.operator().operatorId());
             AdminActionJpaEntity entity = AdminActionJpaEntity.create(
                     record.auditId(),
                     record.actionCode().name(),
                     record.operator().operatorId(),
                     "UNKNOWN",
-                    null,
+                    operatorPk,
                     permissionForActionCode(record.actionCode()),
                     record.targetType(),
                     record.targetId(),
@@ -181,12 +202,13 @@ public class AdminActionAuditor {
         String detail = "PERMISSION_NOT_GRANTED endpoint=" + endpoint + " method=" + method;
 
         try {
+            Long operatorPk = resolveOperatorPk(operatorId);
             AdminActionJpaEntity entity = AdminActionJpaEntity.create(
                     auditId,
                     actionCode != null ? actionCode.name() : "UNKNOWN",
                     operatorId,
                     "UNKNOWN",
-                    null,
+                    operatorPk,
                     resolvedPermission,
                     targetType,
                     resolvedTargetId,

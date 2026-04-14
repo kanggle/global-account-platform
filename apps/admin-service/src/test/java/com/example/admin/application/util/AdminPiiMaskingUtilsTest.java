@@ -41,19 +41,24 @@ class AdminPiiMaskingUtilsTest {
     }
 
     @Test
-    void maskPhone_keeps_prefix_and_last_two_digits() {
+    void maskPhone_keeps_prefix_and_last_four_digits_per_R4() {
         assertThat(AdminPiiMaskingUtils.maskPhone("01012345678"))
-                .isEqualTo("010***78");
+                .isEqualTo("010-****-5678");
     }
 
     @Test
-    void maskPhone_handles_formatted_input() {
+    void maskPhone_handles_formatted_input_per_R4() {
         assertThat(AdminPiiMaskingUtils.maskPhone("+82-10-1234-5678"))
-                .isEqualTo("821***78");
+                .isEqualTo("821-****-5678");
     }
 
     @Test
     void maskPhone_returns_input_for_short_numbers() {
         assertThat(AdminPiiMaskingUtils.maskPhone("1234")).isEqualTo("1234");
+    }
+
+    @Test
+    void maskPhone_returns_input_for_seven_digit_numbers() {
+        assertThat(AdminPiiMaskingUtils.maskPhone("1234567")).isEqualTo("1234567");
     }
 }
