@@ -8,6 +8,37 @@ base path: `/api/admin`
 
 ---
 
+## Authentication
+
+모든 `/api/admin/*` 경로는 기본적으로 **operator JWT 필수**이다:
+
+- `Authorization: Bearer <operator-token>` 필수 (`token_type = "admin"`, `iss = "admin-service"`)
+- 토큰 발급·서명·검증은 admin-service 자체 IdP가 소유 ([specs/services/admin-service/architecture.md](../../services/admin-service/architecture.md) Admin IdP Boundary 참조)
+- `X-Operator-Reason` 헤더 필수 (감사 사유)
+
+### Exceptions (no operator JWT required)
+
+아래 서브트리는 위 기본 규칙의 **예외**로, 정식 operator JWT 없이도 호출 가능하다. `OperatorAuthenticationFilter.shouldNotFilter`의 완화 범위는 **정확히 이 경로들로 한정**된다.
+
+| Method | Path | 대체 인증 | X-Operator-Reason |
+|---|---|---|---|
+| `POST` | `/api/admin/auth/login` | 없음 (username + password + 선택적 TOTP 코드 body) | 요구 없음 |
+| `POST` | `/api/admin/auth/2fa/enroll` | **bootstrap token 필수** | 요구 없음 |
+| `POST` | `/api/admin/auth/2fa/verify` | **bootstrap token 필수** | 요구 없음 |
+| `GET` | `/.well-known/admin/jwks.json` | 없음 (public key 노출) | 요구 없음 |
+
+위 경로 외의 어떤 `/api/admin/*` 요청도 operator JWT + `X-Operator-Reason`이 없으면 401/400으로 거부된다.
+
+#### Bootstrap Token (2FA sub-tree)
+
+`/api/admin/auth/2fa/enroll` 및 `/api/admin/auth/2fa/verify`는 정식 operator JWT 대신 **bootstrap token**(`token_type = "admin_bootstrap"`, TTL 10분, scope = `["2fa_enroll", "2fa_verify"]`, `jti` 1회 소비)을 요구한다. bootstrap token은 `POST /api/admin/auth/login`이 password verify 성공 + 2FA 미완료 상태일 때 응답 body로 발급한다. 상세 규약은 [specs/services/admin-service/security.md](../../services/admin-service/security.md) "Bootstrap Token" 섹션 참조. 구현은 TASK-BE-029.
+
+#### X-Operator-Reason in Exceptions sub-tree
+
+본 서브트리의 요청은 "다른 대상에 대한 운영 명령"이 아니라 **요청자 본인의 인증 플로우**이므로 `X-Operator-Reason` 헤더를 요구하지 않는다. `admin_actions` 기록이 발생하는 경우(예: enroll/verify)는 reason 필드에 상수 `"<self_enrollment>"`로 기록한다.
+
+---
+
 ## Authorization Model
 
 모든 mutation 및 read endpoint는 필요한 **permission key**를 선언한다 ([specs/services/admin-service/rbac.md](../../services/admin-service/rbac.md)). 운영자의 role 집합이 보유한 permission 합집합에 요청 endpoint의 permission이 포함되어야 통과한다. 누락 시 `403 PERMISSION_DENIED`.
