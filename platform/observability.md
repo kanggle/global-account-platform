@@ -96,3 +96,12 @@ Each service must define its own business metrics in `specs/services/<service>/o
 # Change Rule
 
 New metrics or tracing requirements must be documented here before implementation.
+
+---
+
+# Deprecated Metrics
+
+- `security_consumer_lag` (aggregate, single-value): removed in TASK-BE-031-fix.
+  Use the per-partition gauge `kafka_consumer_lag{topic,group,partition}` and
+  aggregate in the query layer, e.g.
+  `sum(kafka_consumer_lag{service="security-service"})`.
