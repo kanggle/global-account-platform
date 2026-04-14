@@ -1,6 +1,7 @@
 package com.example.admin.presentation;
 
 import com.example.admin.application.AdminActionAuditor;
+import com.example.admin.application.AdminLoginService;
 import com.example.admin.application.TotpEnrollmentService;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.infrastructure.security.BootstrapAuthenticationFilter;
@@ -50,6 +51,7 @@ class AdminAuthControllerTest {
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @MockBean TotpEnrollmentService totpService;
+    @MockBean AdminLoginService loginService;
     @MockBean AdminActionAuditor auditor;
     @MockBean BootstrapTokenService bootstrapTokenService;
 

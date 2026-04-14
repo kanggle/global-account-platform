@@ -2,12 +2,19 @@ package com.example.admin.presentation;
 
 import com.example.admin.application.ActionCode;
 import com.example.admin.application.AdminActionAuditor;
+import com.example.admin.application.AdminLoginService;
 import com.example.admin.application.OperatorContext;
 import com.example.admin.application.Outcome;
 import com.example.admin.application.TotpEnrollmentService;
+import com.example.admin.application.exception.EnrollmentRequiredException;
 import com.example.admin.application.exception.InvalidBootstrapTokenException;
+import com.example.admin.application.exception.InvalidCredentialsException;
+import com.example.admin.application.exception.InvalidLoginRequestException;
+import com.example.admin.application.exception.InvalidRecoveryCodeException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.infrastructure.security.BootstrapContext;
+import com.example.admin.presentation.dto.AdminLoginRequest;
+import com.example.admin.presentation.dto.AdminLoginResponse;
 import com.example.admin.presentation.dto.TotpEnrollResponse;
 import com.example.admin.presentation.dto.TotpVerifyRequest;
 import com.example.admin.presentation.dto.TotpVerifyResponse;
@@ -26,8 +33,9 @@ import java.time.Instant;
  * admin-service authentication endpoints that sit BEFORE the operator JWT
  * is issued. See admin-api.md §Authentication Exceptions.
  *
- * <p>Only the 2FA enroll/verify endpoints are implemented in 029-2 — the
- * {@code /login} endpoint lands in 029-3.
+ * <p>029-2 shipped the 2FA enroll/verify endpoints (bootstrap-token-auth);
+ * 029-3 adds {@code /login} which accepts password + optional 2FA and mints
+ * the operator JWT (or a bootstrap token when enrollment is outstanding).
  */
 @RestController
 @RequestMapping("/api/admin/auth")
@@ -35,7 +43,44 @@ import java.time.Instant;
 public class AdminAuthController {
 
     private final TotpEnrollmentService totpService;
+    private final AdminLoginService loginService;
     private final AdminActionAuditor auditor;
+
+    @PostMapping("/login")
+    public ResponseEntity<AdminLoginResponse> login(@Valid @RequestBody AdminLoginRequest body) {
+        Instant startedAt = Instant.now();
+        String auditId = auditor.newAuditId();
+        String operatorId = body.operatorId();
+        String idempotencyKey = "login:" + auditId;
+
+        try {
+            AdminLoginService.LoginResult result = loginService.login(
+                    operatorId, body.password(), body.totpCode(), body.recoveryCode());
+            safeRecordLogin(auditId, operatorId, Outcome.SUCCESS, null,
+                    result.twofaUsed(), idempotencyKey, startedAt);
+            return ResponseEntity.ok(new AdminLoginResponse(result.accessToken(), result.expiresIn()));
+        } catch (InvalidCredentialsException ex) {
+            safeRecordLogin(auditId, operatorId, Outcome.FAILURE, "INVALID_CREDENTIALS",
+                    false, idempotencyKey, startedAt);
+            throw ex;
+        } catch (EnrollmentRequiredException ex) {
+            safeRecordLogin(auditId, operatorId, Outcome.FAILURE, "ENROLLMENT_REQUIRED",
+                    false, idempotencyKey, startedAt);
+            throw ex;
+        } catch (InvalidTwoFaCodeException ex) {
+            safeRecordLogin(auditId, operatorId, Outcome.FAILURE, "INVALID_2FA_CODE",
+                    false, idempotencyKey, startedAt);
+            throw ex;
+        } catch (InvalidRecoveryCodeException ex) {
+            safeRecordLogin(auditId, operatorId, Outcome.FAILURE, "INVALID_RECOVERY_CODE",
+                    false, idempotencyKey, startedAt);
+            throw ex;
+        } catch (InvalidLoginRequestException ex) {
+            safeRecordLogin(auditId, operatorId, Outcome.FAILURE, "BAD_REQUEST",
+                    false, idempotencyKey, startedAt);
+            throw ex;
+        }
+    }
 
     @PostMapping("/2fa/enroll")
     public ResponseEntity<TotpEnrollResponse> enroll(HttpServletRequest request) {
@@ -121,6 +166,37 @@ public class AdminAuthController {
                     Instant.now()));
         } catch (RuntimeException ignored) {
             // Best-effort on failure path — do not mask the original exception.
+        }
+    }
+
+    private void safeRecordLogin(String auditId,
+                                 String operatorId,
+                                 Outcome outcome,
+                                 String detail,
+                                 boolean twofaUsed,
+                                 String idempotencyKey,
+                                 Instant startedAt) {
+        try {
+            auditor.recordLogin(new AdminActionAuditor.LoginAuditRecord(
+                    auditId,
+                    new OperatorContext(operatorId, null),
+                    "OPERATOR",
+                    operatorId,
+                    AdminActionAuditor.REASON_SELF_LOGIN,
+                    outcome == Outcome.SUCCESS ? idempotencyKey : idempotencyKey + ":failed",
+                    outcome,
+                    detail,
+                    twofaUsed,
+                    startedAt,
+                    Instant.now()));
+        } catch (RuntimeException ex) {
+            // Audit fail-closed is already enforced inside recordLogin for the
+            // success path (AuditFailureException propagates). On FAILURE paths
+            // we intentionally swallow secondary audit errors so the original
+            // login failure (401/400) is not masked.
+            if (outcome == Outcome.SUCCESS) {
+                throw ex;
+            }
         }
     }
 

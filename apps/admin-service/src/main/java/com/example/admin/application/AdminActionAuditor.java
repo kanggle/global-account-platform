@@ -49,7 +49,9 @@ public class AdminActionAuditor {
             // TASK-BE-029-2 — self-directed 2FA enroll/verify. Target is the
             // operator themselves (bootstrap context's operator_id).
             ActionCode.OPERATOR_2FA_ENROLL, "OPERATOR",
-            ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR"
+            ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR",
+            // TASK-BE-029-3 — login audit rows target the operator themselves.
+            ActionCode.OPERATOR_LOGIN, "OPERATOR"
     );
 
     /** Reason constant for self-enrollment audit rows (admin-api.md §X-Operator-Reason exceptions). */
@@ -57,6 +59,10 @@ public class AdminActionAuditor {
     /** Synthetic permission strings for the unauthenticated 2FA sub-tree (security.md §Bootstrap Token). */
     public static final String PERMISSION_2FA_ENROLL = "auth.2fa_enroll";
     public static final String PERMISSION_2FA_VERIFY = "auth.2fa_verify";
+    /** Synthetic permission string used on the operator self-login audit row (029-3). */
+    public static final String PERMISSION_LOGIN = "auth.login";
+    /** Reason constant stamped on self-login audit rows (no X-Operator-Reason header). */
+    public static final String REASON_SELF_LOGIN = "<self_login>";
 
     private final AdminActionJpaRepository repository;
     private final AdminOperatorJpaRepository operatorRepository;
@@ -331,6 +337,7 @@ public class AdminActionAuditor {
             // 2FA sub-tree (no grantable permission; treat as sentinel for audit).
             case OPERATOR_2FA_ENROLL -> PERMISSION_2FA_ENROLL;
             case OPERATOR_2FA_VERIFY -> PERMISSION_2FA_VERIFY;
+            case OPERATOR_LOGIN -> PERMISSION_LOGIN;
         };
     }
 
@@ -372,6 +379,53 @@ public class AdminActionAuditor {
         }
     }
 
+    /**
+     * Login-path single-shot write (TASK-BE-029-3). Identical to
+     * {@link #record(AuditRecord)} except that the row's {@code twofa_used}
+     * column is stamped from {@code record.twofaUsed()} BEFORE the INSERT.
+     * The canonical outbox envelope is emitted unchanged (no {@code meta.twofa_used}
+     * field — column-only per task scope).
+     */
+    @Transactional
+    public void recordLogin(LoginAuditRecord record) {
+        try {
+            Long operatorPk = resolveOperatorPk(record.operator().operatorId());
+            AdminActionJpaEntity entity = AdminActionJpaEntity.create(
+                    record.auditId(),
+                    ActionCode.OPERATOR_LOGIN.name(),
+                    record.operator().operatorId(),
+                    "UNKNOWN",
+                    operatorPk,
+                    PERMISSION_LOGIN,
+                    record.targetType(),
+                    record.targetId(),
+                    record.reason(),
+                    null,
+                    record.idempotencyKey(),
+                    record.outcome().name(),
+                    record.downstreamDetail(),
+                    record.startedAt(),
+                    record.completedAt());
+            entity.markTwofaUsed(record.twofaUsed());
+            repository.save(entity);
+            eventPublisher.publishAdminActionPerformed(new AdminEventPublisher.Envelope(
+                    record.operator().operatorId(),
+                    record.operator().jti(),
+                    PERMISSION_LOGIN,
+                    currentEndpoint(),
+                    currentMethod(),
+                    normalizeTargetType(record.targetType(), ActionCode.OPERATOR_LOGIN),
+                    record.targetId(),
+                    record.outcome(),
+                    record.downstreamDetail(),
+                    record.startedAt()));
+        } catch (RuntimeException ex) {
+            log.error("Failed to write OPERATOR_LOGIN admin_actions row (fail-closed): auditId={}",
+                    record.auditId(), ex);
+            throw new AuditFailureException("Failed to record login audit", ex);
+        }
+    }
+
     /** Single-shot record for {@link #record(AuditRecord)}. */
     public record AuditRecord(
             String auditId,
@@ -384,6 +438,26 @@ public class AdminActionAuditor {
             String idempotencyKey,
             Outcome outcome,
             String downstreamDetail,
+            Instant startedAt,
+            Instant completedAt
+    ) {}
+
+    /**
+     * Audit record specialised for the login path (029-3). Unlike
+     * {@link AuditRecord} it carries the {@code twofaUsed} column value so the
+     * caller does not need to reach into the JPA entity. {@code actionCode} is
+     * fixed to {@link ActionCode#OPERATOR_LOGIN} by {@link #recordLogin}.
+     */
+    public record LoginAuditRecord(
+            String auditId,
+            OperatorContext operator,
+            String targetType,
+            String targetId,
+            String reason,
+            String idempotencyKey,
+            Outcome outcome,
+            String downstreamDetail,
+            boolean twofaUsed,
             Instant startedAt,
             Instant completedAt
     ) {}

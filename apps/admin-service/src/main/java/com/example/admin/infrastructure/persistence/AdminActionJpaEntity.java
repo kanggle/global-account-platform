@@ -145,6 +145,17 @@ public class AdminActionJpaEntity {
      * {@code trg_admin_actions_finalize_only} enforces that only
      * {@code outcome}, {@code downstream_detail}, and {@code completed_at} may change.
      */
+    /**
+     * Sets the {@code twofa_used} column prior to INSERT. Must be called before
+     * {@link AdminActionJpaRepository#save} — the V0013 finalize-only trigger
+     * forbids mutating this column after the IN_PROGRESS → terminal transition.
+     * Used only by the login path (TASK-BE-029-3); enroll/verify rows leave it
+     * at the default FALSE.
+     */
+    public void markTwofaUsed(boolean value) {
+        this.twofaUsed = value;
+    }
+
     public void finalizeOutcome(String outcome, String downstreamDetail, Instant completedAt) {
         this.outcome = outcome;
         this.downstreamDetail = downstreamDetail;

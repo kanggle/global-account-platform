@@ -74,4 +74,16 @@ public class AdminOperatorTotpJpaEntity {
     public void markUsed(Instant at) {
         this.lastUsedAt = at;
     }
+
+    /**
+     * Replace the {@code recovery_codes_hashed} JSON array after consuming a
+     * recovery code (TASK-BE-029-3). Also updates {@code last_used_at} so the
+     * audit trail reflects successful 2FA even on the recovery-code path.
+     * Optimistic-lock protection is enforced by the {@link jakarta.persistence.Version}
+     * field on save.
+     */
+    public void replaceRecoveryHashes(String recoveryCodesHashed, Instant usedAt) {
+        this.recoveryCodesHashed = recoveryCodesHashed;
+        this.lastUsedAt = usedAt;
+    }
 }

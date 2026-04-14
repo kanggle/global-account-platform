@@ -46,6 +46,9 @@ public class AdminJwtProperties {
     @NotBlank
     private String issuer = "admin-service";
 
+    /** Operator access token TTL (seconds). TASK-BE-029-3 default: 1 hour. */
+    private long accessTokenTtlSeconds = 3600L;
+
     public String getActiveSigningKid() {
         return activeSigningKid;
     }
@@ -76,5 +79,13 @@ public class AdminJwtProperties {
 
     public void setIssuer(String issuer) {
         this.issuer = issuer;
+    }
+
+    public long getAccessTokenTtlSeconds() {
+        return accessTokenTtlSeconds;
+    }
+
+    public void setAccessTokenTtlSeconds(long accessTokenTtlSeconds) {
+        this.accessTokenTtlSeconds = accessTokenTtlSeconds;
     }
 }

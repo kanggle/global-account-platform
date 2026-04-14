@@ -305,6 +305,69 @@ base path: `/api/admin`
 
 ---
 
+## POST /api/admin/auth/login
+
+운영자 자체 로그인. Argon2id 패스워드 검증 + (role 중 `require_2fa=TRUE`가 있으면) TOTP 또는 recovery code 검증 후 operator JWT를 발급한다.
+
+**Auth required**: 없음 (body 기반 인증)
+**Required permission**: 없음 (self-login)
+**X-Operator-Reason**: 요구 없음 (`admin_actions.reason = "<self_login>"` 상수 기록)
+
+**Headers**: 없음
+
+**Request**:
+```json
+{
+  "operatorId": "string (UUID v7, required)",
+  "password":   "string (required)",
+  "totpCode":   "string (6 digits, optional)",
+  "recoveryCode": "string (optional, XXXX-XXXX-XXXX 형식)"
+}
+```
+
+- `totpCode`와 `recoveryCode`는 **택일**. 둘 다 제공하거나 둘 다 빠지면 400.
+- `require_2fa=FALSE` 운영자(=2FA 비요구 role 집합)는 둘 다 생략하고 호출한다.
+- `recoveryCode`는 서버가 대문자/하이픈 normalize 후 Argon2id `verify` 비교한다.
+
+**Response 200**:
+```json
+{
+  "accessToken": "eyJhbGciOi... (operator JWT)",
+  "expiresIn": 3600
+}
+```
+
+- `accessToken`: `{sub: operator_uuid, iss: "admin-service", jti: uuidV7, iat, exp, token_type: "admin"}`.
+- `expiresIn`: 초 단위 TTL (기본 3600, `admin.jwt.access-token-ttl-seconds`로 조정).
+
+**Response 401 (ENROLLMENT_REQUIRED, 2FA 등록이 필요한 경우 body 확장)**:
+```json
+{
+  "code": "ENROLLMENT_REQUIRED",
+  "message": "Operator must complete 2FA enrollment before login",
+  "bootstrapToken": "eyJhbGciOi...",
+  "bootstrapExpiresIn": 600
+}
+```
+
+`bootstrapToken`은 `POST /api/admin/auth/2fa/enroll` 및 `/2fa/verify`에만 사용 가능한 1회용 토큰이다 ([security.md §Bootstrap Token](../../services/admin-service/security.md)).
+
+**Errors**:
+
+| Status | Code | 조건 |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | 필수 필드(`operatorId`/`password`) 누락 또는 형식 오류 |
+| 400 | `BAD_REQUEST` | `totpCode`와 `recoveryCode`가 동시에 제공되었거나, 2FA가 필요한데 둘 다 미제공 |
+| 401 | `INVALID_CREDENTIALS` | operator 조회 미스 또는 password_hash 불일치. 미스 경로도 dummy Argon2id verify 수행 (타이밍 완화) |
+| 401 | `ENROLLMENT_REQUIRED` | 2FA 필수이나 `admin_operator_totp` row 부재. body에 `bootstrapToken` 포함 |
+| 401 | `INVALID_2FA_CODE` | TOTP 검증 실패 (±1 window 밖) |
+| 401 | `INVALID_RECOVERY_CODE` | recovery code가 어떤 저장된 hash와도 일치하지 않음 (optimistic lock 1회 retry 후) |
+| 500 | `AUDIT_FAILURE` | 성공 경로 감사 row 기록 실패 (fail-closed). 실패 경로의 secondary 감사 실패는 삼켜지고 원래 응답이 유지됨 |
+
+감사: `action_code = OPERATOR_LOGIN`, `target_type = OPERATOR`, `target_id = operator_id`, `permission_used = auth.login`, `reason = "<self_login>"`, `twofa_used = TRUE|FALSE` (2FA 경로 여부), `outcome = SUCCESS|FAILURE`.
+
+---
+
 ## POST /api/admin/auth/2fa/enroll
 
 운영자 자신의 TOTP 2FA 최초(또는 재) 등록. 서버가 160-bit secret 생성·AES-GCM 암호화 저장, Argon2id hash된 10개 recovery codes를 동시 발급한다.
