@@ -155,3 +155,21 @@ backend
 - [ ] 구현·테스트 완료
 - [ ] 모든 grep 기준 통과
 - [ ] Ready for review
+
+---
+
+## Review Outcome
+
+**Reviewer**: code-reviewer agent
+**Review date**: 2026-04-14
+**Verdict**: FIX REQUIRED
+
+Two issues promoted to a fix task `TASK-BE-028b2-fix-operator-id-fk-and-phone-mask.md`:
+
+### Critical
+- `apps/admin-service/src/main/java/com/example/admin/application/AdminActionAuditor.java:73` — `admin_actions.operator_id` BIGINT FK is always written as `null` in all three audit write paths (`recordStart`, `recordDenied`, `record`). `data-model.md` declares this column `NOT NULL`. DB migration V0008 also created it nullable, contradicting the spec. Fix task: resolve external UUID → internal BIGINT via `AdminOperatorJpaRepository.findByOperatorId` before each INSERT; add V0011 migration to enforce `NOT NULL` at DB level.
+
+### Warning
+- `apps/admin-service/src/main/java/com/example/admin/application/util/AdminPiiMaskingUtils.java:57-62` + `src/test/.../AdminPiiMaskingUtilsTest.java:47-51` — `maskPhone` retains only the last 2 digits but `rules/traits/regulated.md` R4 canonical format is `010-****-1234` (last 4 digits). Fix: change tail length to 4 and update tests.
+
+All other acceptance criteria (grep gates, envelope shape, cross-permission DENIED path, deny-by-default aspect, V0010 trigger guard, version INT migration, PiiMaskingUtils placement, OperatorRole deletion, @PreAuthorize removal, TODO sweep) are satisfied. Implementation is structurally sound.
