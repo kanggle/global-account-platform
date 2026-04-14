@@ -37,12 +37,14 @@ public class BootstrapAuthenticationFilter extends OncePerRequestFilter {
         this.tokenService = tokenService;
     }
 
+    private static final String PATH_ENROLL = "/api/admin/auth/2fa/enroll";
+    private static final String PATH_VERIFY = "/api/admin/auth/2fa/verify";
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         if (!"POST".equalsIgnoreCase(request.getMethod())) return true;
         String path = request.getRequestURI();
-        return !("/api/admin/auth/2fa/enroll".equals(path)
-                || "/api/admin/auth/2fa/verify".equals(path));
+        return !(PATH_ENROLL.equals(path) || PATH_VERIFY.equals(path));
     }
 
     @Override
@@ -55,9 +57,10 @@ public class BootstrapAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
         String token = header.substring(BEARER_PREFIX.length()).trim();
+        String requiredScope = requiredScopeFor(request.getRequestURI());
         BootstrapContext ctx;
         try {
-            ctx = tokenService.verifyAndConsume(token);
+            ctx = tokenService.verifyAndConsume(token, requiredScope);
         } catch (InvalidBootstrapTokenException e) {
             log.debug("bootstrap token rejected: {}", e.getMessage());
             unauthorized(response, "Bootstrap token invalid or expired");
@@ -65,6 +68,12 @@ public class BootstrapAuthenticationFilter extends OncePerRequestFilter {
         }
         request.setAttribute(BootstrapContext.ATTRIBUTE, ctx);
         filterChain.doFilter(request, response);
+    }
+
+    private static String requiredScopeFor(String path) {
+        if (PATH_ENROLL.equals(path)) return BootstrapTokenService.SCOPE_ENROLL;
+        if (PATH_VERIFY.equals(path)) return BootstrapTokenService.SCOPE_VERIFY;
+        return null;
     }
 
     private static void unauthorized(HttpServletResponse response, String message) throws IOException {

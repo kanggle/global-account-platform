@@ -58,7 +58,7 @@ class AdminAuthControllerTest {
     @BeforeEach
     void setup() {
         // Default happy path for the bootstrap filter: token parses and returns a context.
-        when(bootstrapTokenService.verifyAndConsume(eq("fake.bootstrap.token")))
+        when(bootstrapTokenService.verifyAndConsume(eq("fake.bootstrap.token"), any()))
                 .thenReturn(new BootstrapContext(OPERATOR_ID, JTI));
         when(auditor.newAuditId()).thenReturn("audit-1");
     }

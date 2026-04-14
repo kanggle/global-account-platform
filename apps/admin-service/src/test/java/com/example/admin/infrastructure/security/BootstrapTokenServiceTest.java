@@ -103,6 +103,37 @@ class BootstrapTokenServiceTest {
     }
 
     @Test
+    void issueIncludesScopeClaimAndVerifiesWithMatchingScope() {
+        when(valueOps.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+
+        BootstrapTokenService.Issued issued = service.issue(
+                "op-1",
+                java.util.Set.of(BootstrapTokenService.SCOPE_ENROLL, BootstrapTokenService.SCOPE_VERIFY));
+        // verify claim present via JwtVerifier
+        Map<String, Object> decoded = verifier.verify(issued.token());
+        assertThat(decoded.get("scope"))
+                .isInstanceOf(java.util.List.class)
+                .asList()
+                .containsExactlyInAnyOrder(BootstrapTokenService.SCOPE_ENROLL, BootstrapTokenService.SCOPE_VERIFY);
+
+        BootstrapContext ctx = service.verifyAndConsume(issued.token(), BootstrapTokenService.SCOPE_ENROLL);
+        assertThat(ctx.operatorId()).isEqualTo("op-1");
+    }
+
+    @Test
+    void verifyRejectsTokenMissingRequiredScope() {
+        when(valueOps.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+
+        BootstrapTokenService.Issued issued = service.issue(
+                "op-1", java.util.Set.of(BootstrapTokenService.SCOPE_ENROLL));
+
+        assertThatThrownBy(() ->
+                service.verifyAndConsume(issued.token(), BootstrapTokenService.SCOPE_VERIFY))
+                .isInstanceOf(InvalidBootstrapTokenException.class)
+                .hasMessageContaining("scope");
+    }
+
+    @Test
     void redisOutageFailsClosed() {
         when(valueOps.setIfAbsent(anyString(), anyString(), any(Duration.class)))
                 .thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("down"));

@@ -10,9 +10,13 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Issues and verifies the short-lived bootstrap token used by the 2FA
@@ -38,6 +42,11 @@ public class BootstrapTokenService {
     public static final Duration JTI_TTL = Duration.ofMinutes(15);
     private static final String JTI_KEY_PREFIX = "admin:bootstrap:jti:";
 
+    public static final String SCOPE_ENROLL = "2fa_enroll";
+    public static final String SCOPE_VERIFY = "2fa_verify";
+    /** Default scope set minted on login enrollment-required path. */
+    public static final Set<String> DEFAULT_SCOPES = Set.of(SCOPE_ENROLL, SCOPE_VERIFY);
+
     private final JwtSigner signer;
     private final JwtVerifier verifier;
     private final StringRedisTemplate redis;
@@ -58,7 +67,19 @@ public class BootstrapTokenService {
      * for having already authenticated the operator via password (029-3 login).
      */
     public Issued issue(String operatorId) {
+        return issue(operatorId, DEFAULT_SCOPES);
+    }
+
+    /**
+     * Mints a bootstrap token with an explicit {@code scope} claim (per
+     * security.md §Bootstrap Token / admin-api.md §Bootstrap Token).
+     */
+    public Issued issue(String operatorId, Collection<String> scopes) {
         Objects.requireNonNull(operatorId, "operatorId must not be null");
+        Objects.requireNonNull(scopes, "scopes must not be null");
+        if (scopes.isEmpty()) {
+            throw new IllegalArgumentException("scopes must not be empty");
+        }
         Instant now = Instant.now();
         String jti = UuidV7.randomString();
         Map<String, Object> claims = new LinkedHashMap<>();
@@ -66,6 +87,7 @@ public class BootstrapTokenService {
         claims.put("iss", issuer);
         claims.put("jti", jti);
         claims.put("token_type", TOKEN_TYPE);
+        claims.put("scope", new ArrayList<>(scopes));
         claims.put("iat", now);
         claims.put("exp", now.plus(TOKEN_TTL));
         String token = signer.sign(claims);
@@ -79,6 +101,15 @@ public class BootstrapTokenService {
      * @throws InvalidBootstrapTokenException on signature/claim/replay failures
      */
     public BootstrapContext verifyAndConsume(String compact) {
+        return verifyAndConsume(compact, null);
+    }
+
+    /**
+     * Variant that additionally enforces the token carries {@code requiredScope}
+     * in its {@code scope} claim. {@code null} disables the scope check (for
+     * legacy callers and tests).
+     */
+    public BootstrapContext verifyAndConsume(String compact, String requiredScope) {
         Map<String, Object> claims;
         try {
             claims = verifier.verify(compact);
@@ -93,6 +124,13 @@ public class BootstrapTokenService {
         Object jti = claims.get("jti");
         if (sub == null || jti == null) {
             throw new InvalidBootstrapTokenException("Missing sub or jti");
+        }
+        if (requiredScope != null) {
+            Object scopeClaim = claims.get("scope");
+            if (!(scopeClaim instanceof Collection<?> c) || !c.contains(requiredScope)) {
+                throw new InvalidBootstrapTokenException(
+                        "Bootstrap token missing required scope: " + requiredScope);
+            }
         }
         String jtiStr = jti.toString();
 
