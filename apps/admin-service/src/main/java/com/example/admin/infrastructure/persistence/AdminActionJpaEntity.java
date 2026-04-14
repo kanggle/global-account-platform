@@ -39,9 +39,9 @@ public class AdminActionJpaEntity {
     @Column(name = "actor_role", length = 30, nullable = false)
     private String actorRole;
 
-    // BIGINT FK → admin_operators.id (internal PK). Nullable in this increment
-    // because the UUID→BIGINT resolution path lives in TASK-BE-028b2.
-    @Column(name = "operator_id")
+    // BIGINT FK → admin_operators.id (internal PK). Non-null per data-model.md
+    // once TASK-BE-028b2-fix landed the UUID→BIGINT resolution path.
+    @Column(name = "operator_id", nullable = false)
     private Long operatorId;
 
     // The permission key evaluated for this action (or "<missing>").

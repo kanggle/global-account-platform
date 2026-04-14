@@ -4,6 +4,8 @@ import com.example.admin.application.event.AdminEventPublisher;
 import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.infrastructure.persistence.AdminActionJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminActionJpaRepository;
+import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
+import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -32,17 +34,29 @@ class AdminActionAuditorTest {
     AdminActionJpaRepository repo;
 
     @Mock
+    AdminOperatorJpaRepository operatorRepo;
+
+    @Mock
     AdminEventPublisher publisher;
 
     @InjectMocks
     AdminActionAuditor auditor;
 
+    @Mock
+    AdminOperatorJpaEntity operatorEntity;
+
     private OperatorContext op() {
         return new OperatorContext("op-1", "jti-1");
     }
 
+    private void stubOperatorResolution() {
+        when(operatorRepo.findByOperatorId("op-1")).thenReturn(Optional.of(operatorEntity));
+        when(operatorEntity.getId()).thenReturn(42L);
+    }
+
     @Test
     void recordStart_propagates_db_failure_as_audit_failure_and_skips_event() {
+        stubOperatorResolution();
         doThrow(new RuntimeException("db down")).when(repo).save(any());
 
         AdminActionAuditor.StartRecord start = new AdminActionAuditor.StartRecord(
@@ -57,7 +71,9 @@ class AdminActionAuditorTest {
     }
 
     @Test
-    void recordStart_persists_in_progress_row() {
+    void recordStart_persists_in_progress_row_with_resolved_operator_fk() {
+        stubOperatorResolution();
+
         AdminActionAuditor.StartRecord start = new AdminActionAuditor.StartRecord(
                 "audit-1", ActionCode.ACCOUNT_LOCK, op(),
                 "ACCOUNT", "acc-1", "fraud", null, "idemp",
@@ -69,6 +85,23 @@ class AdminActionAuditorTest {
         verify(repo).save(captor.capture());
         assertThat(captor.getValue().getOutcome()).isEqualTo("IN_PROGRESS");
         assertThat(captor.getValue().getCompletedAt()).isNull();
+        assertThat(captor.getValue().getOperatorId()).isEqualTo(42L);
+        verify(publisher, never()).publishAdminActionPerformed(any());
+    }
+
+    @Test
+    void recordStart_throws_audit_failure_when_operator_row_missing() {
+        when(operatorRepo.findByOperatorId("op-1")).thenReturn(Optional.empty());
+
+        AdminActionAuditor.StartRecord start = new AdminActionAuditor.StartRecord(
+                "audit-1", ActionCode.ACCOUNT_LOCK, op(),
+                "ACCOUNT", "acc-1", "fraud", null, "idemp",
+                Instant.now());
+
+        assertThatThrownBy(() -> auditor.recordStart(start))
+                .isInstanceOf(AuditFailureException.class);
+
+        verify(repo, never()).save(any());
         verify(publisher, never()).publishAdminActionPerformed(any());
     }
 
@@ -95,6 +128,10 @@ class AdminActionAuditorTest {
 
     @Test
     void recordDenied_inserts_row_and_emits_event() {
+        // In unit scope SecurityContext is absent → operator UUID resolves to "unknown".
+        when(operatorRepo.findByOperatorId("unknown")).thenReturn(Optional.of(operatorEntity));
+        when(operatorEntity.getId()).thenReturn(7L);
+
         auditor.recordDenied(ActionCode.ACCOUNT_LOCK, "account.lock",
                 "/api/admin/accounts/acc-1/lock", "POST", "acc-1");
 
@@ -105,8 +142,21 @@ class AdminActionAuditorTest {
         assertThat(saved.getPermissionUsed()).isEqualTo("account.lock");
         assertThat(saved.getTargetType()).isEqualTo("ACCOUNT");
         assertThat(saved.getTargetId()).isEqualTo("acc-1");
+        assertThat(saved.getOperatorId()).isEqualTo(7L);
         assertThat(saved.getCompletedAt()).isNotNull();
         verify(publisher).publishAdminActionPerformed(any());
+    }
+
+    @Test
+    void recordDenied_fail_closed_when_operator_row_missing() {
+        when(operatorRepo.findByOperatorId("unknown")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> auditor.recordDenied(ActionCode.ACCOUNT_LOCK, "account.lock",
+                "/api/admin/accounts/acc-1/lock", "POST", "acc-1"))
+                .isInstanceOf(AuditFailureException.class);
+
+        verify(repo, never()).save(any());
+        verify(publisher, never()).publishAdminActionPerformed(any());
     }
 
     @Test
