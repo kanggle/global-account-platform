@@ -23,6 +23,7 @@ backend
 # depends_on
 
 - TASK-BE-028
+- TASK-BE-029a-admin-idp-boundary-and-totp-kms
 
 ---
 
@@ -36,12 +37,14 @@ admin operator 로그인에 TOTP 2FA를 추가한다. role 단위로 enforcement
 
 ## In Scope
 
-- Flyway 마이그레이션: `admin_operator_totp` (operator_id, secret_encrypted, recovery_codes_hashed, enrolled_at, last_used_at), `admin_roles.require_2fa` boolean
+- Flyway 마이그레이션: `admin_operator_totp` (operator_id, secret_encrypted, **secret_key_id VARCHAR(64) NOT NULL DEFAULT 'v1'**, recovery_codes_hashed, enrolled_at, last_used_at), `admin_roles.require_2fa` boolean
+  - `secret_encrypted` 컬럼 layout은 `[12-byte IV][ciphertext][16-byte auth tag]` 단일 BYTEA/VARBINARY. 세부 규약은 [specs/services/admin-service/security.md](../../specs/services/admin-service/security.md) "TOTP Secret Encryption" 참조
+  - `recovery_codes_hashed`는 **Argon2id via `libs/java-security.PasswordHasher`** hash array. BCrypt 등 다른 해시 사용 금지 ([specs/services/admin-service/rbac.md](../../specs/services/admin-service/rbac.md) "Recovery Codes Hashing Policy", regulated R2)
 - 엔드포인트:
   - `POST /api/admin/auth/2fa/enroll` — secret 생성, QR URI 반환
   - `POST /api/admin/auth/2fa/verify` — enrollment 확정
   - `POST /api/admin/auth/login` 확장 — role에 require_2fa=true면 TOTP 코드 필수
-- recovery codes 10개, one-time-use, hashed 저장
+- recovery codes 10개, one-time-use, **Argon2id (libs/java-security.PasswordHasher)** hashed 저장. BCrypt 등 대체 해시 금지 (regulated R2)
 - `admin_actions`에 `2fa_used` 기록
 
 ## Out of Scope
@@ -81,7 +84,8 @@ admin operator 로그인에 TOTP 2FA를 추가한다. role 단위로 enforcement
 # Edge Cases
 
 - clock skew ±30s 허용
-- secret은 AES-GCM 암호화 저장 (key는 KMS/Vault, 현 단계에서는 application secret placeholder)
+- secret은 AES-GCM 256-bit + per-write random 12-byte IV + 128-bit auth tag + `operator_id` AAD 바인딩으로 저장. 현 단계 키는 `admin.totp.encryption-key` application property placeholder, 프로덕션은 KMS/Vault (상세 규약은 [specs/services/admin-service/security.md](../../specs/services/admin-service/security.md) "TOTP Secret Encryption")
+- `secret_key_id` 컬럼으로 key rotation 지원. rotate 시 **lazy re-encrypt on next access** 방식으로 전환
 
 ---
 

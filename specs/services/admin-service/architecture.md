@@ -121,6 +121,48 @@ presentation → application → infrastructure/client
 - `admin_actions` 테이블은 **append-only** (DB 트리거 또는 권한 제한으로 UPDATE/DELETE 차단)
 - 조회는 `AuditController`만 가능 (다른 서비스 불가)
 
+## Admin IdP Boundary
+
+admin-service는 일반 사용자 JWT와 **물리적으로 분리된 자체 IdP(Identity Provider)**이다. 즉 operator JWT 발급·서명·검증 전 과정을 admin-service가 소유하며, auth-service의 user JWT 발급 경로를 공유하지 않는다.
+
+### Decision
+
+- **Role**: admin-service = **self-issuing operator IdP**. 외부 IdP의 토큰을 수용하지 않는다.
+- **Rationale**:
+  - gateway/auth-service의 user JWT kid rotation 주기와 독립적 운영(operator 서명 키 compromise 시 user 토큰 revocation 영향 없음).
+  - 2FA(TOTP) 플로우가 operator JWT 발급 시점의 `totp_verified_at` 클레임과 강결합 — 별도 IdP 경로에서 주입 단순화.
+  - `token_type = "admin"` + 별도 issuer로 user 토큰과의 혼용을 **서명 수준**에서 차단 (rbac.md D4).
+  - 독립적 kid rotation과 감사 경계(regulated R9) 준수.
+
+### JwtSigner Bean Requirements
+
+- **Algorithm**: RS256 (RSA 2048-bit 이상). HS* 대칭 키 금지 (regulated R9 영구 키 금지 원칙 + JWKS 공개 운영 용이성).
+- **Kid rotation**: 서명 키는 `kid` 포함. 현재 kid 1개 + 이전 kid N개 병행 검증(grace period). rotation 주기는 운영 ADR에서 확정(초안 90일).
+- **JWKS endpoint**: admin-service가 자체 노출 — `GET /.well-known/admin/jwks.json` (auth-service의 `/.well-known/jwks.json`과 **다른 경로**. 다운스트림 서비스가 operator 토큰을 검증해야 하는 경우 이 경로에서 public key를 취득한다).
+- **Issuer claim**: `iss = "admin-service"` (rbac.md D4와 일치).
+- **Token type claim**: `token_type = "admin"` 필수. 누락/불일치 시 admin-service 자체에서 401.
+
+### Signing Key Storage
+
+| 단계 | 보관 위치 | 로딩 방식 |
+|---|---|---|
+| 현 단계(포트폴리오/dev) | `admin.jwt.signing-key-pem` application property placeholder (private key PEM) | `@ConfigurationProperties` + `@NotBlank` fail-fast. 로컬/dev는 `application-local.yml`, CI/staging은 환경변수 |
+| 프로덕션(향후) | AWS KMS / Vault (asymmetric sign operation 또는 unwrap 경로) | 별도 ADR 링크 placeholder — 본 섹션 Migration Trigger 참조 |
+
+### JWKS Exposure Policy
+
+- `/.well-known/admin/jwks.json`은 **무인증 GET 허용**. public key만 노출하므로 `X-Operator-Reason` 헤더도 요구하지 않는다. 이 경로는 [specs/contracts/http/admin-api.md](../../contracts/http/admin-api.md)의 Exceptions 서브트리에 포함된다.
+- JWKS 응답은 현재 활성 kid + grace period 중인 직전 kid를 모두 포함.
+- cache-control: `public, max-age=300` 권장 (rotation 시 stale window 최대 5분).
+
+### Migration Trigger (re-open conditions)
+
+다음 조건 중 하나가 충족되면 본 섹션을 재작성:
+
+- 외부 SaaS IdP(Okta/AzureAD 등) 도입 결정
+- 키 보관이 KMS/Vault로 이전되는 시점(별도 ADR 생성 및 링크)
+- operator JWT와 user JWT를 동일 issuer로 통합하는 결정
+
 ## Integration Rules
 
 - **HTTP 컨트랙트 (외부)**: [specs/contracts/http/admin-api.md](../../contracts/http/) — admin 전용 엔드포인트
