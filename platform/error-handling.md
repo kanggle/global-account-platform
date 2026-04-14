@@ -226,6 +226,10 @@ All services must return errors in the following JSON format:
 | STATE_TRANSITION_INVALID | 422 | Requested state transition is not allowed from the current account state (admin path) |
 | INVALID_BOOTSTRAP_TOKEN | 401 | Bootstrap token (2FA enroll/verify sub-tree) is missing, malformed, expired, wrong `token_type`, or has been replayed (`jti` already consumed) |
 | INVALID_2FA_CODE | 401 | Submitted TOTP code does not verify against the operator's enrolled secret (±1 window, 30s step) |
+| INVALID_CREDENTIALS | 401 | Operator lookup miss or Argon2id password verification failure on `POST /api/admin/auth/login` (returned without distinguishing the two so miss vs wrong-password cannot be inferred from the response) |
+| ENROLLMENT_REQUIRED | 401 | Operator's role set requires 2FA but no `admin_operator_totp` row exists. Response body carries a single-use bootstrap token authorising the `/2fa/enroll` sub-tree |
+| INVALID_RECOVERY_CODE | 401 | Submitted recovery code does not match any stored Argon2id hash after normalization (upper-case trim) and optimistic-lock retry |
+| BAD_REQUEST | 400 | Login request body violates the `totpCode` / `recoveryCode` mutual exclusion (both present, or both absent when 2FA is required) |
 
 ---
 

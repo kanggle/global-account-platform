@@ -3,12 +3,17 @@ package com.example.admin.presentation.advice;
 import com.example.admin.application.exception.AuditFailureException;
 import com.example.admin.application.exception.BatchSizeExceededException;
 import com.example.admin.application.exception.DownstreamFailureException;
+import com.example.admin.application.exception.EnrollmentRequiredException;
 import com.example.admin.application.exception.IdempotencyKeyConflictException;
 import com.example.admin.application.exception.InvalidBootstrapTokenException;
+import com.example.admin.application.exception.InvalidCredentialsException;
+import com.example.admin.application.exception.InvalidLoginRequestException;
+import com.example.admin.application.exception.InvalidRecoveryCodeException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
+import com.example.admin.presentation.dto.EnrollmentRequiredResponse;
 import com.example.web.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -62,6 +67,35 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalid2Fa(InvalidTwoFaCodeException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("INVALID_2FA_CODE", "TOTP code is invalid"));
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_CREDENTIALS", "Operator credentials are invalid"));
+    }
+
+    @ExceptionHandler(InvalidRecoveryCodeException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRecovery(InvalidRecoveryCodeException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_RECOVERY_CODE", "Recovery code is invalid"));
+    }
+
+    @ExceptionHandler(InvalidLoginRequestException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidLoginRequest(InvalidLoginRequestException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("BAD_REQUEST", e.getMessage()));
+    }
+
+    @ExceptionHandler(EnrollmentRequiredException.class)
+    public ResponseEntity<EnrollmentRequiredResponse> handleEnrollmentRequired(
+            EnrollmentRequiredException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new EnrollmentRequiredResponse(
+                        "ENROLLMENT_REQUIRED",
+                        "Operator must complete 2FA enrollment before login",
+                        e.getBootstrapToken(),
+                        e.getExpiresInSeconds()));
     }
 
     @ExceptionHandler(DownstreamFailureException.class)
