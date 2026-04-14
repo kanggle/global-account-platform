@@ -215,6 +215,16 @@ All services must return errors in the following JSON format:
 | SHIPPING_NOT_FOUND | 404 | Shipping record does not exist |
 | INVALID_STATUS_TRANSITION | 422 | Shipping status transition is not allowed |
 
+## Admin Operations  `[domain: saas]`
+
+| Code | HTTP | Description |
+|---|---|---|
+| BATCH_SIZE_EXCEEDED | 422 | `accountIds` exceeds the per-request batch cap (100) on admin bulk commands |
+| IDEMPOTENCY_KEY_CONFLICT | 409 | Same `Idempotency-Key` replayed with a different payload on an admin command |
+| AUDIT_FAILURE | 500 | Audit row persistence failed; the admin command is aborted to preserve audit integrity |
+| ACCOUNT_NOT_FOUND | 404 | Target account does not exist (admin path only; distinct from public/account-api usage context) |
+| STATE_TRANSITION_INVALID | 422 | Requested state transition is not allowed from the current account state (admin path) |
+
 ---
 
 # Rules

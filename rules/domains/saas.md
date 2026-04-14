@@ -61,6 +61,16 @@ SaaS 도메인에서 공통으로 발생하는 에러는 [../../platform/error-h
 - `LOGIN_RATE_LIMITED` — 로그인 시도가 rate limit 초과
 - `PERMISSION_DENIED` — 인증은 성공했으나 해당 리소스에 대한 권한 부재
 
+### Admin Operations (admin-service 전용)
+
+다음 코드는 [../../platform/error-handling.md](../../platform/error-handling.md)의 `Admin Operations [domain: saas]` 섹션에 등록되어 있다. admin 경로에서만 발생하며 공개 API에서는 사용하지 않는다.
+
+- `BATCH_SIZE_EXCEEDED` — bulk 명령의 `accountIds`가 배치 상한(100) 초과 (422)
+- `IDEMPOTENCY_KEY_CONFLICT` — 동일 `Idempotency-Key`로 다른 payload 재전송 (409)
+- `AUDIT_FAILURE` — 감사 row 기록 실패 시 명령 중단 (S5·audit-heavy 교차) (500)
+- `ACCOUNT_NOT_FOUND` — 대상 계정 미존재 (admin 경로 전용 맥락; 공개 account-api와 의미 동일하나 등록 맥락이 admin) (404)
+- `STATE_TRANSITION_INVALID` — 현재 상태에서 허용되지 않는 상태 전이 (admin 경로; S3 상태 기계와 교차) (422)
+
 ---
 
 ## Integration Boundaries
