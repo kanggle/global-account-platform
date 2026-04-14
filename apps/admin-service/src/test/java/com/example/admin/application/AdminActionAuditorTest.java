@@ -79,7 +79,7 @@ class AdminActionAuditorTest {
                 "audit-1", "ACCOUNT_LOCK", "op-1", "ACCOUNT_ADMIN",
                 "account", "acc-1", "fraud", null, "idemp",
                 "IN_PROGRESS", null, Instant.now(), null);
-        when(repo.findById("audit-1")).thenReturn(Optional.of(entity));
+        when(repo.findByLegacyAuditId("audit-1")).thenReturn(Optional.of(entity));
 
         AdminActionAuditor.CompletionRecord done = new AdminActionAuditor.CompletionRecord(
                 "audit-1", ActionCode.ACCOUNT_LOCK, op(),
@@ -104,13 +104,15 @@ class AdminActionAuditorTest {
         AdminActionJpaEntity saved = captor.getValue();
         assertThat(saved.getOutcome()).isEqualTo("DENIED");
         assertThat(saved.getPermissionUsed()).isEqualTo("account.lock");
-        assertThat(saved.getOperatorId()).isEqualTo("op-1");
+        // operator_id BIGINT FK resolution deferred to TASK-BE-028b2; column is NULL for now.
+        assertThat(saved.getOperatorId()).isNull();
+        assertThat(saved.getActorId()).isEqualTo("op-1");
         assertThat(saved.getCompletedAt()).isNotNull();
     }
 
     @Test
     void recordCompletion_missing_in_progress_row_throws_audit_failure() {
-        when(repo.findById("audit-missing")).thenReturn(Optional.empty());
+        when(repo.findByLegacyAuditId("audit-missing")).thenReturn(Optional.empty());
 
         AdminActionAuditor.CompletionRecord done = new AdminActionAuditor.CompletionRecord(
                 "audit-missing", ActionCode.ACCOUNT_LOCK, op(),

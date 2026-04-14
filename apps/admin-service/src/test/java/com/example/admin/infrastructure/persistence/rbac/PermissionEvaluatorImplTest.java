@@ -29,39 +29,37 @@ class PermissionEvaluatorImplTest {
 
     @InjectMocks PermissionEvaluatorImpl evaluator;
 
-    private AdminOperatorJpaEntity activeOperator(String id) {
+    private AdminOperatorJpaEntity operator(Long internalId, String externalUuid, String status) {
         AdminOperatorJpaEntity e = new AdminOperatorJpaEntity() {};
         try {
-            var f1 = AdminOperatorJpaEntity.class.getDeclaredField("id"); f1.setAccessible(true); f1.set(e, id);
-            var f2 = AdminOperatorJpaEntity.class.getDeclaredField("status"); f2.setAccessible(true);
-            f2.set(e, AdminOperator.Status.ACTIVE.name());
-            var f3 = AdminOperatorJpaEntity.class.getDeclaredField("email"); f3.setAccessible(true); f3.set(e, "x@example.com");
-            var f4 = AdminOperatorJpaEntity.class.getDeclaredField("passwordHash"); f4.setAccessible(true); f4.set(e, "h");
-            var f5 = AdminOperatorJpaEntity.class.getDeclaredField("displayName"); f5.setAccessible(true); f5.set(e, "n");
-            var f6 = AdminOperatorJpaEntity.class.getDeclaredField("createdAt"); f6.setAccessible(true); f6.set(e, Instant.now());
-            var f7 = AdminOperatorJpaEntity.class.getDeclaredField("updatedAt"); f7.setAccessible(true); f7.set(e, Instant.now());
+            set(e, "id", internalId);
+            set(e, "operatorId", externalUuid);
+            set(e, "status", status);
+            set(e, "email", "x@example.com");
+            set(e, "passwordHash", "h");
+            set(e, "displayName", "n");
+            set(e, "createdAt", Instant.now());
+            set(e, "updatedAt", Instant.now());
         } catch (ReflectiveOperationException ex) { throw new IllegalStateException(ex); }
         return e;
     }
 
-    private AdminOperatorJpaEntity inactiveOperator(String id) {
-        AdminOperatorJpaEntity e = activeOperator(id);
-        try {
-            var f = AdminOperatorJpaEntity.class.getDeclaredField("status"); f.setAccessible(true);
-            f.set(e, AdminOperator.Status.DISABLED.name());
-        } catch (ReflectiveOperationException ex) { throw new IllegalStateException(ex); }
-        return e;
+    private static void set(Object target, String field, Object value) throws ReflectiveOperationException {
+        var f = AdminOperatorJpaEntity.class.getDeclaredField(field);
+        f.setAccessible(true);
+        f.set(target, value);
     }
 
-    private AdminOperatorRoleJpaEntity roleBinding(String op, Long role) {
+    private AdminOperatorRoleJpaEntity roleBinding(Long op, Long role) {
         return AdminOperatorRoleJpaEntity.create(op, role, Instant.now(), null);
     }
 
     @Test
     void hasPermission_returns_true_for_union_across_roles() {
-        when(operators.findById("op-1")).thenReturn(Optional.of(activeOperator("op-1")));
-        when(operatorRoles.findByOperatorId("op-1")).thenReturn(
-                List.of(roleBinding("op-1", 1L), roleBinding("op-1", 2L)));
+        when(operators.findByOperatorId("op-1"))
+                .thenReturn(Optional.of(operator(100L, "op-1", AdminOperator.Status.ACTIVE.name())));
+        when(operatorRoles.findByOperatorId(100L)).thenReturn(
+                List.of(roleBinding(100L, 1L), roleBinding(100L, 2L)));
         when(rolePermissions.findPermissionKeysByRoleIds(anyCollection()))
                 .thenReturn(List.of(Permission.AUDIT_READ, Permission.ACCOUNT_LOCK));
 
@@ -70,22 +68,24 @@ class PermissionEvaluatorImplTest {
 
     @Test
     void hasPermission_returns_false_for_missing_operator() {
-        when(operators.findById("ghost")).thenReturn(Optional.empty());
+        when(operators.findByOperatorId("ghost")).thenReturn(Optional.empty());
 
         assertThat(evaluator.hasPermission("ghost", Permission.AUDIT_READ)).isFalse();
     }
 
     @Test
     void hasPermission_returns_false_for_inactive_operator() {
-        when(operators.findById("op-2")).thenReturn(Optional.of(inactiveOperator("op-2")));
+        when(operators.findByOperatorId("op-2"))
+                .thenReturn(Optional.of(operator(200L, "op-2", AdminOperator.Status.DISABLED.name())));
 
         assertThat(evaluator.hasPermission("op-2", Permission.AUDIT_READ)).isFalse();
     }
 
     @Test
     void hasAllPermissions_requires_full_containment() {
-        when(operators.findById("op-3")).thenReturn(Optional.of(activeOperator("op-3")));
-        when(operatorRoles.findByOperatorId("op-3")).thenReturn(List.of(roleBinding("op-3", 1L)));
+        when(operators.findByOperatorId("op-3"))
+                .thenReturn(Optional.of(operator(300L, "op-3", AdminOperator.Status.ACTIVE.name())));
+        when(operatorRoles.findByOperatorId(300L)).thenReturn(List.of(roleBinding(300L, 1L)));
         when(rolePermissions.findPermissionKeysByRoleIds(anyCollection()))
                 .thenReturn(List.of(Permission.AUDIT_READ));
 
@@ -96,7 +96,7 @@ class PermissionEvaluatorImplTest {
 
     @Test
     void hasPermission_null_inputs_return_false() {
-        lenient().when(operators.findById("x")).thenReturn(Optional.empty());
+        lenient().when(operators.findByOperatorId("x")).thenReturn(Optional.empty());
         assertThat(evaluator.hasPermission(null, Permission.AUDIT_READ)).isFalse();
         assertThat(evaluator.hasPermission("x", null)).isFalse();
     }

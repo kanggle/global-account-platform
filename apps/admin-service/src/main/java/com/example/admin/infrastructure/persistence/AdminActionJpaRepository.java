@@ -9,10 +9,16 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.Optional;
 
-public interface AdminActionJpaRepository extends JpaRepository<AdminActionJpaEntity, String> {
+public interface AdminActionJpaRepository extends JpaRepository<AdminActionJpaEntity, Long> {
 
     Optional<AdminActionJpaEntity> findByActorIdAndActionCodeAndIdempotencyKey(
             String actorId, String actionCode, String idempotencyKey);
+
+    /**
+     * Look up an IN_PROGRESS row by the UUID {@code legacyAuditId} surfaced to
+     * API responses. The internal BIGINT PK is never exposed to callers.
+     */
+    Optional<AdminActionJpaEntity> findByLegacyAuditId(String legacyAuditId);
 
     @Query("""
             SELECT a FROM AdminActionJpaEntity a

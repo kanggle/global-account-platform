@@ -59,7 +59,7 @@ public class AuditQueryUseCase {
             for (AdminActionJpaEntity e : adminPage.getContent()) {
                 entries.add(new AuditQueryResult.Entry(
                         "admin",
-                        e.getId(),
+                        e.getLegacyAuditId(),
                         null,
                         e.getActionCode(),
                         e.getActorId(),

@@ -62,15 +62,18 @@ public class PermissionEvaluatorImpl implements PermissionEvaluator {
     }
 
     private Set<String> loadPermissions(String operatorId) {
-        Optional<AdminOperatorJpaEntity> op = operators.findById(operatorId);
+        // operatorId is the external UUID (JWT `sub`). Translate to the internal
+        // BIGINT PK before joining role/permission tables (TASK-BE-028b1).
+        Optional<AdminOperatorJpaEntity> op = operators.findByOperatorId(operatorId);
         if (op.isEmpty()) {
             return Set.of();
         }
-        String status = op.get().getStatus();
+        AdminOperatorJpaEntity operator = op.get();
+        String status = operator.getStatus();
         if (!AdminOperator.Status.ACTIVE.name().equals(status)) {
             return Set.of();
         }
-        List<Long> roleIds = operatorRoles.findByOperatorId(operatorId).stream()
+        List<Long> roleIds = operatorRoles.findByOperatorId(operator.getId()).stream()
                 .map(AdminOperatorRoleJpaEntity::getRoleId)
                 .toList();
         if (roleIds.isEmpty()) {

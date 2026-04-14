@@ -60,7 +60,7 @@ public class AdminActionAuditor {
                     record.actionCode().name(),
                     record.operator().operatorId(),
                     primaryRole(record.operator()),
-                    record.operator().operatorId(), // operator_id (TASK-BE-028a)
+                    null, // operator_id BIGINT FK — resolution deferred to TASK-BE-028b2
                     permissionForActionCode(record.actionCode()), // TASK-BE-028a
                     record.targetType(),
                     record.targetId(),
@@ -82,9 +82,9 @@ public class AdminActionAuditor {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordCompletion(CompletionRecord record) {
         try {
-            AdminActionJpaEntity entity = repository.findById(record.auditId())
+            AdminActionJpaEntity entity = repository.findByLegacyAuditId(record.auditId())
                     .orElseThrow(() -> new AuditFailureException(
-                            "IN_PROGRESS audit row not found for id=" + record.auditId()));
+                            "IN_PROGRESS audit row not found for legacyAuditId=" + record.auditId()));
             entity.finalizeOutcome(
                     record.outcome().name(),
                     record.downstreamDetail(),
@@ -112,7 +112,7 @@ public class AdminActionAuditor {
                     record.actionCode().name(),
                     record.operator().operatorId(),
                     primaryRole(record.operator()),
-                    record.operator().operatorId(),
+                    null, // operator_id BIGINT FK — resolution deferred to TASK-BE-028b2
                     permissionForActionCode(record.actionCode()),
                     record.targetType(),
                     record.targetId(),
@@ -162,7 +162,7 @@ public class AdminActionAuditor {
                     actionCode,
                     operatorId != null ? operatorId : "unknown",
                     "UNKNOWN",
-                    operatorId,
+                    (Long) null, // operator_id BIGINT FK — resolution deferred to TASK-BE-028b2
                     permissionUsed != null ? permissionUsed : Permission.MISSING,
                     targetType,
                     targetId,

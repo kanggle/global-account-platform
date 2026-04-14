@@ -7,5 +7,5 @@ import java.util.List;
 public interface AdminOperatorRoleJpaRepository
         extends JpaRepository<AdminOperatorRoleJpaEntity, AdminOperatorRoleJpaEntity.PK> {
 
-    List<AdminOperatorRoleJpaEntity> findByOperatorId(String operatorId);
+    List<AdminOperatorRoleJpaEntity> findByOperatorId(Long operatorId);
 }
