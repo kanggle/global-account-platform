@@ -28,8 +28,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -83,20 +81,20 @@ class AdminIntegrationTest {
 
     static WireMockServer wireMock;
     static OperatorJwtTestFixture jwt;
-    static Path publicKeyFile;
+    static String signingKeyPem;
 
     @BeforeAll
     static void setupShared() throws IOException {
         jwt = new OperatorJwtTestFixture();
 
-        // Extract the public key in X.509 PEM form and write to a temp file so
-        // that JwtConfig.operatorPublicKey() can load it via file: resource.
-        java.security.PublicKey pub = extractPublicKey(jwt);
-        String pem = "-----BEGIN PUBLIC KEY-----\n"
-                + Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(pub.getEncoded())
-                + "\n-----END PUBLIC KEY-----\n";
-        publicKeyFile = Files.createTempFile("admin-test-pubkey-", ".pem");
-        Files.writeString(publicKeyFile, pem);
+        // Export the fixture's PKCS#8 private key as PEM so the admin
+        // JwtConfig can verify tokens signed by the fixture. The active
+        // kid and issuer match the fixture (kid="test-key-001",
+        // iss="admin-service").
+        java.security.PrivateKey pk = extractPrivateKey(jwt);
+        signingKeyPem = "-----BEGIN PRIVATE KEY-----\n"
+                + Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(pk.getEncoded())
+                + "\n-----END PRIVATE KEY-----\n";
 
         wireMock = new WireMockServer(18085);
         wireMock.start();
@@ -110,14 +108,12 @@ class AdminIntegrationTest {
         }
     }
 
-    private static java.security.PublicKey extractPublicKey(OperatorJwtTestFixture fixture) {
-        // Use reflection-free path: re-derive via a dummy signed token is overkill.
-        // Instead, expose via the verifier's internal state through a small helper.
+    private static java.security.PrivateKey extractPrivateKey(OperatorJwtTestFixture fixture) {
         try {
             var field = OperatorJwtTestFixture.class.getDeclaredField("keyPair");
             field.setAccessible(true);
             java.security.KeyPair kp = (java.security.KeyPair) field.get(fixture);
-            return kp.getPublic();
+            return kp.getPrivate();
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
@@ -131,7 +127,10 @@ class AdminIntegrationTest {
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        registry.add("admin.jwt.public-key-path", () -> "file:" + publicKeyFile.toAbsolutePath().toString().replace('\\', '/'));
+        registry.add("admin.jwt.active-signing-kid", () -> "test-key-001");
+        registry.add("admin.jwt.signing-keys.test-key-001", () -> signingKeyPem);
+        registry.add("admin.jwt.issuer", () -> "admin-service");
+        registry.add("admin.jwt.expected-token-type", () -> "admin");
         registry.add("admin.auth-service.base-url", () -> "http://localhost:18085");
         registry.add("admin.account-service.base-url", () -> "http://localhost:18085");
         registry.add("admin.security-service.base-url", () -> "http://localhost:18085");

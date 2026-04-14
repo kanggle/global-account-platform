@@ -89,7 +89,14 @@ public class RequiresPermissionAspect {
      * under an admin controller that lacks {@code @RequiresPermission} is
      * treated as unannotated and rejected. GET endpoints are NOT gated here.
      */
-    @Around("within(com.example.admin.presentation..*) && ("
+    @Around("within(com.example.admin.presentation..*)"
+            // Exclude the unauthenticated sub-tree (admin-api.md Authentication
+            // Exceptions): WellKnownController (JWKS) and AdminAuthController
+            // (login, 2FA enroll/verify). These paths sit before operator JWT
+            // issuance and must not be gated by the RBAC aspect.
+            + " && !within(com.example.admin.presentation.WellKnownController)"
+            + " && !within(com.example.admin.presentation.AdminAuthController)"
+            + " && ("
             + " @annotation(org.springframework.web.bind.annotation.PostMapping)"
             + " || @annotation(org.springframework.web.bind.annotation.PutMapping)"
             + " || @annotation(org.springframework.web.bind.annotation.PatchMapping)"

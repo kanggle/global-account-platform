@@ -60,7 +60,7 @@ public final class OperatorJwtTestFixture {
         claims.put("sub", sub);
         claims.put("jti", jti);
         claims.put("token_type", tokenType);
-        claims.put("iss", "auth-service");
+        claims.put("iss", "admin-service");
         claims.put("iat", now);
         claims.put("exp", now.plus(30, ChronoUnit.MINUTES));
         return signer.sign(claims);
@@ -72,7 +72,7 @@ public final class OperatorJwtTestFixture {
         claims.put("sub", sub);
         claims.put("jti", UUID.randomUUID().toString());
         claims.put("token_type", "admin");
-        claims.put("iss", "auth-service");
+        claims.put("iss", "admin-service");
         claims.put("iat", past);
         claims.put("exp", past.plus(1, ChronoUnit.MINUTES));
         return signer.sign(claims);
