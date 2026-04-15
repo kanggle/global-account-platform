@@ -70,3 +70,11 @@ the running cluster, and tears the stack down at JVM shutdown.
   before invoking `:tests:e2e:test` if service code changed.
 - Docker absence → Testcontainers fails fast; there is no skip path (TASK-BE-041c
   Failure Scenarios §1).
+- **Docker Desktop Windows DNS flakiness (TASK-BE-044)**: sibling service name
+  resolution via the embedded 127.0.0.11 resolver can intermittently return
+  NXDOMAIN during `docker compose up -d <svc>` partial restarts, surfacing as
+  `java.net.UnknownHostException: mysql`. Mitigated in `docker-compose.e2e.yml`
+  by (a) `JAVA_TOOL_OPTIONS=-Dnetworkaddress.cache.ttl=0 -Dnetworkaddress.cache.negative.ttl=0`
+  to disable JVM negative DNS caching, and (b) `restart: on-failure:5` on app
+  services so a transient miss self-heals on the next restart. If you still hit
+  the error, prefer `down -v` + cold `up -d` over partial restarts.

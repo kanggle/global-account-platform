@@ -22,6 +22,21 @@ x-service-env: &service-env
   REDIS_PORT: "6379"
   REDIS_PASSWORD: ""
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  # TASK-BE-044: disable Java DNS negative caching.
+  # Docker Desktop's embedded DNS (127.0.0.11) occasionally returns NXDOMAIN for
+  # sibling service names during partial `up -d <svc>` when the target container
+  # hasn't re-registered yet. Default Java behavior caches negative lookups for
+  # 10s, which poisons the JVM for its entire startup window and surfaces as
+  # `java.net.UnknownHostException: mysql: Temporary failure in name resolution`.
+  # Setting both TTLs to 0 forces every InetAddress.getByName() to re-query
+  # Docker's DNS, so a transient miss self-heals within one retry.
+  JAVA_TOOL_OPTIONS: "-Dnetworkaddress.cache.ttl=0 -Dnetworkaddress.cache.negative.ttl=0"
+
+# TASK-BE-044: bounded restart policy for app services. If DB/DNS warmup races
+# still slip through on Docker Desktop Windows, the container is restarted up to
+# 5 times instead of staying Exited — smallest operator-surface mitigation.
+x-app-restart: &app-restart
+  restart: on-failure:5
 
 services:
   # ---------------------------------------------------------------------------
@@ -103,6 +118,7 @@ services:
       context: .
       dockerfile: apps/auth-service/Dockerfile
     container_name: gap-e2e-auth
+    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: auth_db
@@ -121,6 +137,7 @@ services:
       context: .
       dockerfile: apps/account-service/Dockerfile
     container_name: gap-e2e-account
+    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: account_db
@@ -137,6 +154,7 @@ services:
       context: .
       dockerfile: apps/security-service/Dockerfile
     container_name: gap-e2e-security
+    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: security_db
@@ -154,6 +172,7 @@ services:
       context: .
       dockerfile: apps/admin-service/Dockerfile
     container_name: gap-e2e-admin
+    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: admin_db
