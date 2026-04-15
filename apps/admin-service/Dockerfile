@@ -54,4 +54,4 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=6 \
 # `java.net.UnknownHostException: mysql` during Hikari/Flyway startup. Doing
 # the resolution check in the shell (getent) before `exec java` guarantees
 # the JVM never sees a negative lookup in the first place.
-ENTRYPOINT ["sh","-c","until getent hosts mysql >/dev/null && getent hosts kafka >/dev/null; do echo 'waiting for DNS: mysql/kafka'; sleep 1; done; exec java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh","-c","until getent hosts mysql >/dev/null && getent hosts kafka >/dev/null && getent hosts redis >/dev/null; do echo 'waiting for DNS: mysql/kafka/redis'; sleep 1; done; exec java $JAVA_OPTS -jar /app/app.jar"]
