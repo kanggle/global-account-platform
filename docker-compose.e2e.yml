@@ -47,7 +47,9 @@ services:
   mysql:
     image: mysql:8.0
     container_name: gap-e2e-mysql
-    command: ["--log-bin-trust-function-creators=1"]
+    # TASK-BE-045: raise max_connections so 4 services' HikariCP pools + flyway
+    # probes during simultaneous cold start don't exhaust MySQL's default (151).
+    command: ["--log-bin-trust-function-creators=1", "--max_connections=500"]
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
       AUTH_DB_PASSWORD: auth_pass
@@ -143,9 +145,12 @@ services:
       DB_NAME: account_db
       DB_USERNAME: account_user
       DB_PASSWORD: account_pass
+    # TASK-BE-045: stagger startup (auth -> account -> admin -> security) to
+    # spread initial HikariCP checkFailFast connection bursts on MySQL.
     depends_on:
       mysql: { condition: service_healthy }
       kafka: { condition: service_healthy }
+      auth-service: { condition: service_started }
     ports: ["18082:8082"]
     networks: [gap-e2e]
 
@@ -159,10 +164,12 @@ services:
       DB_NAME: security_db
       DB_USERNAME: security_user
       DB_PASSWORD: security_pass
+    # TASK-BE-045: last in the startup chain (auth -> account -> admin -> security).
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
+      admin-service: { condition: service_started }
     ports: ["18084:8084"]
     networks: [gap-e2e]
 
@@ -211,10 +218,12 @@ services:
         fOIvQyaNDTvxW+mx0Ds4Huo=
         -----END PRIVATE KEY-----
       ADMIN_TOTP_V1_KEY: REVWX09OTFlfVE9UUF9LRVlfMzJfQllURVNfISEhWFg=
+    # TASK-BE-045: third in the startup chain (auth -> account -> admin -> security).
     depends_on:
       mysql: { condition: service_healthy }
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
+      account-service: { condition: service_started }
     ports: ["18085:8085"]
     networks: [gap-e2e]
 

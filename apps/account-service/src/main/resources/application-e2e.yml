@@ -4,6 +4,11 @@ spring:
     url: jdbc:mysql://${DB_HOST:mysql}:${DB_PORT:3306}/${DB_NAME:account_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:account_user}
     password: ${DB_PASSWORD:account_pass}
+    # TASK-BE-045: see auth-service/application-e2e.yml for rationale.
+    hikari:
+      connection-timeout: 60000
+      initialization-fail-timeout: 60000
+      maximum-pool-size: 5
   flyway:
     enabled: true
     locations: classpath:db/migration
