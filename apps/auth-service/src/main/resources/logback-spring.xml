@@ -8,7 +8,7 @@
         </root>
     </springProfile>
 
-    <springProfile name="docker,staging,prod">
+    <springProfile name="docker,staging,prod,e2e">
         <root level="INFO">
             <appender-ref ref="JSON"/>
         </root>
