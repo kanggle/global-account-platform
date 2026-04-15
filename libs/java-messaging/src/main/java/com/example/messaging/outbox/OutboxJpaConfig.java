@@ -7,13 +7,17 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 /**
  * JPA configuration for Outbox and ProcessedEvent entities/repositories.
  *
- * This configuration registers only the messaging-specific JPA repositories.
- * It uses basePackageClasses to limit the scope to only the messaging package,
- * so it does NOT interfere with the service's own JPA repository registration.
+ * This configuration registers the messaging-specific JPA repositories scoped
+ * to the messaging package via basePackageClasses.
  *
- * Note: Spring Boot's JpaRepositoriesAutoConfiguration will still register
- * service-level repositories via its own @EnableJpaRepositories.
- * This config adds an additional @EnableJpaRepositories for the messaging package only.
+ * IMPORTANT (TASK-BE-047): declaring any explicit {@code @EnableJpaRepositories}
+ * in the application context causes Spring Boot's
+ * {@code JpaRepositoriesAutoConfiguration} to back off. As a result, the
+ * consuming service's own repositories are NO LONGER auto-scanned from the
+ * {@code @SpringBootApplication} base package. Every service that depends on
+ * java-messaging MUST declare its own {@code @EnableJpaRepositories} (and
+ * {@code @EntityScan}) for its persistence package on its main application
+ * class.
  */
 @Configuration
 @EntityScan(basePackageClasses = {OutboxJpaEntity.class, ProcessedEventJpaEntity.class})
