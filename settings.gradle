@@ -13,5 +13,6 @@ include(
     'apps:security-service',
     'apps:admin-service',
     'apps:community-service',
-    'apps:membership-service'
+    'apps:membership-service',
+    'tests:e2e'
 )
