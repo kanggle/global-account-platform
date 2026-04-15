@@ -70,11 +70,16 @@ the running cluster, and tears the stack down at JVM shutdown.
   before invoking `:tests:e2e:test` if service code changed.
 - Docker absence → Testcontainers fails fast; there is no skip path (TASK-BE-041c
   Failure Scenarios §1).
-- **Docker Desktop Windows DNS flakiness (TASK-BE-044)**: sibling service name
-  resolution via the embedded 127.0.0.11 resolver can intermittently return
-  NXDOMAIN during `docker compose up -d <svc>` partial restarts, surfacing as
-  `java.net.UnknownHostException: mysql`. Mitigated in `docker-compose.e2e.yml`
-  by (a) `JAVA_TOOL_OPTIONS=-Dnetworkaddress.cache.ttl=0 -Dnetworkaddress.cache.negative.ttl=0`
-  to disable JVM negative DNS caching, and (b) `restart: on-failure:5` on app
-  services so a transient miss self-heals on the next restart. If you still hit
-  the error, prefer `down -v` + cold `up -d` over partial restarts.
+- **Docker Desktop Windows DNS flakiness (TASK-BE-044 / rolled back partially by
+  TASK-BE-046)**: sibling service name resolution via the embedded 127.0.0.11
+  resolver can intermittently return NXDOMAIN during `docker compose up -d <svc>`
+  partial restarts, surfacing as `java.net.UnknownHostException: mysql`. The
+  compose file mitigates this only via `JAVA_TOOL_OPTIONS=-Dnetworkaddress.cache.ttl=0
+  -Dnetworkaddress.cache.negative.ttl=0`, which disables JVM negative DNS caching
+  so a transient miss self-heals on the next connection attempt inside the same
+  JVM. The previously-added `restart: on-failure:5` policy was **intentionally
+  removed** (BE-046): the retry loop worsened half-committed migration/seed
+  state (security V0002 trigger, admin V0014 dev seed) into permanent failures.
+  If the DNS error reappears, do **not** add restart policies back — run
+  `docker compose -f docker-compose.e2e.yml down -v && docker compose -f docker-compose.e2e.yml up -d`
+  for a clean cold start instead of partial restarts.

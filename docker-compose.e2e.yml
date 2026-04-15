@@ -32,11 +32,13 @@ x-service-env: &service-env
   # Docker's DNS, so a transient miss self-heals within one retry.
   JAVA_TOOL_OPTIONS: "-Dnetworkaddress.cache.ttl=0 -Dnetworkaddress.cache.negative.ttl=0"
 
-# TASK-BE-044: bounded restart policy for app services. If DB/DNS warmup races
-# still slip through on Docker Desktop Windows, the container is restarted up to
-# 5 times instead of staying Exited — smallest operator-surface mitigation.
-x-app-restart: &app-restart
-  restart: on-failure:5
+# TASK-BE-046: `restart: on-failure:5` (previously added by BE-044) was rolled
+# back. Runtime verification showed the retry loop worsens half-committed state:
+# security-service's V0002 trigger migration gets flagged as "failed migration"
+# on retry, and admin-service's V0014 dev seed hits uk_admin_roles_name duplicate
+# key errors. On failure, containers now stay Exited so the operator can run
+# `docker compose down -v && up -d` for a clean cold start. JAVA_TOOL_OPTIONS
+# (DNS TTL=0) from BE-044 remains in effect above.
 
 services:
   # ---------------------------------------------------------------------------
@@ -118,7 +120,6 @@ services:
       context: .
       dockerfile: apps/auth-service/Dockerfile
     container_name: gap-e2e-auth
-    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: auth_db
@@ -137,7 +138,6 @@ services:
       context: .
       dockerfile: apps/account-service/Dockerfile
     container_name: gap-e2e-account
-    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: account_db
@@ -154,7 +154,6 @@ services:
       context: .
       dockerfile: apps/security-service/Dockerfile
     container_name: gap-e2e-security
-    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: security_db
@@ -172,7 +171,6 @@ services:
       context: .
       dockerfile: apps/admin-service/Dockerfile
     container_name: gap-e2e-admin
-    <<: *app-restart
     environment:
       <<: *service-env
       DB_NAME: admin_db
