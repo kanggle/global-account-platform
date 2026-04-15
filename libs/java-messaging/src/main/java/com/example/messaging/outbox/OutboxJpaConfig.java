@@ -16,8 +16,10 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  * consuming service's own repositories are NO LONGER auto-scanned from the
  * {@code @SpringBootApplication} base package. Every service that depends on
  * java-messaging MUST declare its own {@code @EnableJpaRepositories} (and
- * {@code @EntityScan}) for its persistence package on its main application
- * class.
+ * {@code @EntityScan}) for its persistence package in a dedicated
+ * {@code @Configuration} class within the service's {@code infrastructure.config}
+ * package (NOT on the main application class, to preserve {@code @WebMvcTest}
+ * slice isolation).
  */
 @Configuration
 @EntityScan(basePackageClasses = {OutboxJpaEntity.class, ProcessedEventJpaEntity.class})
