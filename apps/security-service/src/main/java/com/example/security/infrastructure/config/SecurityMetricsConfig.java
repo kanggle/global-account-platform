@@ -43,7 +43,11 @@ public class SecurityMetricsConfig {
             "auth.login.failed.dlq",
             "auth.login.succeeded.dlq",
             "auth.token.refreshed.dlq",
-            "auth.token.reuse.detected.dlq"
+            "auth.token.reuse.detected.dlq",
+            // TASK-BE-041b-fix Critical 2: register the account.locked DLQ so dlq_depth
+            // alerts fire for poison-pill account.locked events (e.g., messages missing
+            // eventId after the contract was tightened).
+            "account.locked.dlq"
     );
 
     public SecurityMetricsConfig(MeterRegistry meterRegistry,

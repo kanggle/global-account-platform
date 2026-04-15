@@ -66,6 +66,7 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 **Payload**:
 ```json
 {
+  "eventId": "string (UUID v7)",
   "accountId": "string",
   "reasonCode": "ADMIN_LOCK | AUTO_DETECT | PASSWORD_FAILURE_THRESHOLD",
   "actorType": "operator | system",
@@ -74,7 +75,8 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 }
 ```
 
-**Consumer 해석 규칙** (TASK-BE-041b):
+**Consumer 해석 규칙** (TASK-BE-041b, TASK-BE-041b-fix):
+- `eventId` → security-service `account_lock_history.event_id` (멱등 키). 누락 시 consumer는 메시지를 DLQ로 라우팅한다 (invalid message).
 - `reasonCode` → security-service `account_lock_history.reason`
 - `actorId` → `locked_by` (누락 시 `00000000-0000-0000-0000-000000000000` system 관례값)
 - `actorType=operator` → `source=admin`, `actorType=system` → `source=system`

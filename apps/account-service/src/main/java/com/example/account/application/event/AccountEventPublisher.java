@@ -1,5 +1,6 @@
 package com.example.account.application.event;
 
+import com.example.common.id.UuidV7;
 import com.example.messaging.outbox.OutboxWriter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,7 +48,13 @@ public class AccountEventPublisher {
 
     public void publishAccountLocked(String accountId, String reasonCode,
                                       String actorType, String actorId, Instant lockedAt) {
+        // TASK-BE-041b-fix Critical 1: include eventId (UUID v7) in the flat payload so
+        // security-service's AccountLockedConsumer can idempotently deduplicate replays
+        // via the account_lock_history.event_id unique constraint. Without this field,
+        // the consumer would synthesize a random UUID per delivery and insert duplicate
+        // rows on Kafka at-least-once redelivery (contract: specs/contracts/events/account-events.md).
         Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+                "eventId", UuidV7.randomString(),
                 "accountId", accountId,
                 "reasonCode", reasonCode,
                 "actorType", actorType,

@@ -83,6 +83,7 @@ class AccountLockedConsumerTest {
     void flatPayloadAccepted() {
         String json = """
             {
+              "eventId": "55555555-5555-5555-5555-555555555555",
               "accountId": "acc-2",
               "reasonCode": "AUTO_DETECT",
               "actorType": "system",
@@ -96,11 +97,30 @@ class AccountLockedConsumerTest {
                 ArgumentCaptor.forClass(AccountLockHistoryJpaEntity.class);
         verify(repository).save(captor.capture());
         AccountLockHistoryJpaEntity saved = captor.getValue();
+        assertThat(saved.getEventId()).isEqualTo("55555555-5555-5555-5555-555555555555");
         assertThat(saved.getAccountId()).isEqualTo("acc-2");
         assertThat(saved.getSource()).isEqualTo("system");
         // Missing actorId falls back to the zero UUID convention (edge case: system-driven lock)
         assertThat(saved.getLockedBy()).isEqualTo("00000000-0000-0000-0000-000000000000");
         assertThat(saved.getReason()).isEqualTo("AUTO_DETECT");
+    }
+
+    @Test
+    @DisplayName("TASK-BE-041b-fix: missing eventId propagates so DefaultErrorHandler routes to DLQ")
+    void missingEventIdThrows() {
+        String json = """
+            {
+              "accountId": "acc-no-event-id",
+              "reasonCode": "ADMIN_LOCK",
+              "actorType": "operator",
+              "actorId": "op-1",
+              "lockedAt": "2026-04-14T11:00:00Z"
+            }
+            """;
+        assertThatThrownBy(() -> newConsumer().onMessage(record(json)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("eventId");
+        verifyNoInteractions(repository);
     }
 
     @Test

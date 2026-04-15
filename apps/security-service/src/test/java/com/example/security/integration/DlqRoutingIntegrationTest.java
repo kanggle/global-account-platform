@@ -110,6 +110,22 @@ class DlqRoutingIntegrationTest {
     }
 
     @Test
+    @Order(3)
+    @DisplayName("TASK-BE-041b-fix: account.locked payload missing eventId is routed to account.locked.dlq")
+    void accountLockedMissingEventIdRoutedToDlq() {
+        // Contract (specs/contracts/events/account-events.md) now mandates eventId on
+        // the account.locked payload. AccountLockedConsumer throws
+        // IllegalArgumentException when it is absent, and DefaultErrorHandler routes
+        // the record to account.locked.dlq after exhausting retries.
+        String noEventId = """
+                {"accountId":"acc-dlq-003","reasonCode":"ADMIN_LOCK",
+                 "actorType":"operator","actorId":"op-1","lockedAt":"2026-04-14T10:00:00Z"}
+                """;
+        assertDlqContainsValue("account.locked", "acc-dlq-003", noEventId, noEventId);
+        assertAllContainersStillRunning();
+    }
+
+    @Test
     @Order(2)
     @DisplayName("Invalid UTF-8 / non-JSON bytes are routed to .dlq via ErrorHandlingDeserializer")
     void invalidBytesRoutedToDlq() {

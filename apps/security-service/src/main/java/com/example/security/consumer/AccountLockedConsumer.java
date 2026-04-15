@@ -13,7 +13,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.UUID;
 
 /**
  * Consumes the {@code account.locked} event published by account-service and
@@ -53,8 +52,13 @@ public class AccountLockedConsumer {
             String eventId = firstNonBlank(root.path("eventId").asText(null),
                     payload.path("eventId").asText(null));
             if (eventId == null || eventId.isBlank()) {
-                eventId = UUID.randomUUID().toString();
-                log.warn("account.locked event missing eventId; generated synthetic id={}", eventId);
+                // TASK-BE-041b-fix Critical 1: the account-events contract now mandates
+                // eventId on the account.locked payload. Messages without it are treated
+                // as invalid and routed to account.locked.dlq via DefaultErrorHandler
+                // rather than given a synthetic UUID (which would break idempotency on
+                // Kafka at-least-once redelivery by producing different event_id values
+                // for the same logical message).
+                throw new IllegalArgumentException("account.locked payload missing eventId");
             }
 
             String accountId = requireText(payload, "accountId", "account.locked payload missing accountId");
