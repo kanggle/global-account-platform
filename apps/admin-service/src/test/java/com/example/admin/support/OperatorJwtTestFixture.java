@@ -66,6 +66,24 @@ public final class OperatorJwtTestFixture {
         return signer.sign(claims);
     }
 
+    /**
+     * Mints an RS256-signed operator refresh token with the canonical claim
+     * set required by {@code POST /api/admin/auth/refresh}. Used by slice
+     * tests after TASK-BE-040-fix (the controller no longer tolerates
+     * alg:none payloads).
+     */
+    public String signRefresh(String sub, String jti, Instant expiresAt) {
+        Instant now = Instant.now();
+        Map<String, Object> claims = new LinkedHashMap<>();
+        claims.put("sub", sub);
+        claims.put("jti", jti);
+        claims.put("token_type", "admin_refresh");
+        claims.put("iss", "admin-service");
+        claims.put("iat", now);
+        claims.put("exp", expiresAt);
+        return signer.sign(claims);
+    }
+
     public String expiredToken(String sub) {
         Instant past = Instant.now().minus(1, ChronoUnit.HOURS);
         Map<String, Object> claims = new LinkedHashMap<>();

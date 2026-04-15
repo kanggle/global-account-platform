@@ -11,6 +11,7 @@ import com.example.admin.application.exception.InvalidRefreshTokenException;
 import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
 import com.example.admin.infrastructure.security.BootstrapTokenService;
 import com.example.admin.presentation.advice.AdminExceptionHandler;
+import com.example.admin.support.OperatorJwtTestFixture;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,14 +48,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({AdminRefreshControllerTest.Config.class, AdminExceptionHandler.class})
 class AdminRefreshControllerTest {
 
-    // Crafted JWT body with sub claim — only payload base64url decoding matters
-    // for the controller's audit-row enrichment helper; signature is opaque here.
-    // Header: {"alg":"none"} payload: {"sub":"00000000-0000-7000-8000-00000000dev1"}
-    private static final String FAKE_REFRESH_TOKEN =
-            "eyJhbGciOiJub25lIn0."
-                    + "eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMGRldjEifQ."
-                    + "sig";
     private static final String OPERATOR_ID = "00000000-0000-7000-8000-00000000dev1";
+    // TASK-BE-040-fix — controller no longer decodes the JWT payload; the
+    // token merely needs to parse as a JWS and the service (mocked) decides
+    // the outcome. A real RS256-signed refresh token is used to satisfy the
+    // post-fix rule that no alg:none or unsigned payload be trusted.
+    private static final OperatorJwtTestFixture JWT_FIXTURE = new OperatorJwtTestFixture();
+    private static final String SIGNED_REFRESH_TOKEN = JWT_FIXTURE.signRefresh(
+            OPERATOR_ID,
+            "11111111-1111-1111-1111-111111111111",
+            java.time.Instant.now().plus(java.time.Duration.ofDays(30)));
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
@@ -75,11 +78,11 @@ class AdminRefreshControllerTest {
     void rotates_and_returns_new_token_pair() throws Exception {
         when(refreshService.refresh(anyString())).thenReturn(
                 new AdminRefreshTokenService.RefreshResult(
-                        "new.access.jwt", 3600L, "new.refresh.jwt", 2_592_000L));
+                        "new.access.jwt", 3600L, "new.refresh.jwt", 2_592_000L, OPERATOR_ID));
 
         mockMvc.perform(post("/api/admin/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + FAKE_REFRESH_TOKEN + "\"}"))
+                        .content("{\"refreshToken\":\"" + SIGNED_REFRESH_TOKEN + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("new.access.jwt"))
                 .andExpect(jsonPath("$.expiresIn").value(3600))
@@ -104,7 +107,7 @@ class AdminRefreshControllerTest {
 
         mockMvc.perform(post("/api/admin/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + FAKE_REFRESH_TOKEN + "\"}"))
+                        .content("{\"refreshToken\":\"" + SIGNED_REFRESH_TOKEN + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
 
@@ -118,11 +121,11 @@ class AdminRefreshControllerTest {
     @Test
     void returns_401_reuse_detected_on_revoked_jti_replay() throws Exception {
         when(refreshService.refresh(anyString()))
-                .thenThrow(new RefreshTokenReuseDetectedException("chain invalidated"));
+                .thenThrow(new RefreshTokenReuseDetectedException("chain invalidated", OPERATOR_ID));
 
         mockMvc.perform(post("/api/admin/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + FAKE_REFRESH_TOKEN + "\"}"))
+                        .content("{\"refreshToken\":\"" + SIGNED_REFRESH_TOKEN + "\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_REUSE_DETECTED"));
 
