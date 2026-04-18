@@ -146,7 +146,15 @@ docker compose up -d mysql redis kafka kafka-init
 ```bash
 ./gradlew bootRun  # 또는 개별 서비스:
 ./gradlew :apps:auth-service:bootRun
+
+# admin-service 로컬 기동 (dev profile로 테스트 JWT/TOTP 키 주입)
+./gradlew :apps:admin-service:bootRun --args='--spring.profiles.active=dev'
 ```
+
+> `dev` 프로파일은 **로컬 개발 전용**입니다. `application-dev.yml`에 고정 테스트
+> JWT PEM / TOTP AES 키가 baked-in되어 있으므로 배포 환경(staging/prod)에서는
+> 절대 활성화하지 마세요. 프로덕션은 `application-prod.yml` + 실제 secret
+> 주입 경로를 사용합니다.
 
 ### 3. Frontend
 ```bash
