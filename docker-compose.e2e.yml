@@ -14,6 +14,8 @@
 # VALUES, also used by admin-service unit tests. DO NOT use in production.
 # =============================================================================
 
+name: global-account-platform-e2e
+
 x-service-env: &service-env
   SPRING_PROFILES_ACTIVE: e2e
   DB_HOST: mysql

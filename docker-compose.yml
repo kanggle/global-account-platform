@@ -13,6 +13,8 @@
 #   If you already have a service on 8090, change KAFKA_UI_PORT in .env
 # =============================================================================
 
+name: global-account-platform
+
 services:
   # ---------------------------------------------------------------------------
   # MySQL 8 — 6 databases: auth_db, account_db, security_db, admin_db, community_db, membership_db
