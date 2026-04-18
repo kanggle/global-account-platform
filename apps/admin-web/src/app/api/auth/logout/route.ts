@@ -12,7 +12,7 @@ export async function POST() {
 
   if (access && refresh) {
     try {
-      await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/auth/logout`, {
+      await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/admin/auth/logout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

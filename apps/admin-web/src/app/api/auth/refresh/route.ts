@@ -27,7 +27,7 @@ export async function POST() {
   }
 
   try {
-    const upstream = await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/auth/refresh`, {
+    const upstream = await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/admin/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
       body: JSON.stringify({ refreshToken: refresh }),

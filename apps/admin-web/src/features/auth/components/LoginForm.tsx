@@ -21,7 +21,7 @@ export function LoginForm() {
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { operatorId: '', password: '' },
     mode: 'onBlur',
   });
 
@@ -79,11 +79,11 @@ export function LoginForm() {
       noValidate
     >
       <div className="flex flex-col gap-1">
-        <Label htmlFor="email">이메일</Label>
-        <Input id="email" type="email" autoComplete="username" {...form.register('email')} />
-        {form.formState.errors.email ? (
+        <Label htmlFor="operatorId">운영자 ID</Label>
+        <Input id="operatorId" type="text" autoComplete="username" {...form.register('operatorId')} />
+        {form.formState.errors.operatorId ? (
           <p role="alert" className="text-xs text-destructive">
-            {form.formState.errors.email.message}
+            {form.formState.errors.operatorId.message}
           </p>
         ) : null}
       </div>
