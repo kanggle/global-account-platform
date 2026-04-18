@@ -22,6 +22,9 @@ public class AccountJpaEntity {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(name = "email_hash", length = 64)
+    private String emailHash;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private AccountStatus status;
@@ -43,6 +46,7 @@ public class AccountJpaEntity {
         AccountJpaEntity entity = new AccountJpaEntity();
         entity.id = account.getId();
         entity.email = account.getEmail();
+        entity.emailHash = account.getEmailHash();
         entity.status = account.getStatus();
         entity.createdAt = account.getCreatedAt();
         entity.updatedAt = account.getUpdatedAt();
@@ -52,6 +56,6 @@ public class AccountJpaEntity {
     }
 
     public Account toDomain() {
-        return Account.reconstitute(id, email, status, createdAt, updatedAt, deletedAt, version);
+        return Account.reconstitute(id, email, emailHash, status, createdAt, updatedAt, deletedAt, version);
     }
 }

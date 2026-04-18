@@ -41,21 +41,26 @@ import java.util.UUID;
 public class AdminActionAuditor {
 
     /** Canonical actionCode → target.type mapping used for DENIED rows. */
-    private static final Map<ActionCode, String> ACTION_TARGET_TYPE = Map.of(
-            ActionCode.ACCOUNT_LOCK, "ACCOUNT",
-            ActionCode.ACCOUNT_UNLOCK, "ACCOUNT",
-            ActionCode.SESSION_REVOKE, "SESSION",
-            ActionCode.AUDIT_QUERY, "AUDIT_QUERY",
-            // TASK-BE-029-2 — self-directed 2FA enroll/verify. Target is the
-            // operator themselves (bootstrap context's operator_id).
-            ActionCode.OPERATOR_2FA_ENROLL, "OPERATOR",
-            ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR",
-            // TASK-BE-029-3 — login audit rows target the operator themselves.
-            ActionCode.OPERATOR_LOGIN, "OPERATOR",
-            // TASK-BE-040 — refresh rotation + self-logout target the operator themselves.
-            ActionCode.OPERATOR_REFRESH, "OPERATOR",
-            ActionCode.OPERATOR_LOGOUT, "OPERATOR"
-    );
+    private static final Map<ActionCode, String> ACTION_TARGET_TYPE;
+    static {
+        var map = new java.util.HashMap<ActionCode, String>();
+        map.put(ActionCode.ACCOUNT_LOCK, "ACCOUNT");
+        map.put(ActionCode.ACCOUNT_UNLOCK, "ACCOUNT");
+        map.put(ActionCode.SESSION_REVOKE, "SESSION");
+        map.put(ActionCode.AUDIT_QUERY, "AUDIT_QUERY");
+        // TASK-BE-029-2 — self-directed 2FA enroll/verify
+        map.put(ActionCode.OPERATOR_2FA_ENROLL, "OPERATOR");
+        map.put(ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR");
+        // TASK-BE-029-3 — login audit rows
+        map.put(ActionCode.OPERATOR_LOGIN, "OPERATOR");
+        // TASK-BE-040 — refresh rotation + self-logout
+        map.put(ActionCode.OPERATOR_REFRESH, "OPERATOR");
+        map.put(ActionCode.OPERATOR_LOGOUT, "OPERATOR");
+        // TASK-BE-054 — GDPR/PIPA data rights
+        map.put(ActionCode.GDPR_DELETE, "ACCOUNT");
+        map.put(ActionCode.DATA_EXPORT, "ACCOUNT");
+        ACTION_TARGET_TYPE = Map.copyOf(map);
+    }
 
     /** Reason constant for self-enrollment audit rows (admin-api.md §X-Operator-Reason exceptions). */
     public static final String REASON_SELF_ENROLLMENT = "<self_enrollment>";
@@ -349,6 +354,8 @@ public class AdminActionAuditor {
             case OPERATOR_LOGIN -> PERMISSION_LOGIN;
             case OPERATOR_REFRESH -> PERMISSION_REFRESH;
             case OPERATOR_LOGOUT -> PERMISSION_LOGOUT;
+            case GDPR_DELETE -> Permission.ACCOUNT_LOCK;
+            case DATA_EXPORT -> Permission.AUDIT_READ;
         };
     }
 

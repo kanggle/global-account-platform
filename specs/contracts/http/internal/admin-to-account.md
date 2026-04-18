@@ -113,6 +113,69 @@ auth-to-account.md의 동일 엔드포인트 공유.
 
 ---
 
+## POST /internal/accounts/{accountId}/gdpr-delete
+
+GDPR/PIPA 삭제권. 계정 상태를 DELETED로 전이하고 PII를 즉시 마스킹한다.
+
+**Headers**: Idempotency-Key + X-Operator-ID
+
+**Request**:
+```json
+{
+  "reason": "REGULATED_DELETION",
+  "operatorId": "string"
+}
+```
+
+**Response 200**:
+```json
+{
+  "accountId": "string",
+  "status": "DELETED",
+  "emailHash": "string (SHA-256 hex)",
+  "maskedAt": "2026-04-18T10:00:00Z"
+}
+```
+
+**Errors**: 400 `STATE_TRANSITION_INVALID` (이미 DELETED), 404 `ACCOUNT_NOT_FOUND`
+
+**Server-side behavior**:
+1. AccountStatusMachine.transition() 경유 DELETED 전이
+2. 이메일을 SHA-256 해시로 교체 (email_hash 컬럼에 원본 해시 저장)
+3. 프로필 PII 필드 NULL 처리 (displayName, phoneNumber, birthDate)
+4. deleted_at, masked_at 타임스탬프 기록
+5. account.deleted 이벤트 발행 (anonymized=true)
+
+---
+
+## GET /internal/accounts/{accountId}/export
+
+계정 개인 데이터 내보내기.
+
+**Headers**: X-Operator-ID
+
+**Response 200**:
+```json
+{
+  "accountId": "string",
+  "email": "string",
+  "status": "string",
+  "createdAt": "2026-01-01T00:00:00Z",
+  "profile": {
+    "displayName": "string",
+    "phoneNumber": "string",
+    "birthDate": "1990-01-15",
+    "locale": "ko-KR",
+    "timezone": "Asia/Seoul"
+  },
+  "exportedAt": "2026-04-18T10:00:00Z"
+}
+```
+
+**Errors**: 404 `ACCOUNT_NOT_FOUND`
+
+---
+
 ## Server Constraints (account-service 측)
 
 - 모든 상태 변경은 `AccountStatusMachine.transition()` 경유

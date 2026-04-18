@@ -83,6 +83,59 @@ public class AccountServiceClient {
                 body, operatorId, idempotencyKey, LockResponse.class);
     }
 
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
+    public GdprDeleteResponse gdprDelete(String accountId,
+                                          String operatorId,
+                                          String idempotencyKey) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("reason", "REGULATED_DELETION");
+        body.put("operatorId", operatorId);
+
+        return callPost("/internal/accounts/" + accountId + "/gdpr-delete",
+                body, operatorId, idempotencyKey, GdprDeleteResponse.class);
+    }
+
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
+    public DataExportResponse export(String accountId, String operatorId) {
+        return callGet("/internal/accounts/" + accountId + "/export",
+                operatorId, DataExportResponse.class);
+    }
+
+    private <T> T callGet(String path, String operatorId, Class<T> responseType) {
+        try {
+            return restClient.get()
+                    .uri(path)
+                    .headers(h -> {
+                        h.add("X-Operator-ID", operatorId);
+                        if (internalToken != null && !internalToken.isBlank()) {
+                            h.add("X-Internal-Token", internalToken);
+                        }
+                    })
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, resp) -> {
+                        throw HttpClientErrorException.create(
+                                resp.getStatusCode(), resp.getStatusText(),
+                                resp.getHeaders(), resp.getBody().readAllBytes(), null);
+                    })
+                    .body(responseType);
+        } catch (RestClientResponseException e) {
+            log.warn("account-service returned {} on {}: {}", e.getStatusCode(), path, e.getMessage());
+            if (e.getStatusCode().is4xxClientError()) {
+                String code = extractErrorCode(e.getResponseBodyAsByteArray());
+                throw new NonRetryableDownstreamException(
+                        "account-service error " + e.getStatusCode().value(), e,
+                        e.getStatusCode().value(), code);
+            }
+            throw new DownstreamFailureException(
+                    "account-service error " + e.getStatusCode().value(), e);
+        } catch (Exception e) {
+            log.error("account-service call failed on {}", path, e);
+            throw new DownstreamFailureException("account-service unavailable", e);
+        }
+    }
+
     private <T> T callPost(String path, Map<String, Object> body,
                            String operatorId, String idempotencyKey, Class<T> responseType) {
         try {
@@ -149,5 +202,29 @@ public class AccountServiceClient {
             String currentStatus,
             Instant lockedAt,
             Instant unlockedAt
+    ) {}
+
+    public record GdprDeleteResponse(
+            String accountId,
+            String status,
+            String emailHash,
+            Instant maskedAt
+    ) {}
+
+    public record DataExportResponse(
+            String accountId,
+            String email,
+            String status,
+            Instant createdAt,
+            DataExportProfile profile,
+            Instant exportedAt
+    ) {}
+
+    public record DataExportProfile(
+            String displayName,
+            String phoneNumber,
+            String birthDate,
+            String locale,
+            String timezone
     ) {}
 }

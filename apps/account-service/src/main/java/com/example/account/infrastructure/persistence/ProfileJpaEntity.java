@@ -43,6 +43,9 @@ public class ProfileJpaEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "masked_at")
+    private Instant maskedAt;
+
     public static ProfileJpaEntity fromDomain(Profile profile) {
         ProfileJpaEntity entity = new ProfileJpaEntity();
         entity.id = profile.getId();
@@ -54,11 +57,12 @@ public class ProfileJpaEntity {
         entity.timezone = profile.getTimezone();
         entity.preferences = profile.getPreferences();
         entity.updatedAt = profile.getUpdatedAt();
+        entity.maskedAt = profile.getMaskedAt();
         return entity;
     }
 
     public Profile toDomain() {
         return Profile.reconstitute(id, accountId, displayName, phoneNumber, birthDate,
-                locale, timezone, preferences, updatedAt);
+                locale, timezone, preferences, updatedAt, maskedAt);
     }
 }

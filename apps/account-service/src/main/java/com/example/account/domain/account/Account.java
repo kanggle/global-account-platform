@@ -19,6 +19,7 @@ public class Account {
 
     private String id;
     private String email;
+    private String emailHash;
     private AccountStatus status;
     private Instant createdAt;
     private Instant updatedAt;
@@ -41,18 +42,30 @@ public class Account {
     /**
      * Reconstitute an Account from persisted state. Used by infrastructure mappers.
      */
-    public static Account reconstitute(String id, String email, AccountStatus status,
+    public static Account reconstitute(String id, String email, String emailHash,
+                                        AccountStatus status,
                                         Instant createdAt, Instant updatedAt,
                                         Instant deletedAt, int version) {
         Account account = new Account();
         account.id = id;
         account.email = email;
+        account.emailHash = emailHash;
         account.status = status;
         account.createdAt = createdAt;
         account.updatedAt = updatedAt;
         account.deletedAt = deletedAt;
         account.version = version;
         return account;
+    }
+
+    /**
+     * Apply GDPR PII masking to the email field.
+     * Replaces email with a non-reversible masked value and stores the SHA-256 hash.
+     */
+    public void maskEmail(String hashedEmail, String maskedEmail) {
+        this.emailHash = hashedEmail;
+        this.email = maskedEmail;
+        this.updatedAt = Instant.now();
     }
 
     /**

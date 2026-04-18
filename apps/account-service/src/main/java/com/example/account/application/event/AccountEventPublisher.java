@@ -97,6 +97,22 @@ public class AccountEventPublisher {
         outboxWriter.save("Account", accountId, "account.deleted", toJson(payload));
     }
 
+    public void publishAccountDeletedAnonymized(String accountId, String reasonCode,
+                                                    String actorType, String actorId,
+                                                    Instant deletedAt) {
+        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+                "accountId", accountId,
+                "reasonCode", reasonCode,
+                "actorType", actorType,
+                "deletedAt", deletedAt.toString(),
+                "anonymized", true
+        ));
+        if (actorId != null) {
+            payload.put("actorId", actorId);
+        }
+        outboxWriter.save("Account", accountId, "account.deleted", toJson(payload));
+    }
+
     private String toJson(Object payload) {
         try {
             return objectMapper.writeValueAsString(payload);

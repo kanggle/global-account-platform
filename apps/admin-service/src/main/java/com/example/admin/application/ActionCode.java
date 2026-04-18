@@ -14,5 +14,8 @@ public enum ActionCode {
     // TASK-BE-040: operator refresh-token rotation + self-logout.
     // target_type=OPERATOR, target_id=operator_id, permission_used=auth.refresh|auth.logout.
     OPERATOR_REFRESH,
-    OPERATOR_LOGOUT
+    OPERATOR_LOGOUT,
+    // TASK-BE-054: GDPR/PIPA data rights.
+    GDPR_DELETE,
+    DATA_EXPORT
 }

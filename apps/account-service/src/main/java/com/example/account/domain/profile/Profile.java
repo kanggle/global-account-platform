@@ -20,6 +20,7 @@ public class Profile {
     private String timezone;
     private String preferences;
     private Instant updatedAt;
+    private Instant maskedAt;
 
     public static Profile create(String accountId, String displayName, String locale, String timezone) {
         Profile profile = new Profile();
@@ -37,7 +38,8 @@ public class Profile {
     public static Profile reconstitute(Long id, String accountId, String displayName,
                                         String phoneNumber, LocalDate birthDate,
                                         String locale, String timezone,
-                                        String preferences, Instant updatedAt) {
+                                        String preferences, Instant updatedAt,
+                                        Instant maskedAt) {
         Profile profile = new Profile();
         profile.id = id;
         profile.accountId = accountId;
@@ -48,7 +50,19 @@ public class Profile {
         profile.timezone = timezone;
         profile.preferences = preferences;
         profile.updatedAt = updatedAt;
+        profile.maskedAt = maskedAt;
         return profile;
+    }
+
+    /**
+     * GDPR PII masking: null out displayName, phoneNumber, birthDate and stamp maskedAt.
+     */
+    public void maskPii() {
+        this.displayName = null;
+        this.phoneNumber = null;
+        this.birthDate = null;
+        this.maskedAt = Instant.now();
+        this.updatedAt = Instant.now();
     }
 
     public void update(String displayName, String phoneNumber, LocalDate birthDate,
