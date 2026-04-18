@@ -2,7 +2,7 @@
 
 ## Purpose
 
-외부 OAuth 2.0 제공자(Google, Kakao)를 통한 인증 흐름을 정의한다. 사용자는 이메일·패스워드 대신 소셜 계정으로 로그인할 수 있으며, 기존 인증 시스템(JWT 발급, 디바이스 세션, 이벤트)과 동일한 후처리 파이프라인을 공유한다.
+외부 OAuth 2.0 / OpenID Connect 제공자(Google, Kakao, Microsoft)를 통한 인증 흐름을 정의한다. 사용자는 이메일·패스워드 대신 소셜 계정으로 로그인할 수 있으며, 기존 인증 시스템(JWT 발급, 디바이스 세션, 이벤트)과 동일한 후처리 파이프라인을 공유한다.
 
 ## Related Services
 
@@ -76,9 +76,18 @@ provider로부터 받는 access_token, refresh_token은 **저장하지 않는다
 6. h~j. 동일
 7. 응답: `{ ..., isNewAccount: false }`
 
+### Microsoft 특이 사항
+
+Microsoft Identity Platform (Azure AD v2.0)은 OpenID Connect 표준을 따르며 Google과 동일한 id_token (JWT) 기반 흐름을 사용한다. 다음 차이가 있다:
+
+- **Tenant**: authorization/token endpoint URL에 tenant 세그먼트 포함. 기본값 `common` (개인 Microsoft 계정 + 조직/학교 계정 모두 허용). 정책상 조직 계정만 허용하려면 `organizations`, 개인만 허용하려면 `consumers`, 단일 조직만 허용하려면 해당 tenant ID 사용.
+- **사용자 식별자**: id_token의 `sub` claim 사용 (app-user pairwise identifier, 안정적). `oid`는 tenant-wide object ID로 참고용으로만 사용하며 DB의 `provider_user_id`에는 `sub`를 저장.
+- **이메일**: `email` claim은 선택적. 없으면 `preferred_username`을 fallback으로 사용하며, 둘 다 없으면 `EMAIL_REQUIRED` 반환.
+- **Scope**: `openid email profile` (기본).
+
 ## Business Rules
 
-- 지원 provider: **Google**, **Kakao** (추가 provider는 `OAuthProviderClient` 인터페이스 구현으로 확장)
+- 지원 provider: **Google**, **Kakao**, **Microsoft** (추가 provider는 `OAuthClient` 인터페이스 구현으로 확장)
 - provider id_token의 `email` 필드가 없으면 로그인 거부 (이메일 필수)
 - 계정 상태가 ACTIVE가 아니면 소셜 로그인도 거부 (LOCKED → 403, DORMANT → 403, DELETED → 403)
 - 소셜 로그인 성공 시 발급하는 JWT는 이메일·패스워드 로그인과 **동일 형식·TTL**
@@ -99,7 +108,7 @@ provider로부터 받는 access_token, refresh_token은 **저장하지 않는다
 
 - client_secret은 auth-service의 환경 변수로만 관리, 로그 출력 금지
 - provider로부터 받은 token은 메모리에서만 사용, DB/로그에 저장 금지
-- id_token 검증: Google은 JWKS 기반 서명 검증, Kakao는 token info API 호출
+- id_token 검증: Google은 JWKS 기반 서명 검증, Kakao는 token info API 호출, Microsoft는 JWKS 기반 서명 검증
 - state 파라미터는 `SecureRandom` 기반 256-bit
 
 ## Related Contracts

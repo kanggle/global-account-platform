@@ -11,6 +11,7 @@ public class OAuthProperties {
 
     private ProviderProperties google = new ProviderProperties();
     private ProviderProperties kakao = new ProviderProperties();
+    private ProviderProperties microsoft = new ProviderProperties();
 
     @Getter
     @Setter

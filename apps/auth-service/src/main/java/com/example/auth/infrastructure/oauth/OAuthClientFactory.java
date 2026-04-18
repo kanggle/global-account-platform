@@ -13,11 +13,13 @@ public class OAuthClientFactory {
 
     private final GoogleOAuthClient googleOAuthClient;
     private final KakaoOAuthClient kakaoOAuthClient;
+    private final MicrosoftOAuthClient microsoftOAuthClient;
 
     public OAuthClient getClient(OAuthProvider provider) {
         return switch (provider) {
             case GOOGLE -> googleOAuthClient;
             case KAKAO -> kakaoOAuthClient;
+            case MICROSOFT -> microsoftOAuthClient;
         };
     }
 }

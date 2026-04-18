@@ -194,6 +194,7 @@ public class OAuthLoginUseCase {
         return switch (provider) {
             case GOOGLE -> oAuthProperties.getGoogle();
             case KAKAO -> oAuthProperties.getKakao();
+            case MICROSOFT -> oAuthProperties.getMicrosoft();
         };
     }
 

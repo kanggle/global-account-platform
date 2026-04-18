@@ -33,6 +33,30 @@ outbox:
     interval-ms: 500
     batch-size: 50
 
+oauth:
+  google:
+    client-id: test-google-client-id
+    client-secret: test-google-client-secret
+    redirect-uri: http://localhost:3000/oauth/callback
+    scopes: openid,email,profile
+    token-uri: https://oauth2.googleapis.com/token
+    auth-uri: https://accounts.google.com/o/oauth2/v2/auth
+  kakao:
+    client-id: test-kakao-client-id
+    client-secret: test-kakao-client-secret
+    redirect-uri: http://localhost:3000/oauth/callback
+    scopes: account_email,profile_nickname
+    token-uri: https://kauth.kakao.com/oauth/token
+    auth-uri: https://kauth.kakao.com/oauth/authorize
+    user-info-uri: https://kapi.kakao.com/v2/user/me
+  microsoft:
+    client-id: test-microsoft-client-id
+    client-secret: test-microsoft-client-secret
+    redirect-uri: http://localhost:3000/oauth/callback
+    scopes: openid,email,profile
+    token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
+    auth-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+
 server:
   port: 0
 

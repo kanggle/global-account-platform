@@ -84,6 +84,13 @@ oauth:
     token-uri: https://kauth.kakao.com/oauth/token
     auth-uri: https://kauth.kakao.com/oauth/authorize
     user-info-uri: https://kapi.kakao.com/v2/user/me
+  microsoft:
+    client-id: ${OAUTH_MICROSOFT_CLIENT_ID:test-microsoft-client-id}
+    client-secret: ${OAUTH_MICROSOFT_CLIENT_SECRET:test-microsoft-client-secret}
+    redirect-uri: ${OAUTH_MICROSOFT_REDIRECT_URI:http://localhost:3000/oauth/callback}
+    scopes: openid,email,profile
+    token-uri: https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/oauth2/v2.0/token
+    auth-uri: https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/oauth2/v2.0/authorize
 
 auth:
   jwt:
