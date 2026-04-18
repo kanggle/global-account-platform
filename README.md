@@ -164,6 +164,16 @@ docker compose -f docker-compose.e2e.yml -p gap-e2e up -d --build
 ./gradlew :tests:e2e:test
 ```
 
+### 5. Unit + Integration Tests
+
+```bash
+./gradlew :apps:auth-service:test
+```
+
+> Testcontainers 기반 통합 테스트는 `@EnabledIf("isDockerAvailable")`로
+> Docker 환경이 유효할 때만 실행됩니다. 모두 `SKIPPED`로 보이면
+> [docs/guides/local-integration-testing.md](docs/guides/local-integration-testing.md)를 참고하세요.
+
 ---
 
 ## Monitoring
