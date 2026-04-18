@@ -66,19 +66,33 @@ org.testcontainers.dockerclient.DockerClientProviderStrategy
 }
 ```
 
-### 원인
+### 원인 (Docker Desktop 4.69+ 호환성 이슈)
 
-Docker Desktop이 Linux 엔진 pipe(`dockerDesktopLinuxEngine`, `dockerDesktopEngine`, `docker_engine`)에 대해 `/info` / `/_ping` 호출 시 **degrade된 응답**을 반환하는 상태. `docker CLI`는 내부적으로 `docker_cli` pipe를 거치므로 정상 동작하지만, HTTP 기반 클라이언트(`docker-java` → Testcontainers)는 `/_ping` 검증에서 400을 받아 모든 strategy가 실패.
+Docker Desktop 4.69가 `/info` 호출에 대해 다음 형태의 **redirect-style 응답**을 모든 엔드포인트(named pipe, TCP 2375 모두)에서 반환:
+
+```json
+{
+  "ID": "",
+  "ServerVersion": "",
+  "Labels": ["com.docker.desktop.address=npipe://\\\\.\\pipe\\docker_cli"]
+}
+```
+
+HTTP 상태 코드는 400. Docker CLI는 이 Label을 읽어 `docker_cli` pipe로 자동 리디렉트하지만, **`docker-java`(Testcontainers 1.20.x / 1.21.x의 내부 라이브러리)는 이 프로토콜을 모르고 400을 치명적 오류로 간주**해 모든 provider strategy를 실패로 처리.
+
+> 검증: 같은 JVM에서 `java.net.http.HttpClient`로 직접 `http://localhost:2375/info`를 호출하면 **정상 200 응답**이 옴. 문제는 `docker-java` 라이브러리가 이 응답을 해석하는 방식에만 국한됨.
 
 ---
 
-## 해결 방법 (우선순위 순)
+## 해결 방법
 
-### 1) Docker Desktop 재시작 (최우선 시도)
+> 이 프로젝트 개발 중(2026-04) 검증 결과, **Docker Desktop 4.69 환경에서는 아래 5단계 모두 유효하지 않음**을 확인했습니다. TCP 2375 노출, 전체 재시작, `.testcontainers.properties` 조정, Docker context 변경, Testcontainers 버전 업(1.20.4→1.21.4) 전부 동일한 400 응답을 받습니다. **Docker Desktop 측 incompatibility**이므로 아래 5단계 중 1·2·3은 **다른 환경에서만** 효과가 있습니다. Docker Desktop 4.69+ 사용자는 **6단계(Docker 대체)** 로 직행하세요.
+
+### 1) Docker Desktop 재시작 (일반 환경용)
 
 Docker Desktop 트레이 아이콘 → **Quit Docker Desktop** → 다시 시작.
 
-대부분의 경우 이 한 단계로 pipe 응답이 정상화됩니다.
+`/info` degraded 응답이 아닌 일반 skip 원인(daemon 미가동)에는 효과적입니다.
 
 ### 2) "Expose daemon on tcp://localhost:2375 without TLS" 활성화
 
@@ -135,6 +149,25 @@ Docker Desktop 고집 필요가 없다면:
 - [Colima](https://github.com/abiosoft/colima) (macOS/Linux)
 
 설치 후 `docker context use <name>` 명령으로 전환하면 Testcontainers가 즉시 동작.
+
+### 6) **Docker Desktop 4.69+ 사용자 — 권장 경로**
+
+해당 버전의 docker-java 호환성 이슈는 코드·설정으로 우회 불가. 다음 중 택일:
+
+**(A) Docker Desktop 다운그레이드** — 4.34 이하 버전이 안정적으로 알려져 있음. [공식 Release Notes](https://docs.docker.com/desktop/release-notes/)에서 내려받기.
+
+**(B) Rancher Desktop 사용** — 무료, Windows 네이티브 설치 후 `dockerd` 모드 선택. Docker Desktop과 공존 가능(컨텍스트만 전환).
+
+```bash
+# Rancher Desktop 설치 후
+docker context ls          # rancher-desktop 컨텍스트 확인
+docker context use rancher-desktop
+./gradlew :apps:auth-service:test --tests "*IntegrationTest"
+```
+
+**(C) WSL 내부 Docker Engine** — WSL2 Ubuntu에 `docker-ce` 직접 설치. Docker Desktop 의존 제거.
+
+**(D) CI에서만 통합 테스트 실행** — 로컬에선 skip을 수용, GitHub Actions Linux runner에서는 정상 실행되므로 CI 파이프라인이 실질 안전망 역할.
 
 ---
 
