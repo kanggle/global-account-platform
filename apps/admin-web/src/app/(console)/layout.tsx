@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { requireOperatorSession } from './session';
 import { hasAnyRole } from '@/shared/lib/roles';
+import { LogoutButton } from './LogoutButton';
 
 export default async function ConsoleLayout({ children }: { children: ReactNode }) {
   const session = await requireOperatorSession('/accounts');
@@ -23,9 +24,12 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-border px-6 py-3 text-sm">
           <span>운영자: {session.email}</span>
-          <span className="text-muted-foreground">
-            {session.roles.join(', ')} {canManage ? '' : '(읽기 전용)'}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-muted-foreground">
+              {session.roles.join(', ')} {canManage ? '' : '(읽기 전용)'}
+            </span>
+            <LogoutButton />
+          </div>
         </header>
         <main className="flex-1 p-6">{children}</main>
       </div>
