@@ -1,6 +1,7 @@
 package com.example.security.infrastructure.config;
 
 import com.example.security.domain.detection.*;
+import com.example.security.domain.repository.LoginHistoryRepository;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -40,5 +41,17 @@ public class DetectionConfig {
     @Bean
     public TokenReuseRule tokenReuseRule() {
         return new TokenReuseRule();
+    }
+
+    @Bean
+    public ImpossibleTravelRule impossibleTravelRule(LoginHistoryRepository loginHistoryRepository,
+                                                      DetectionThresholds thresholds) {
+        return new ImpossibleTravelRule(loginHistoryRepository, thresholds);
+    }
+
+    @Bean
+    public IpReputationRule ipReputationRule(DetectionProperties props,
+                                              DetectionThresholds thresholds) {
+        return new IpReputationRule(props.getIpReputation().getSuspiciousCidrs(), thresholds);
     }
 }

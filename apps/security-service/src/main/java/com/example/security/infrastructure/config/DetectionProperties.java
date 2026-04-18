@@ -26,6 +26,8 @@ public class DetectionProperties {
     @Valid @NotNull private Device device = new Device();
     @Valid @NotNull private AutoLock autoLock = new AutoLock();
     @Valid @NotNull private GeoIp geoip = new GeoIp();
+    @Valid @NotNull private ImpossibleTravel impossibleTravel = new ImpossibleTravel();
+    @Valid @NotNull private IpReputation ipReputation = new IpReputation();
 
     public DetectionThresholds toThresholds() {
         return new DetectionThresholds(
@@ -36,7 +38,10 @@ public class DetectionProperties {
                 geo.minScore,
                 geo.scoreSlope,
                 device.score,
-                device.alertOnNew
+                device.alertOnNew,
+                impossibleTravel.timeWindowSeconds,
+                impossibleTravel.score,
+                ipReputation.score
         );
     }
 
@@ -50,6 +55,10 @@ public class DetectionProperties {
     public void setAutoLock(AutoLock autoLock) { this.autoLock = autoLock; }
     public GeoIp getGeoip() { return geoip; }
     public void setGeoip(GeoIp geoip) { this.geoip = geoip; }
+    public ImpossibleTravel getImpossibleTravel() { return impossibleTravel; }
+    public void setImpossibleTravel(ImpossibleTravel impossibleTravel) { this.impossibleTravel = impossibleTravel; }
+    public IpReputation getIpReputation() { return ipReputation; }
+    public void setIpReputation(IpReputation ipReputation) { this.ipReputation = ipReputation; }
 
     public static class Velocity {
         @Min(1) @Max(10_000)
@@ -119,5 +128,27 @@ public class DetectionProperties {
         private String dbPath = "";
         public String getDbPath() { return dbPath; }
         public void setDbPath(String dbPath) { this.dbPath = dbPath; }
+    }
+
+    public static class ImpossibleTravel {
+        @Min(1) @Max(86_400)
+        private int timeWindowSeconds = 3600;
+        @Min(0) @Max(100)
+        private int score = 70;
+        public int getTimeWindowSeconds() { return timeWindowSeconds; }
+        public void setTimeWindowSeconds(int timeWindowSeconds) { this.timeWindowSeconds = timeWindowSeconds; }
+        public int getScore() { return score; }
+        public void setScore(int score) { this.score = score; }
+    }
+
+    public static class IpReputation {
+        @Min(0) @Max(100)
+        private int score = 60;
+        @NotNull
+        private java.util.List<String> suspiciousCidrs = new java.util.ArrayList<>();
+        public int getScore() { return score; }
+        public void setScore(int score) { this.score = score; }
+        public java.util.List<String> getSuspiciousCidrs() { return suspiciousCidrs; }
+        public void setSuspiciousCidrs(java.util.List<String> suspiciousCidrs) { this.suspiciousCidrs = suspiciousCidrs; }
     }
 }

@@ -108,3 +108,9 @@ security:
       read-timeout-ms: ${AUTO_LOCK_READ_TIMEOUT_MS:10000}
     geoip:
       db-path: ${GEOIP_DB_PATH:}
+    impossible-travel:
+      time-window-seconds: ${DETECT_IMPOSSIBLE_TRAVEL_WINDOW_SECONDS:3600}
+      score: ${DETECT_IMPOSSIBLE_TRAVEL_SCORE:70}
+    ip-reputation:
+      score: ${DETECT_IP_REPUTATION_SCORE:60}
+      suspicious-cidrs: ${DETECT_IP_REPUTATION_CIDRS:}
