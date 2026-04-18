@@ -18,17 +18,25 @@ export function LoginForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<LoginInput | null>(null);
+  const [needsTotp, setNeedsTotp] = useState(false);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
-    defaultValues: { operatorId: '', password: '' },
+    defaultValues: { operatorId: '', password: '', totpCode: '' },
     mode: 'onBlur',
   });
 
   async function onSubmit(values: LoginInput) {
     setSubmitError(null);
+    const body: Record<string, string> = {
+      operatorId: values.operatorId,
+      password: values.password,
+    };
+    if (values.totpCode && values.totpCode.length === 6) {
+      body.totpCode = values.totpCode;
+    }
     try {
-      await apiClient.post('/api/auth/login', values, { skipAuthRetry: true });
+      await apiClient.post('/api/auth/login', body, { skipAuthRetry: true });
       const redirect = params?.get('redirect') ?? '/accounts';
       router.push(redirect);
       router.refresh();
@@ -39,6 +47,11 @@ export function LoginForm() {
           setEnrollmentToken(err.extra.bootstrapToken as string);
           return;
         }
+        if (err.code === 'BAD_REQUEST' && !needsTotp) {
+          setNeedsTotp(true);
+          setSubmitError('TOTP 코드를 입력하세요.');
+          return;
+        }
         setSubmitError(messageForCode(err.code, err.message));
       } else {
         setSubmitError('네트워크 오류가 발생했습니다.');
@@ -47,19 +60,11 @@ export function LoginForm() {
   }
 
   async function handleEnrollmentComplete() {
-    // After 2FA enrollment + verify, re-login with the original credentials
     if (!credentials) return;
-    try {
-      await apiClient.post('/api/auth/login', credentials, { skipAuthRetry: true });
-      const redirect = params?.get('redirect') ?? '/accounts';
-      router.push(redirect);
-      router.refresh();
-    } catch {
-      // If re-login fails, redirect to login page to retry
-      setEnrollmentToken(null);
-      setCredentials(null);
-      setSubmitError('2FA 등록이 완료되었습니다. 다시 로그인해주세요.');
-    }
+    setEnrollmentToken(null);
+    setCredentials(null);
+    setNeedsTotp(true);
+    setSubmitError('2FA 등록이 완료되었습니다. TOTP 코드와 함께 다시 로그인해주세요.');
   }
 
   if (enrollmentToken) {
@@ -96,6 +101,20 @@ export function LoginForm() {
           </p>
         ) : null}
       </div>
+      {needsTotp ? (
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="totpCode">TOTP 코드 (6자리)</Label>
+          <Input
+            id="totpCode"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="인증 앱의 6자리 코드"
+            {...form.register('totpCode')}
+          />
+        </div>
+      ) : null}
       {submitError ? (
         <p role="alert" className="text-sm text-destructive">
           {submitError}

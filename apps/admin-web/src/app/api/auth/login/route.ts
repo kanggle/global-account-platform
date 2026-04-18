@@ -7,6 +7,7 @@ import { logger, newRequestId } from '@/shared/lib/logger';
 const BodySchema = z.object({
   operatorId: z.string().min(1),
   password: z.string().min(8),
+  totpCode: z.string().length(6).optional(),
 });
 
 const TokenResponseSchema = z.object({
