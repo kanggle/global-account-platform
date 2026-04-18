@@ -46,7 +46,6 @@ services:
   # ---------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
-    container_name: gap-e2e-mysql
     # TASK-BE-045: raise max_connections so 4 services' HikariCP pools + flyway
     # probes during simultaneous cold start don't exhaust MySQL's default (151).
     command: ["--log-bin-trust-function-creators=1", "--max_connections=500"]
@@ -74,7 +73,6 @@ services:
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: gap-e2e-redis
     command: redis-server --appendonly no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -90,7 +88,6 @@ services:
   # ---------------------------------------------------------------------------
   kafka:
     image: apache/kafka:3.7.0
-    container_name: gap-e2e-kafka
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -115,13 +112,46 @@ services:
     networks: [gap-e2e]
 
   # ---------------------------------------------------------------------------
+  # Kafka Topic Initializer — creates main + DLQ topics
+  # ---------------------------------------------------------------------------
+  kafka-init:
+    image: apache/kafka:3.7.0
+    depends_on:
+      kafka: { condition: service_healthy }
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        sleep 3
+        KAFKA_BIN="/opt/kafka/bin"
+        BOOTSTRAP="kafka:9092"
+        TOPICS=(
+          "auth.login.attempted" "auth.login.failed" "auth.login.succeeded"
+          "auth.token.refreshed" "auth.token.reuse.detected"
+          "account.created" "account.status.changed" "account.locked"
+          "account.unlocked" "account.deleted"
+          "session.revoked"
+          "security.suspicious.detected" "security.auto.lock.triggered"
+          "admin.action.performed"
+        )
+        for t in "$${TOPICS[@]}"; do
+          $$KAFKA_BIN/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
+            --create --if-not-exists --topic "$$t" --partitions 3 --replication-factor 1 \
+            --config retention.ms=604800000 2>/dev/null && echo "Created: $$t"
+          $$KAFKA_BIN/kafka-topics.sh --bootstrap-server $$BOOTSTRAP \
+            --create --if-not-exists --topic "$$t.dlq" --partitions 1 --replication-factor 1 \
+            --config retention.ms=2592000000 2>/dev/null && echo "Created: $$t.dlq"
+        done
+        echo "=== Topic init complete ==="
+    restart: "no"
+    networks: [gap-e2e]
+
+  # ---------------------------------------------------------------------------
   # Platform services
   # ---------------------------------------------------------------------------
   auth-service:
     build:
       context: .
       dockerfile: apps/auth-service/Dockerfile
-    container_name: gap-e2e-auth
     environment:
       <<: *service-env
       DB_NAME: auth_db
@@ -139,7 +169,6 @@ services:
     build:
       context: .
       dockerfile: apps/account-service/Dockerfile
-    container_name: gap-e2e-account
     environment:
       <<: *service-env
       DB_NAME: account_db
@@ -158,7 +187,6 @@ services:
     build:
       context: .
       dockerfile: apps/security-service/Dockerfile
-    container_name: gap-e2e-security
     environment:
       <<: *service-env
       DB_NAME: security_db
@@ -177,7 +205,6 @@ services:
     build:
       context: .
       dockerfile: apps/admin-service/Dockerfile
-    container_name: gap-e2e-admin
     environment:
       <<: *service-env
       DB_NAME: admin_db

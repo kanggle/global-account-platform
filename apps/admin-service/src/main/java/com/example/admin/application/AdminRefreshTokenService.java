@@ -55,7 +55,7 @@ public class AdminRefreshTokenService {
     private final AdminRefreshTokenIssuer refreshIssuer;
     private final JwtSigner jwtSigner;
 
-    @Transactional
+    @Transactional(noRollbackFor = RefreshTokenReuseDetectedException.class)
     public RefreshResult refresh(String refreshTokenJwt) {
         if (refreshTokenJwt == null || refreshTokenJwt.isBlank()) {
             throw new InvalidRefreshTokenException("Refresh token is missing");

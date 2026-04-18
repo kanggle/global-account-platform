@@ -11,5 +11,7 @@ import java.util.List;
 public record TotpEnrollResponse(
         String otpauthUri,
         List<String> recoveryCodes,
-        Instant enrolledAt
+        Instant enrolledAt,
+        String bootstrapToken,
+        long bootstrapTokenTtlSeconds
 ) {}

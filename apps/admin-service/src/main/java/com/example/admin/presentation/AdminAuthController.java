@@ -18,6 +18,7 @@ import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
 import com.example.admin.infrastructure.security.BootstrapContext;
+import com.example.admin.infrastructure.security.BootstrapTokenService;
 import com.example.admin.infrastructure.security.OperatorAuthenticationFilter;
 import com.example.admin.presentation.dto.AdminLoginRequest;
 import com.example.admin.presentation.dto.AdminLoginResponse;
@@ -58,6 +59,7 @@ public class AdminAuthController {
     private final AdminRefreshTokenService refreshService;
     private final AdminLogoutService logoutService;
     private final AdminActionAuditor auditor;
+    private final BootstrapTokenService bootstrapTokenService;
 
     @PostMapping("/login")
     public ResponseEntity<AdminLoginResponse> login(@Valid @RequestBody AdminLoginRequest body) {
@@ -240,8 +242,13 @@ public class AdminAuthController {
                     null,
                     startedAt,
                     Instant.now()));
+            BootstrapTokenService.Issued verifyToken = bootstrapTokenService.issue(
+                    operatorId, java.util.Set.of(BootstrapTokenService.SCOPE_VERIFY));
+            long ttl = java.time.Duration.between(Instant.now(), verifyToken.expiresAt()).getSeconds();
+            if (ttl < 0) ttl = 0;
             return ResponseEntity.ok(new TotpEnrollResponse(
-                    result.otpauthUri(), result.recoveryCodes(), result.enrolledAt()));
+                    result.otpauthUri(), result.recoveryCodes(), result.enrolledAt(),
+                    verifyToken.token(), ttl));
         } catch (RuntimeException ex) {
             safeRecordFailure(auditId, ActionCode.OPERATOR_2FA_ENROLL, operatorId, bootstrap.jti(),
                     ex.getClass().getSimpleName(), startedAt);

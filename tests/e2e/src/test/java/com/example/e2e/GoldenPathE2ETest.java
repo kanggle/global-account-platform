@@ -2,9 +2,13 @@ package com.example.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.restassured.response.Response;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,6 +29,17 @@ import java.time.Duration;
  *   9. revoked access token on protected endpoint → 401 TOKEN_REVOKED
  */
 class GoldenPathE2ETest extends E2EBase {
+
+    @BeforeAll
+    static void resetTotpState() throws Exception {
+        try (Connection c = DriverManager.getConnection(
+                ComposeFixture.mysqlJdbcUrl("admin_db", "admin_user", "admin_pass"));
+             Statement s = c.createStatement()) {
+            s.executeUpdate("DELETE FROM admin_operator_totp");
+            s.executeUpdate("DELETE FROM admin_operator_refresh_tokens");
+        }
+        OperatorSessionHelper.clearCachedSecret();
+    }
 
     @Test
     @DisplayName("운영자 최초 가입부터 logout 후 access 토큰 revoke 확인까지 전 구간 성공")
@@ -60,14 +75,8 @@ class GoldenPathE2ETest extends E2EBase {
         // 4. derive TOTP secret + current code
         String secret = TotpTestUtil.extractSecret(otpauthUri);
 
-        // 5. verify — may need fresh bootstrap token if first was consumed; enroll returns new jti-less bootstrap path
-        // The 2fa/verify endpoint accepts the same bootstrap token since scope covers both 2fa_enroll and 2fa_verify
-        // but jti is consumed-once per security.md — so we must re-login to get a fresh bootstrap token.
-        Response secondLogin = admin()
-                .body(Map.of("operatorId", DEV_OPERATOR_ID, "password", DEV_OPERATOR_PASSWORD))
-                .post("/api/admin/auth/login");
-        assertThat(secondLogin.statusCode()).isEqualTo(401);
-        String verifyBootstrap = MAPPER.readTree(secondLogin.asString()).path("bootstrapToken").asText();
+        // 5. verify — enroll response includes a fresh bootstrap token for the verify step
+        String verifyBootstrap = enrollBody.path("bootstrapToken").asText();
         assertThat(verifyBootstrap).isNotBlank();
 
         String totp = computeTotpWithRetry(secret);

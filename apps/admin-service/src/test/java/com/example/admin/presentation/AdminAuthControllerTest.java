@@ -62,6 +62,9 @@ class AdminAuthControllerTest {
         // Default happy path for the bootstrap filter: token parses and returns a context.
         when(bootstrapTokenService.verifyAndConsume(eq("fake.bootstrap.token"), any()))
                 .thenReturn(new BootstrapContext(OPERATOR_ID, JTI));
+        when(bootstrapTokenService.issue(any(), any()))
+                .thenReturn(new BootstrapTokenService.Issued("verify.bootstrap.token", "jti-v",
+                        java.time.Instant.now().plusSeconds(600)));
         when(auditor.newAuditId()).thenReturn("audit-1");
     }
 
@@ -78,7 +81,9 @@ class AdminAuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.otpauthUri").value(org.hamcrest.Matchers.startsWith("otpauth://totp/")))
                 .andExpect(jsonPath("$.recoveryCodes.length()").value(2))
-                .andExpect(jsonPath("$.enrolledAt").value("2026-04-14T10:00:00Z"));
+                .andExpect(jsonPath("$.enrolledAt").value("2026-04-14T10:00:00Z"))
+                .andExpect(jsonPath("$.bootstrapToken").value("verify.bootstrap.token"))
+                .andExpect(jsonPath("$.bootstrapTokenTtlSeconds").isNumber());
 
         ArgumentCaptor<AdminActionAuditor.AuditRecord> captor =
                 ArgumentCaptor.forClass(AdminActionAuditor.AuditRecord.class);

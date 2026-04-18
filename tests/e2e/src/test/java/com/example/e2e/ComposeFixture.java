@@ -2,17 +2,21 @@ package com.example.e2e;
 
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.testcontainers.containers.ComposeContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.io.File;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 
 /**
- * JUnit 5 extension that boots docker-compose.e2e.yml exactly once per JVM and
- * keeps it running for the whole test suite (per {@code docker-compose}
- * semantics, not per class — this is critical to hit the 5-minute wall clock
- * budget declared in TASK-BE-041c §7).
+ * JUnit 5 extension that ensures docker-compose.e2e.yml services are running
+ * before the test suite starts. Keeps everything up for the whole JVM to hit
+ * the 5-minute wall clock budget declared in TASK-BE-041c §7.
+ *
+ * <p>Detects whether services are already healthy (manual {@code docker compose up})
+ * and only starts compose if needed. Uses the Docker CLI directly instead of
+ * Testcontainers ComposeContainer to avoid Windows npipe compatibility issues.
  *
  * <p>Per-class isolation is achieved in {@link E2EBase#resetDataBetweenClasses()}
  * through TRUNCATE statements rather than compose recreation.
@@ -20,8 +24,8 @@ import java.time.Duration;
 public final class ComposeFixture implements BeforeAllCallback, ExtensionContext.Store.CloseableResource {
 
     private static final Object LOCK = new Object();
-    private static ComposeContainer COMPOSE;
     private static boolean STARTED = false;
+    private static boolean SELF_MANAGED = false;
 
     // Ports mapped in docker-compose.e2e.yml.
     public static final int ADMIN_PORT = 18085;
@@ -37,11 +41,19 @@ public final class ComposeFixture implements BeforeAllCallback, ExtensionContext
     public static final String ACCOUNT_BASE_URL = "http://" + HOST + ":" + ACCOUNT_PORT;
     public static final String SECURITY_BASE_URL = "http://" + HOST + ":" + SECURITY_PORT;
 
+    private static final String[] HEALTH_URLS = {
+            "http://" + HOST + ":" + AUTH_PORT + "/actuator/health",
+            "http://" + HOST + ":" + ACCOUNT_PORT + "/actuator/health",
+            "http://" + HOST + ":" + SECURITY_PORT + "/actuator/health",
+            "http://" + HOST + ":" + ADMIN_PORT + "/actuator/health"
+    };
+
+    private static final Duration HEALTH_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration HEALTH_POLL_INTERVAL = Duration.ofSeconds(5);
+
     @Override
     public void beforeAll(ExtensionContext context) {
         start();
-        // Register this resource with the root store so close() runs once the
-        // test JVM shuts down — effectively compose down after the suite.
         context.getRoot().getStore(ExtensionContext.Namespace.GLOBAL)
                 .put("compose-fixture-singleton", this);
     }
@@ -49,45 +61,100 @@ public final class ComposeFixture implements BeforeAllCallback, ExtensionContext
     public static void start() {
         synchronized (LOCK) {
             if (STARTED) return;
+
+            if (allServicesHealthy()) {
+                System.out.println("[ComposeFixture] All services already healthy — skipping compose up");
+                STARTED = true;
+                return;
+            }
+
+            System.out.println("[ComposeFixture] Services not healthy — starting docker compose");
             File composeFile = locateComposeFile();
-            COMPOSE = new ComposeContainer(composeFile)
-                    .withLocalCompose(true)
-                    .withPull(false)
-                    .waitingFor("mysql",
-                            Wait.forLogMessage(".*ready for connections.*\\n", 1)
-                                    .withStartupTimeout(Duration.ofMinutes(3)))
-                    .waitingFor("kafka",
-                            Wait.forLogMessage(".*Kafka Server started.*\\n", 1)
-                                    .withStartupTimeout(Duration.ofMinutes(3)))
-                    .waitingFor("auth-service",
-                            Wait.forHttp("/actuator/health").forStatusCode(200)
-                                    .withStartupTimeout(Duration.ofMinutes(4)))
-                    .waitingFor("account-service",
-                            Wait.forHttp("/actuator/health").forStatusCode(200)
-                                    .withStartupTimeout(Duration.ofMinutes(4)))
-                    .waitingFor("security-service",
-                            Wait.forHttp("/actuator/health").forStatusCode(200)
-                                    .withStartupTimeout(Duration.ofMinutes(4)))
-                    .waitingFor("admin-service",
-                            Wait.forHttp("/actuator/health").forStatusCode(200)
-                                    .withStartupTimeout(Duration.ofMinutes(4)));
-            COMPOSE.start();
+            startCompose(composeFile);
+            SELF_MANAGED = true;
+
+            waitForHealthy();
             STARTED = true;
             Runtime.getRuntime().addShutdownHook(new Thread(ComposeFixture::stopQuietly, "compose-shutdown"));
         }
     }
 
-    private static void stopQuietly() {
+    private static void startCompose(File composeFile) {
         try {
-            if (COMPOSE != null) COMPOSE.stop();
+            ProcessBuilder pb = new ProcessBuilder(
+                    "docker", "compose", "-f", composeFile.getAbsolutePath(),
+                    "-p", "gap-e2e", "up", "-d", "--build"
+            );
+            pb.inheritIO();
+            pb.directory(composeFile.getParentFile());
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new IllegalStateException("docker compose up failed with exit code " + exitCode);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("docker compose up interrupted", e);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to run docker compose", e);
+        }
+    }
+
+    private static void waitForHealthy() {
+        Instant deadline = Instant.now().plus(HEALTH_TIMEOUT);
+        while (Instant.now().isBefore(deadline)) {
+            if (allServicesHealthy()) {
+                System.out.println("[ComposeFixture] All services healthy");
+                return;
+            }
+            try {
+                Thread.sleep(HEALTH_POLL_INTERVAL.toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while waiting for services", e);
+            }
+        }
+        throw new IllegalStateException("Services did not become healthy within " + HEALTH_TIMEOUT);
+    }
+
+    private static boolean allServicesHealthy() {
+        for (String url : HEALTH_URLS) {
+            if (!isHealthy(url)) return false;
+        }
+        return true;
+    }
+
+    private static boolean isHealthy(String urlStr) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            conn.setRequestMethod("GET");
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            return code == 200;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static void stopQuietly() {
+        if (!SELF_MANAGED) return;
+        try {
+            File composeFile = locateComposeFile();
+            ProcessBuilder pb = new ProcessBuilder(
+                    "docker", "compose", "-f", composeFile.getAbsolutePath(),
+                    "-p", "gap-e2e", "down", "-v"
+            );
+            pb.inheritIO();
+            pb.directory(composeFile.getParentFile());
+            pb.start().waitFor();
         } catch (Throwable ignored) {
             // best effort
         }
     }
 
     private static File locateComposeFile() {
-        // Tests can run from :tests:e2e working dir or from the root; walk up
-        // until we find the compose file.
         File dir = new File(".").getAbsoluteFile();
         for (int i = 0; i < 6 && dir != null; i++) {
             File candidate = new File(dir, "docker-compose.e2e.yml");
@@ -99,8 +166,7 @@ public final class ComposeFixture implements BeforeAllCallback, ExtensionContext
 
     @Override
     public void close() {
-        // Suite-wide teardown. No-op here — JVM shutdown hook handles stop()
-        // to avoid premature shutdown if JUnit creates multiple stores.
+        // Suite-wide teardown. No-op — JVM shutdown hook handles stop()
     }
 
     /** External Kafka bootstrap for host-side producers/consumers (DLQ scenario). */

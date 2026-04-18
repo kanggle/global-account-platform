@@ -6,6 +6,9 @@ import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.Map;
 
 /**
@@ -24,6 +27,11 @@ final class OperatorSessionHelper {
     private static volatile String cachedSecret;
 
     private OperatorSessionHelper() {}
+
+    /** Reset cached state — call when TOTP rows are truncated externally. */
+    static synchronized void clearCachedSecret() {
+        cachedSecret = null;
+    }
 
     /** Returns a valid operator access token. Enrolls 2FA if needed. */
     static synchronized String loginAsDevSuperAdmin() throws Exception {
@@ -45,6 +53,11 @@ final class OperatorSessionHelper {
         if ("BAD_REQUEST".equals(code) && cachedSecret != null) {
             return loginWithTotp(cachedSecret);
         }
+        // TOTP enrolled+verified in a prior test class but cachedSecret lost: reset and re-enroll
+        if ("BAD_REQUEST".equals(code) && cachedSecret == null) {
+            resetTotpState();
+            return loginAsDevSuperAdmin();
+        }
 
         // ENROLLMENT_REQUIRED → enroll then verify then login-with-totp
         if ("ENROLLMENT_REQUIRED".equals(code)) {
@@ -55,17 +68,13 @@ final class OperatorSessionHelper {
             if (enroll.statusCode() != 200) {
                 throw new IllegalStateException("enroll failed: " + enroll.statusCode() + " " + enroll.asString());
             }
-            String otpauthUri = M.readTree(enroll.asString()).path("otpauthUri").asText();
+            JsonNode enrollBody = M.readTree(enroll.asString());
+            String otpauthUri = enrollBody.path("otpauthUri").asText();
             String secret = TotpTestUtil.extractSecret(otpauthUri);
             cachedSecret = secret;
 
-            // Fresh bootstrap token for verify (jti from first one consumed)
-            Response login2 = base()
-                    .body(Map.of(
-                            "operatorId", E2EBase.DEV_OPERATOR_ID,
-                            "password", E2EBase.DEV_OPERATOR_PASSWORD))
-                    .post("/api/admin/auth/login");
-            String verifyBootstrap = M.readTree(login2.asString()).path("bootstrapToken").asText();
+            // Enroll response includes a fresh bootstrap token for the verify step
+            String verifyBootstrap = enrollBody.path("bootstrapToken").asText();
 
             String totp = totpWithGuard(secret);
             Response verify = base()
@@ -101,6 +110,15 @@ final class OperatorSessionHelper {
             Thread.sleep(2_500L);
         }
         return TotpTestUtil.codeNow(secret);
+    }
+
+    private static void resetTotpState() throws Exception {
+        try (Connection c = DriverManager.getConnection(
+                ComposeFixture.mysqlJdbcUrl("admin_db", "admin_user", "admin_pass"));
+             Statement s = c.createStatement()) {
+            s.executeUpdate("DELETE FROM admin_operator_totp");
+            s.executeUpdate("DELETE FROM admin_operator_refresh_tokens");
+        }
     }
 
     private static io.restassured.specification.RequestSpecification base() {
