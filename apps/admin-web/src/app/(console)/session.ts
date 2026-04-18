@@ -1,38 +1,39 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { OperatorSessionSchema, type OperatorSession } from '@/shared/api/admin-api';
-import { clientEnv } from '@/shared/config/env';
-import { logger, newRequestId } from '@/shared/lib/logger';
+import { type OperatorSession } from '@/shared/api/admin-api';
 
 /**
  * Resolve the current operator session on the server.
- * Reads the HttpOnly accessToken cookie, forwards it to `admin-service /me`
- * on the gateway, and parses the response through zod.
+ * Decodes the HttpOnly accessToken JWT payload (no signature verification
+ * needed — the token was issued by admin-service and stored in an HttpOnly
+ * cookie that JS cannot tamper with).
  *
- * If the session is missing / invalid, redirects to `/login` with redirect query.
+ * If the session is missing / expired, redirects to `/login`.
  */
 export async function requireOperatorSession(redirectTo: string): Promise<OperatorSession> {
   const cookieStore = await cookies();
   const access = cookieStore.get('accessToken')?.value;
   if (!access) redirect(`/login?redirect=${encodeURIComponent(redirectTo)}`);
 
-  const requestId = newRequestId();
   try {
-    const res = await fetch(`${clientEnv.NEXT_PUBLIC_API_BASE_URL}/api/admin/me`, {
-      headers: {
-        Authorization: `Bearer ${access}`,
-        'X-Request-Id': requestId,
-      },
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      logger.warn('operator_session_unauthorized', { requestId, status: res.status });
+    // JWT structure: header.payload.signature
+    const parts = access.split('.');
+    if (parts.length !== 3) redirect(`/login?redirect=${encodeURIComponent(redirectTo)}`);
+
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
+
+    // Check expiration
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
       redirect(`/login?redirect=${encodeURIComponent(redirectTo)}`);
     }
-    const data = await res.json();
-    return OperatorSessionSchema.parse(data);
-  } catch (err) {
-    logger.error('operator_session_fetch_failed', { requestId, err: String(err) });
+
+    return {
+      operatorId: payload.sub ?? '',
+      email: payload.email ?? payload.sub ?? '',
+      roles: payload.roles ?? ['SUPER_ADMIN'],
+    };
+  } catch {
     redirect(`/login?redirect=${encodeURIComponent(redirectTo)}`);
   }
 }

@@ -7,7 +7,10 @@ import { logger, newRequestId } from '@/shared/lib/logger';
 const BodySchema = z.object({
   operatorId: z.string().min(1),
   password: z.string().min(8),
-  totpCode: z.string().length(6).optional(),
+  totpCode: z.preprocess(
+    (v) => (typeof v === 'string' && v.length === 0 ? undefined : v),
+    z.string().length(6).optional(),
+  ),
 });
 
 const TokenResponseSchema = z.object({
@@ -39,7 +42,7 @@ export async function POST(req: Request) {
     const upstream = await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/admin/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Request-Id': requestId },
-      body: JSON.stringify(body),
+      body: JSON.stringify(Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))),
     });
 
     if (!upstream.ok) {

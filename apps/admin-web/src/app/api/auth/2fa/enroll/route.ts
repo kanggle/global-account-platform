@@ -6,6 +6,14 @@ export async function POST(req: Request) {
   const requestId = newRequestId();
   const env = getServerEnv();
   const authHeader = req.headers.get('Authorization') ?? '';
+  logger.info('2fa_enroll_attempt', { requestId, hasAuth: !!authHeader, authPrefix: authHeader.substring(0, 20) });
+
+  if (!authHeader) {
+    return NextResponse.json(
+      { code: 'INVALID_BOOTSTRAP_TOKEN', message: 'Authorization header missing' },
+      { status: 401 },
+    );
+  }
 
   try {
     const upstream = await fetch(`${env.NEXT_PUBLIC_API_BASE_URL}/api/admin/auth/2fa/enroll`, {
