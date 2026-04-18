@@ -3,6 +3,7 @@ package com.example.auth.infrastructure.client;
 import com.example.auth.application.exception.AccountServiceUnavailableException;
 import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.result.CredentialLookupResult;
+import com.example.auth.application.result.SocialSignupResult;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
@@ -15,8 +16,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
+import org.springframework.http.MediaType;
+
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -119,6 +123,51 @@ public class AccountServiceClient implements AccountServicePort {
             return Optional.empty();
         } catch (HttpClientErrorException e) {
             throw e; // Let retry logic decide (4xx won't be retried)
+        } catch (Exception e) {
+            throw new RuntimeException("Account service communication error", e);
+        }
+    }
+
+    @Override
+    public SocialSignupResult socialSignup(String email, String provider,
+                                            String providerUserId, String displayName) {
+        Supplier<SocialSignupResult> supplier = () -> doSocialSignup(email, provider, providerUserId, displayName);
+
+        Supplier<SocialSignupResult> retryingSupplier =
+                Retry.decorateSupplier(retry, supplier);
+        Supplier<SocialSignupResult> resilientSupplier =
+                CircuitBreaker.decorateSupplier(circuitBreaker, retryingSupplier);
+
+        try {
+            return resilientSupplier.get();
+        } catch (HttpClientErrorException e) {
+            log.warn("Account service social-signup returned client error {}: {}",
+                    e.getStatusCode(), e.getMessage());
+            throw new AccountServiceUnavailableException("Account service social-signup failed", e);
+        } catch (Exception e) {
+            log.error("Account service social-signup failed after retries: {}", e.getMessage());
+            throw new AccountServiceUnavailableException("Account service is unavailable", e);
+        }
+    }
+
+    private SocialSignupResult doSocialSignup(String email, String provider,
+                                               String providerUserId, String displayName) {
+        try {
+            Map<String, String> requestBody = Map.of(
+                    "email", email,
+                    "provider", provider,
+                    "providerUserId", providerUserId,
+                    "displayName", displayName != null ? displayName : ""
+            );
+
+            return restClient.post()
+                    .uri("/internal/accounts/social-signup")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(SocialSignupResult.class);
+        } catch (HttpClientErrorException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Account service communication error", e);
         }

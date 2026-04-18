@@ -58,6 +58,35 @@ public class AuthExceptionHandler {
                         "Refresh token reuse detected; all sessions have been revoked"));
     }
 
+    @ExceptionHandler(com.example.auth.application.exception.UnsupportedProviderException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedProvider(
+            com.example.auth.application.exception.UnsupportedProviderException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("UNSUPPORTED_PROVIDER", e.getMessage()));
+    }
+
+    @ExceptionHandler(com.example.auth.application.exception.InvalidOAuthStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOAuthState(
+            com.example.auth.application.exception.InvalidOAuthStateException e) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("INVALID_STATE", "Invalid or expired OAuth state"));
+    }
+
+    @ExceptionHandler(com.example.auth.application.exception.OAuthEmailRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleOAuthEmailRequired(
+            com.example.auth.application.exception.OAuthEmailRequiredException e) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ErrorResponse.of("EMAIL_REQUIRED", "Email is required for social login"));
+    }
+
+    @ExceptionHandler(com.example.auth.infrastructure.oauth.OAuthProviderException.class)
+    public ResponseEntity<ErrorResponse> handleOAuthProviderError(
+            com.example.auth.infrastructure.oauth.OAuthProviderException e) {
+        log.error("OAuth provider error: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.of("PROVIDER_ERROR", "OAuth provider error"));
+    }
+
     @ExceptionHandler(AccountServiceUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleAccountServiceUnavailable(AccountServiceUnavailableException e) {
         log.error("Account service unavailable: {}", e.getMessage());

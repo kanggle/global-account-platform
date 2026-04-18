@@ -102,6 +102,29 @@ public class AuthEventPublisher {
         writeEvent("auth.login.succeeded", accountId, payload);
     }
 
+    /**
+     * Extended form carrying {@code loginMethod} for OAuth social logins.
+     * The {@code loginMethod} field is additive (nullable) for backward-compat.
+     *
+     * @param loginMethod e.g. "EMAIL_PASSWORD", "OAUTH_GOOGLE", "OAUTH_KAKAO"
+     */
+    public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx,
+                                      String deviceId, Boolean isNewDevice, String loginMethod) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("ipMasked", ctx.ipMasked());
+        payload.put("userAgentFamily", ctx.userAgentFamily());
+        payload.put("deviceFingerprint", ctx.deviceFingerprint());
+        payload.put("geoCountry", ctx.resolvedGeoCountry());
+        payload.put("sessionJti", sessionJti);
+        payload.put("deviceId", deviceId);
+        payload.put("isNewDevice", isNewDevice);
+        payload.put("loginMethod", loginMethod);
+        payload.put("timestamp", Instant.now().toString());
+
+        writeEvent("auth.login.succeeded", accountId, payload);
+    }
+
     public void publishTokenRefreshed(String accountId, String previousJti, String newJti,
                                        SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();

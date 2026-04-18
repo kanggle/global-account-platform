@@ -75,6 +75,8 @@ gateway:
     - POST:/api/auth/login
     - POST:/api/accounts/signup
     - POST:/api/auth/refresh
+    - GET:/api/auth/oauth/authorize
+    - POST:/api/auth/oauth/callback
     - GET:/actuator/health
 
 cors:

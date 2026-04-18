@@ -68,6 +68,23 @@ management:
     tags:
       service: ${spring.application.name}
 
+oauth:
+  google:
+    client-id: ${OAUTH_GOOGLE_CLIENT_ID:test-google-client-id}
+    client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:test-google-client-secret}
+    redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:3000/oauth/callback}
+    scopes: openid,email,profile
+    token-uri: https://oauth2.googleapis.com/token
+    auth-uri: https://accounts.google.com/o/oauth2/v2/auth
+  kakao:
+    client-id: ${OAUTH_KAKAO_CLIENT_ID:test-kakao-client-id}
+    client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:test-kakao-client-secret}
+    redirect-uri: ${OAUTH_KAKAO_REDIRECT_URI:http://localhost:3000/oauth/callback}
+    scopes: account_email,profile_nickname
+    token-uri: https://kauth.kakao.com/oauth/token
+    auth-uri: https://kauth.kakao.com/oauth/authorize
+    user-info-uri: https://kapi.kakao.com/v2/user/me
+
 auth:
   jwt:
     issuer: global-account-platform

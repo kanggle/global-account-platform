@@ -4,8 +4,10 @@ import com.example.account.application.exception.AccountNotFoundException;
 import com.example.account.application.result.AccountStatusResult;
 import com.example.account.application.result.CredentialLookupResult;
 import com.example.account.application.result.DeleteAccountResult;
+import com.example.account.application.result.SocialSignupResult;
 import com.example.account.application.result.StatusChangeResult;
 import com.example.account.application.service.AccountStatusUseCase;
+import com.example.account.application.service.SocialSignupUseCase;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StateTransitionException;
 import com.example.account.domain.status.StatusChangeReason;
@@ -14,6 +16,7 @@ import com.example.account.presentation.advice.GlobalExceptionHandler;
 import com.example.account.presentation.internal.AccountLockController;
 import com.example.account.presentation.internal.AccountStatusQueryController;
 import com.example.account.presentation.internal.CredentialLookupController;
+import com.example.account.presentation.internal.SocialSignupController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,7 +37,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest({CredentialLookupController.class, AccountStatusQueryController.class, AccountLockController.class})
+@WebMvcTest({CredentialLookupController.class, AccountStatusQueryController.class, AccountLockController.class, SocialSignupController.class})
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
 @DisplayName("Internal Controller slice tests")
 class InternalControllerTest {
@@ -46,6 +49,9 @@ class InternalControllerTest {
 
     @MockitoBean
     private AccountStatusUseCase accountStatusUseCase;
+
+    @MockitoBean
+    private SocialSignupUseCase socialSignupUseCase;
 
     @Test
     @DisplayName("GET /internal/accounts/credentials returns credentialHash and hashAlgorithm fields")
@@ -210,5 +216,105 @@ class InternalControllerTest {
                                 """))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_FOUND"));
+    }
+
+    // --- Social Signup ---
+
+    @Test
+    @DisplayName("POST /internal/accounts/social-signup new email returns 201")
+    void socialSignup_newEmail_returns201() throws Exception {
+        given(socialSignupUseCase.execute(any()))
+                .willReturn(new SocialSignupResult("acc-new", "new@example.com", "ACTIVE", true));
+
+        mockMvc.perform(post("/internal/accounts/social-signup")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "new@example.com",
+                                  "provider": "GOOGLE",
+                                  "providerUserId": "google-123",
+                                  "displayName": "John Doe"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.accountId").value("acc-new"))
+                .andExpect(jsonPath("$.email").value("new@example.com"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("POST /internal/accounts/social-signup existing email returns 200")
+    void socialSignup_existingEmail_returns200() throws Exception {
+        given(socialSignupUseCase.execute(any()))
+                .willReturn(new SocialSignupResult("acc-existing", "existing@example.com", "ACTIVE", false));
+
+        mockMvc.perform(post("/internal/accounts/social-signup")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "existing@example.com",
+                                  "provider": "KAKAO",
+                                  "providerUserId": "kakao-456"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accountId").value("acc-existing"))
+                .andExpect(jsonPath("$.email").value("existing@example.com"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("POST /internal/accounts/social-signup missing email returns 400")
+    void socialSignup_missingEmail_returns400() throws Exception {
+        mockMvc.perform(post("/internal/accounts/social-signup")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "provider": "GOOGLE",
+                                  "providerUserId": "google-123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("POST /internal/accounts/social-signup missing provider returns 400")
+    void socialSignup_missingProvider_returns400() throws Exception {
+        mockMvc.perform(post("/internal/accounts/social-signup")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "test@example.com",
+                                  "providerUserId": "google-123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("POST /internal/accounts/social-signup existing locked account returns LOCKED status")
+    void socialSignup_lockedAccount_returnsLockedStatus() throws Exception {
+        given(socialSignupUseCase.execute(any()))
+                .willReturn(new SocialSignupResult("acc-locked", "locked@example.com", "LOCKED", false));
+
+        mockMvc.perform(post("/internal/accounts/social-signup")
+                        .header("X-Internal-Token", INTERNAL_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "locked@example.com",
+                                  "provider": "GOOGLE",
+                                  "providerUserId": "google-789",
+                                  "displayName": "Locked User"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("LOCKED"));
     }
 }
