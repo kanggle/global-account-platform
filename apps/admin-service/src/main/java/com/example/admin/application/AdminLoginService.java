@@ -111,10 +111,10 @@ public class AdminLoginService {
                 throw new EnrollmentRequiredException(issued.token(), ttl);
             }
             if (totpRow.getLastUsedAt() == null) {
-                // Enrolled but never verified — issue verify-only bootstrap token
+                // Enrolled but never verified — allow re-enrollment or verify
                 BootstrapTokenService.Issued issued = bootstrapTokenService.issue(
                         operatorUuid,
-                        java.util.Set.of(BootstrapTokenService.SCOPE_VERIFY));
+                        java.util.Set.of(BootstrapTokenService.SCOPE_ENROLL, BootstrapTokenService.SCOPE_VERIFY));
                 long ttl = java.time.Duration.between(Instant.now(), issued.expiresAt()).getSeconds();
                 if (ttl < 0) ttl = 0;
                 throw new EnrollmentRequiredException(issued.token(), ttl);
