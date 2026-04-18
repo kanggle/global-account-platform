@@ -25,6 +25,10 @@ dist/
 Thumbs.db
 Desktop.ini
 
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
+
 # Claude Code local settings
 .claude/settings.local.json
 .claude/worktrees/
