@@ -7,7 +7,6 @@ import { Label } from '@/shared/ui/label';
 import { apiClient } from '@/shared/api/client';
 import { TotpEnrollResponseSchema, type TotpEnrollResponse } from '@/shared/api/admin-api';
 import { ApiError, messageForCode } from '@/shared/api/errors';
-import { clientEnv } from '@/shared/config/env';
 
 interface TotpEnrollmentProps {
   bootstrapToken: string;
@@ -24,7 +23,6 @@ export function TotpEnrollment({ bootstrapToken, onComplete }: TotpEnrollmentPro
   const [verifying, setVerifying] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const baseUrl = clientEnv.NEXT_PUBLIC_API_BASE_URL;
   const enrolledRef = useRef(false);
 
   useEffect(() => {
@@ -33,7 +31,7 @@ export function TotpEnrollment({ bootstrapToken, onComplete }: TotpEnrollmentPro
     (async () => {
       try {
         const data = await apiClient.post<unknown>(
-          `${baseUrl}/api/admin/auth/2fa/enroll`,
+          '/api/auth/2fa/enroll',
           undefined,
           {
             skipAuthRetry: true,
@@ -48,7 +46,7 @@ export function TotpEnrollment({ bootstrapToken, onComplete }: TotpEnrollmentPro
         setError(msg);
       }
     })();
-  }, [bootstrapToken, baseUrl]);
+  }, [bootstrapToken]);
 
   async function handleVerify() {
     if (!enrollData) return;
@@ -56,7 +54,7 @@ export function TotpEnrollment({ bootstrapToken, onComplete }: TotpEnrollmentPro
     setVerifying(true);
     try {
       await apiClient.post(
-        `${baseUrl}/api/admin/auth/2fa/verify`,
+        '/api/auth/2fa/verify',
         { totpCode },
         {
           skipAuthRetry: true,
