@@ -1,6 +1,6 @@
 package com.example.gateway.route;
 
-import com.example.gateway.config.GatewayProperties;
+import com.example.gateway.config.EdgeGatewayProperties;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -18,7 +18,7 @@ public class RouteConfig {
 
     private final Set<String> publicRoutes;
 
-    public RouteConfig(GatewayProperties properties) {
+    public RouteConfig(EdgeGatewayProperties properties) {
         this.publicRoutes = new HashSet<>(properties.getPublicPaths());
     }
 

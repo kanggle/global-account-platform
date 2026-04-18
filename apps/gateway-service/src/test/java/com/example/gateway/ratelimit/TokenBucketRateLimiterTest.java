@@ -1,6 +1,6 @@
 package com.example.gateway.ratelimit;
 
-import com.example.gateway.config.GatewayProperties;
+import com.example.gateway.config.EdgeGatewayProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,14 +27,14 @@ class TokenBucketRateLimiterTest {
     private ReactiveStringRedisTemplate redisTemplate;
 
     private TokenBucketRateLimiter rateLimiter;
-    private GatewayProperties properties;
+    private EdgeGatewayProperties properties;
 
     @BeforeEach
     void setUp() {
-        properties = new GatewayProperties();
+        properties = new EdgeGatewayProperties();
         properties.getRateLimit().setFailOpen(true);
-        properties.getRateLimit().setLogin(new GatewayProperties.ScopeLimit(20, 60));
-        properties.getRateLimit().setGlobal(new GatewayProperties.ScopeLimit(100, 1));
+        properties.getRateLimit().setLogin(new EdgeGatewayProperties.ScopeLimit(20, 60));
+        properties.getRateLimit().setGlobal(new EdgeGatewayProperties.ScopeLimit(100, 1));
         rateLimiter = new TokenBucketRateLimiter(redisTemplate, properties);
     }
 

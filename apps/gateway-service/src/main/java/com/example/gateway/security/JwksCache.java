@@ -1,6 +1,6 @@
 package com.example.gateway.security;
 
-import com.example.gateway.config.GatewayProperties;
+import com.example.gateway.config.EdgeGatewayProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,7 +40,7 @@ public class JwksCache {
     private final JwksClient jwksClient;
     private final ReactiveStringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
-    private final GatewayProperties properties;
+    private final EdgeGatewayProperties properties;
 
     /** In-memory fallback for Redis failures */
     private final ConcurrentHashMap<String, PublicKey> inMemoryKeys = new ConcurrentHashMap<>();
@@ -50,7 +50,7 @@ public class JwksCache {
     public JwksCache(JwksClient jwksClient,
                      ReactiveStringRedisTemplate redisTemplate,
                      ObjectMapper objectMapper,
-                     GatewayProperties properties) {
+                     EdgeGatewayProperties properties) {
         this.jwksClient = jwksClient;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;

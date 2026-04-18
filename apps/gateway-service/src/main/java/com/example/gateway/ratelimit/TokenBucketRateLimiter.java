@@ -1,6 +1,6 @@
 package com.example.gateway.ratelimit;
 
-import com.example.gateway.config.GatewayProperties;
+import com.example.gateway.config.EdgeGatewayProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -32,10 +32,10 @@ public class TokenBucketRateLimiter {
     }
 
     private final ReactiveStringRedisTemplate redisTemplate;
-    private final GatewayProperties properties;
+    private final EdgeGatewayProperties properties;
 
     public TokenBucketRateLimiter(ReactiveStringRedisTemplate redisTemplate,
-                                  GatewayProperties properties) {
+                                  EdgeGatewayProperties properties) {
         this.redisTemplate = redisTemplate;
         this.properties = properties;
     }
@@ -48,7 +48,7 @@ public class TokenBucketRateLimiter {
      * @return Mono of RateLimitResult indicating whether the request is allowed
      */
     public Mono<RateLimitResult> isAllowed(String scope, String identifier) {
-        GatewayProperties.ScopeLimit limit = getScopeLimit(scope);
+        EdgeGatewayProperties.ScopeLimit limit = getScopeLimit(scope);
         if (limit == null) {
             return Mono.just(RateLimitResult.allowed());
         }
@@ -78,8 +78,8 @@ public class TokenBucketRateLimiter {
                 });
     }
 
-    private GatewayProperties.ScopeLimit getScopeLimit(String scope) {
-        GatewayProperties.RateLimitProperties rl = properties.getRateLimit();
+    private EdgeGatewayProperties.ScopeLimit getScopeLimit(String scope) {
+        EdgeGatewayProperties.RateLimitProperties rl = properties.getRateLimit();
         return switch (scope) {
             case "login" -> rl.getLogin();
             case "signup" -> rl.getSignup();

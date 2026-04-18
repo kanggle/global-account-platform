@@ -11,7 +11,7 @@ import java.util.List;
 @Setter
 @Component
 @ConfigurationProperties(prefix = "gateway")
-public class GatewayProperties {
+public class EdgeGatewayProperties {
 
     private JwtProperties jwt = new JwtProperties();
     private RateLimitProperties rateLimit = new RateLimitProperties();

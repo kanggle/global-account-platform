@@ -16,7 +16,7 @@ public class WebClientConfig {
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
     @Bean
-    public WebClient jwksWebClient(GatewayProperties properties) {
+    public WebClient jwksWebClient(EdgeGatewayProperties properties) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, (int) CONNECT_TIMEOUT.toMillis())
                 .responseTimeout(READ_TIMEOUT);
