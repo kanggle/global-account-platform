@@ -1,131 +1,217 @@
-# global-account-platform
+# Global Account Platform (GAP)
 
-글로벌 계정/인증/보안 플랫폼. 백엔드 포트폴리오 프로젝트로, Weverse Account류의 실전형 계정 인프라를 spec-driven · task-driven 방식으로 구축한다.
+> Weverse Account에서 영감받은 **글로벌 계정/인증/보안 백엔드 플랫폼**. 다수의 하위 제품이 공유하는 계정 인프라 레이어를 프로덕션 수준으로 구현합니다.
 
-핵심 기능: 회원가입, 로그인/로그아웃, JWT 발급, refresh token 회전, 계정 상태 관리, 로그인 이력, 비정상 로그인 탐지, 관리자 lock/unlock, Kafka 기반 보안 이벤트 처리, Redis 기반 rate limiting과 일시 인증 상태.
-
-스택: Java 21 · Spring Boot 3 · Gradle multi-module · JPA + QueryDSL · MySQL · Redis · Kafka · Docker Compose · Prometheus/Grafana/Loki.
+[![CI](https://github.com/<owner>/global-account-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/global-account-platform/actions/workflows/ci.yml)
 
 ---
 
-## Principles
+## Architecture Overview
 
-- [PROJECT.md](PROJECT.md)가 프로젝트의 domain과 trait 분류를 선언한다 (taxonomy 기반 규칙 시스템)
-- `specs/`가 공식 source of truth이다
-- 작업은 `tasks/`를 통해 수행한다
-- `tasks/ready/`에 있는 태스크만 구현 가능하다
-- [CLAUDE.md](CLAUDE.md)가 최소 운영 규칙을 정의한다
-- 서비스 내부 구조는 전역적으로 고정되지 않는다. 각 서비스의 아키텍처는 [specs/services/<service>/architecture.md](specs/services/)에 선언된다
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Client (Web / Mobile)                        │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │    Gateway Service     │  JWT 검증 · Rate Limiting
+                    │    (Spring Cloud GW)   │  JWKS 캐시 · 라우팅
+                    └───┬───────┬───────┬───┘
+                        │       │       │
+          ┌─────────────▼┐  ┌──▼──────┐ ┌▼──────────────┐
+          │ Auth Service  │  │Account  │ │ Admin Service  │
+          │              │  │Service  │ │               │
+          │ · 로그인/로그아웃│  │· 회원가입 │ │· RBAC + 2FA   │
+          │ · JWT 발급    │  │· 프로필   │ │· Lock/Unlock  │
+          │ · OAuth 소셜  │  │· 상태 기계│ │· Bulk Lock    │
+          │ · Refresh 회전│  │· GDPR   │ │· 감사 로그     │
+          │ · 디바이스 세션│  │         │ │· Circuit Breaker│
+          └──────┬───────┘  └────┬────┘ └───────┬───────┘
+                 │               │               │
+          ┌──────▼───────────────▼───────────────▼──────┐
+          │                   Kafka                      │
+          │  auth.login.succeeded · account.locked · ... │
+          └──────────────────────┬──────────────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │   Security Service      │
+                    │                         │
+                    │ · 로그인 이력 기록        │
+                    │ · 비정상 탐지 (5개 규칙)  │
+                    │ · Impossible Travel     │
+                    │ · IP Reputation         │
+                    │ · 자동 계정 잠금          │
+                    └─────────────────────────┘
+
+    ┌──────────────┐
+    │  Admin Web   │  Next.js 15 · React 19
+    │  (Frontend)  │  운영자 콘솔
+    └──────────────┘
+```
 
 ---
 
-## Document Roles
+## Tech Stack
 
-### `PROJECT.md`
-프로젝트의 분류 — `domain`(하나)과 `traits`(다수)를 선언한다. 이 값에 따라 [rules/](rules/) 아래 어떤 규칙 계층이 활성화되는지가 결정된다.
+| Layer | Technology |
+|---|---|
+| **Language** | Java 21, TypeScript 5 |
+| **Backend** | Spring Boot 3, Spring Cloud Gateway, Spring Data JPA |
+| **Frontend** | Next.js 15 (App Router), React 19, Tailwind CSS, shadcn/ui |
+| **Database** | MySQL 8.0, Redis 7 |
+| **Messaging** | Apache Kafka 3.7 (KRaft) |
+| **Auth** | JWT (self-signed JWKS), Argon2id, TOTP 2FA, OAuth 2.0 (Google/Kakao) |
+| **Observability** | Prometheus, Grafana, Loki, Promtail |
+| **Infra** | Docker Compose, GitHub Actions CI/CD |
+| **Testing** | JUnit 5, Testcontainers, WireMock, RestAssured, Vitest |
+| **Build** | Gradle 8.14 (multi-module monorepo) |
 
-### `CLAUDE.md`
-AI 에이전트와 개발자가 따라야 할 최소 운영 규칙. "Project Classification (Read First)" 섹션이 규칙 계층 해결 순서를 정의한다.
+---
 
-### `specs/`
-공식 프로젝트 규칙·컨트랙트·서비스 정의·기능 정의·교차 서비스 흐름.
-- [platform/](platform/) — 모든 프로젝트에 공통된 기술 수준 규칙 (아키텍처·코딩·보안·테스트·관측성 등)
-- [rules/](rules/) — taxonomy 기반 조건부 규칙 (`common.md` 인덱스, `domains/<domain>.md`, `traits/<trait>.md`)
-- `specs/contracts/` — HTTP 및 이벤트 컨트랙트
-- `specs/services/` — 서비스별 아키텍처·개요·경계
-- `specs/features/`, `specs/use-cases/` — 기능 수준·유스케이스 스펙
+## Key Features
 
-### `.claude/skills/`
-구현 가이드, 작업 패턴, 체크리스트.
+### Authentication & Authorization
+- **JWT 기반 인증** — self-signed JWKS, access/refresh 토큰 분리
+- **Refresh Token Rotation** — 재사용 탐지 시 전체 체인 revoke
+- **OAuth 소셜 로그인** — Google, Kakao (Authorization Code + BFF 패턴)
+- **디바이스 세션 관리** — 동시 세션 제한, 세션별 revoke
+- **Rate Limiting** — Redis 기반 per-endpoint throttling
 
-### `knowledge/`
-설계 판단·트레이드오프·모범 사례 참고 자료.
+### Admin Operations (RBAC)
+- **역할 기반 접근 제어** — SUPER_ADMIN, ACCOUNT_ADMIN, AUDITOR
+- **2FA (TOTP)** — AES-GCM 암호화 저장, 10개 recovery codes
+- **계정 Lock/Unlock/Bulk Lock** — 멱등성 키 기반, 부분 실패 허용
+- **세션 강제 종료** — 관리자 주도 force logout
+- **통합 감사 로그** — admin_actions + login_history + suspicious_events
 
-### `tasks/`
-생명주기 상태로 관리되는 실행 가능한 작업 단위.
+### Security & Detection
+- **5개 탐지 규칙** — DeviceChange, GeoAnomaly, Velocity, ImpossibleTravel, IpReputation
+- **리스크 스코어 집계** — 규칙별 가중치, 임계값 기반 자동 계정 잠금
+- **DLQ 처리** — 실패 이벤트 Dead Letter Queue 전파 + 관측성 노출
+- **Circuit Breaker** — Resilience4j 기반 다운스트림 장애 격리
 
-### `docs/`
-사람을 위한 온보딩, 운영 가이드, 런북.
+### Compliance (GDPR/PIPA)
+- **계정 삭제 (Right to Erasure)** — PII SHA-256 해싱 + 프로필 마스킹
+- **데이터 내보내기 (Right to Portability)** — JSON 형식 개인정보 일괄 추출
+- **감사 추적 보존** — 삭제 후에도 비식별 감사 로그 유지
+
+### Event-Driven Architecture
+- **Transactional Outbox** — 서비스별 OutboxPollingScheduler → Kafka 발행
+- **14개 도메인 이벤트** — auth, account, security, admin, session, community, membership
+- **멱등 소비** — processed_events 테이블 기반 중복 방지
+
+---
+
+## Project Stats
+
+| Metric | Count |
+|---|---|
+| 커밋 | 250+ |
+| 완료 태스크 | 91 |
+| Java 소스 파일 | 637 |
+| 테스트 파일 | 112 |
+| Flyway 마이그레이션 | 46 |
+| Feature Specs | 13 |
+| API/Event Contracts | 14 |
+| E2E 시나리오 | 4 (Golden Path, Refresh Reuse, Cross-Service Bulk Lock, DLQ) |
+
+---
+
+## Services
+
+| Service | Type | Port | Description |
+|---|---|---|---|
+| `gateway-service` | Spring Cloud Gateway | 8080 | 엣지 라우팅, JWT 검증, rate limiting |
+| `auth-service` | REST API | 8081 | 로그인, JWT 발급, OAuth, refresh 회전, 디바이스 세션 |
+| `account-service` | REST API | 8082 | 회원가입, 프로필, 계정 상태 기계, GDPR 삭제/내보내기 |
+| `security-service` | Event Consumer | 8084 | Kafka 이벤트 소비, 비정상 탐지, 자동 잠금 |
+| `admin-service` | REST API | 8085 | 운영자 RBAC/2FA, lock/unlock, 감사 조회 |
+| `admin-web` | Next.js | 3000 | 관리자 콘솔 (로그인, 계정 관리, 감사 로그) |
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Java 21+
+- Docker Desktop
+- Node.js 20+ (admin-web)
+
+### 1. Infrastructure
+```bash
+docker compose up -d mysql redis kafka kafka-init
+```
+
+### 2. Backend Services
+```bash
+./gradlew bootRun  # 또는 개별 서비스:
+./gradlew :apps:auth-service:bootRun
+```
+
+### 3. Frontend
+```bash
+cd apps/admin-web
+pnpm install
+pnpm dev
+```
+
+### 4. E2E Tests
+```bash
+# 전체 스택 기동
+docker compose -f docker-compose.e2e.yml -p gap-e2e up -d --build
+
+# 서비스 healthy 대기 후 테스트 실행
+./gradlew :tests:e2e:test
+```
+
+---
+
+## Monitoring
+
+| Dashboard | URL | Description |
+|---|---|---|
+| Grafana | http://localhost:3000 | 서비스 메트릭 + 로그 |
+| Prometheus | http://localhost:9090 | 메트릭 수집/쿼리 |
+| Kafka UI | http://localhost:8090 | 토픽/컨슈머 그룹 모니터링 |
+| Alertmanager | http://localhost:9095 | 알림 관리 |
 
 ---
 
 ## Repository Structure
 
-    global-account-platform/
-    ├── README.md
-    ├── CLAUDE.md
-    ├── PROJECT.md           ← 프로젝트 분류 (domain + traits)
-    ├── .claude/
-    ├── apps/                ← 서비스 구현 (TASK-BE-001부터 생성)
-    ├── libs/                ← 공유 기술 라이브러리
-    ├── specs/
-    │   ├── platform/        ← 기술 수준 공통 규칙 (안정)
-    │   ├── rules/           ← taxonomy 기반 규칙
-    │   ├── contracts/
-    │   ├── services/
-    │   ├── features/
-    │   └── use-cases/
-    ├── knowledge/
-    ├── tasks/
-    ├── docs/
-    ├── infra/               ← Prometheus / Grafana / Loki 설정
-    ├── k8s/
-    ├── load-tests/
-    └── scripts/
+```
+global-account-platform/
+├── apps/
+│   ├── auth-service/          # 인증/OAuth/세션
+│   ├── account-service/       # 계정/프로필/GDPR
+│   ├── admin-service/         # 운영자 RBAC/2FA/감사
+│   ├── security-service/      # 보안 이벤트 소비/탐지
+│   ├── gateway-service/       # API 게이트웨이
+│   └── admin-web/             # 관리자 프론트엔드
+├── libs/                      # 공유 라이브러리 (common, web, messaging, security, observability)
+├── tests/e2e/                 # E2E 통합 테스트
+├── specs/                     # 스펙 (contracts, services, features, use-cases)
+├── tasks/                     # 태스크 기반 워크플로우 (91 done)
+├── infra/                     # Prometheus/Grafana/Loki 설정
+├── docker/                    # MySQL init, 서비스별 Dockerfile
+├── .github/workflows/         # CI/CD (GitHub Actions)
+└── docker-compose*.yml        # 로컬 개발 + E2E 환경
+```
 
 ---
 
-## Implementation Rule
+## Development Methodology
 
-기존 코드에서 시작하지 않는다. 다음 순서로 읽는다:
+이 프로젝트는 **Spec-Driven, Task-Driven** 방법론을 따릅니다:
 
-1. [CLAUDE.md](CLAUDE.md)
-2. [PROJECT.md](PROJECT.md) — 이어서 [platform/entrypoint.md](platform/entrypoint.md)의 **Step 0**에 따라 활성 규칙 계층([rules/common.md](rules/common.md), [rules/domains/saas.md](rules/domains/saas.md), [rules/traits/](rules/traits/) 아래 선언된 trait 파일)을 로드
-3. 대상 태스크 (`tasks/ready/`)
-4. [platform/entrypoint.md](platform/entrypoint.md) — Core, Service-Type-Specific, Auxiliary 레이어
-5. 관련 플랫폼 스펙
-6. 대상 서비스 스펙
-7. 관련 컨트랙트
-8. 관련 기능 스펙과 유스케이스
-9. [.claude/skills/](.claude/skills/)
-10. [knowledge/](knowledge/) (필요 시)
-
-[PROJECT.md](PROJECT.md)에 선언되지 않았거나 미확인 `domain`/`trait` 값은 [CLAUDE.md](CLAUDE.md)에 따라 Hard Stop.
+1. **PROJECT.md** — 도메인/특성 분류 (`saas`, `transactional`, `regulated`, `audit-heavy`, `integration-heavy`)
+2. **specs/** — 기능 스펙, API/이벤트 계약, 서비스 아키텍처가 구현의 source of truth
+3. **tasks/** — 모든 구현은 태스크 단위로 추적 (backlog → ready → done)
+4. **rules/** — taxonomy 기반 규칙 시스템으로 도메인별 제약 자동 적용
+5. **review** — 태스크 완료 후 리뷰 → fix 태스크 발행 사이클
 
 ---
 
-## Service Architecture Rule
+## License
 
-서비스 내부 구조는 의도적으로 전역 표준화하지 않는다.
-
-각 서비스는 오직 자신의 `specs/services/<service>/architecture.md`에 선언된 아키텍처만을 따른다. 서비스마다 다른 아키텍처를 사용할 수 있다.
-
----
-
-## Shared Library Rule
-
-`libs/`는 재사용 가능한 기술·공통 코드 전용이다.
-
-다음을 둘 수 없다:
-- 서비스 특화 도메인 로직
-- 서비스 소유의 비즈니스 규칙
-- 서비스 특화 엔터티
-- 서비스 사유 오케스트레이션 로직
-
-참조: [platform/shared-library-policy.md](platform/shared-library-policy.md)
-
----
-
-## Task Lifecycle
-
-`backlog → ready → in-progress → review → done → archive`
-
-`ready/`에 있는 태스크만 구현할 수 있다. 상세는 [tasks/INDEX.md](tasks/INDEX.md) 참조.
-
----
-
-## Notes
-
-- 스펙이 없거나, 불명확하거나, 충돌하면 중단하고 보고한다.
-- 컨트랙트 변경이 필요하면 컨트랙트를 먼저 갱신한다.
-- 서비스 아키텍처 변경이 필요하면 서비스 스펙을 먼저 갱신한다.
+This project is for portfolio/educational purposes.
