@@ -30,7 +30,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:redispass}
+      password: ${REDIS_PASSWORD:}
       timeout: 100ms
 
   kafka:
