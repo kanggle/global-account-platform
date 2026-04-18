@@ -35,15 +35,18 @@ async function parseErrorBody(res: Response): Promise<ApiError> {
   let code = 'UNKNOWN';
   let message = res.statusText || 'Request failed';
   let timestamp: string | undefined;
+  let extra: Record<string, unknown> = {};
   try {
-    const data = (await res.clone().json()) as { code?: string; message?: string; timestamp?: string };
-    code = data.code ?? code;
-    message = data.message ?? message;
-    timestamp = data.timestamp;
+    const data = (await res.clone().json()) as Record<string, unknown>;
+    code = (data.code as string) ?? code;
+    message = (data.message as string) ?? message;
+    timestamp = data.timestamp as string | undefined;
+    const { code: _, message: _m, timestamp: _t, ...rest } = data;
+    extra = rest;
   } catch {
     // ignore parse error — keep defaults
   }
-  return new ApiError(res.status, code, message, timestamp);
+  return new ApiError(res.status, code, message, timestamp, extra);
 }
 
 async function doFetch(path: string, opts: ApiRequestOptions): Promise<Response> {

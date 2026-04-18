@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAccountDetail } from '../hooks/useAccountDetail';
 import { LockDialog } from './LockDialog';
 import { UnlockDialog } from './UnlockDialog';
+import { RevokeSessionDialog } from './RevokeSessionDialog';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { RoleGuard } from '@/shared/ui/RoleGuard';
@@ -18,6 +19,7 @@ interface Props {
 export function AccountDetail({ accountId, roles }: Props) {
   const [lockOpen, setLockOpen] = useState(false);
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [revokeOpen, setRevokeOpen] = useState(false);
   const { data, isLoading, isError } = useAccountDetail(accountId);
 
   if (isLoading) return <p>로딩 중...</p>;
@@ -59,11 +61,15 @@ export function AccountDetail({ accountId, roles }: Props) {
           <Button variant="outline" onClick={() => setUnlockOpen(true)} disabled={data.status !== 'LOCKED'}>
             해제
           </Button>
+          <Button variant="destructive" onClick={() => setRevokeOpen(true)}>
+            세션 강제 종료
+          </Button>
         </div>
       </RoleGuard>
 
       <LockDialog open={lockOpen} onOpenChange={setLockOpen} accountId={accountId} />
       <UnlockDialog open={unlockOpen} onOpenChange={setUnlockOpen} accountId={accountId} />
+      <RevokeSessionDialog open={revokeOpen} onOpenChange={setRevokeOpen} accountId={accountId} />
     </div>
   );
 }

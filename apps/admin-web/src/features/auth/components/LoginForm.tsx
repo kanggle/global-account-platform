@@ -10,11 +10,14 @@ import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { apiClient } from '@/shared/api/client';
 import { ApiError, messageForCode } from '@/shared/api/errors';
+import { TotpEnrollment } from './TotpEnrollment';
 
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<LoginInput | null>(null);
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(LoginSchema),
@@ -30,9 +33,42 @@ export function LoginForm() {
       router.push(redirect);
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiError) setSubmitError(messageForCode(err.code, err.message));
-      else setSubmitError('네트워크 오류가 발생했습니다.');
+      if (err instanceof ApiError) {
+        if (err.code === 'ENROLLMENT_REQUIRED' && err.extra.bootstrapToken) {
+          setCredentials(values);
+          setEnrollmentToken(err.extra.bootstrapToken as string);
+          return;
+        }
+        setSubmitError(messageForCode(err.code, err.message));
+      } else {
+        setSubmitError('네트워크 오류가 발생했습니다.');
+      }
     }
+  }
+
+  async function handleEnrollmentComplete() {
+    // After 2FA enrollment + verify, re-login with the original credentials
+    if (!credentials) return;
+    try {
+      await apiClient.post('/api/auth/login', credentials, { skipAuthRetry: true });
+      const redirect = params?.get('redirect') ?? '/accounts';
+      router.push(redirect);
+      router.refresh();
+    } catch {
+      // If re-login fails, redirect to login page to retry
+      setEnrollmentToken(null);
+      setCredentials(null);
+      setSubmitError('2FA 등록이 완료되었습니다. 다시 로그인해주세요.');
+    }
+  }
+
+  if (enrollmentToken) {
+    return (
+      <TotpEnrollment
+        bootstrapToken={enrollmentToken}
+        onComplete={handleEnrollmentComplete}
+      />
+    );
   }
 
   return (

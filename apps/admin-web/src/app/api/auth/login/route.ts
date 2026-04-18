@@ -45,6 +45,16 @@ export async function POST(req: Request) {
 
     if (!upstream.ok) {
       const errBody = await upstream.json().catch(() => ({ code: 'UNKNOWN', message: '로그인 실패' }));
+
+      // 2FA enrollment required — pass bootstrapToken through to the client
+      if (upstream.status === 401 && errBody.code === 'ENROLLMENT_REQUIRED' && errBody.bootstrapToken) {
+        logger.info('login_enrollment_required', { requestId });
+        return NextResponse.json(
+          { code: 'ENROLLMENT_REQUIRED', message: errBody.message, bootstrapToken: errBody.bootstrapToken },
+          { status: 401 },
+        );
+      }
+
       logger.warn('login_failed', { requestId, status: upstream.status, code: errBody.code });
       return NextResponse.json(errBody, { status: upstream.status });
     }

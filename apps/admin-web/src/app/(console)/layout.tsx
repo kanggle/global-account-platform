@@ -17,6 +17,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
           <Link href="/security/login-history">로그인 이력</Link>
           <Link href="/security/suspicious">의심 이벤트</Link>
           <Link href="/dashboards">대시보드</Link>
+          <Link href="/operators">운영자 정보</Link>
         </nav>
       </aside>
       <div className="flex flex-1 flex-col">

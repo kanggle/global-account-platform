@@ -2,11 +2,13 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly timestamp?: string;
-  constructor(status: number, code: string, message: string, timestamp?: string) {
+  readonly extra: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, timestamp?: string, extra: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
     this.code = code;
     this.timestamp = timestamp;
+    this.extra = extra;
   }
 }
 
@@ -22,6 +24,7 @@ const MESSAGES_KO: Record<string, string> = {
   STATE_TRANSITION_INVALID: '현재 상태에서 허용되지 않은 전환입니다.',
   REASON_REQUIRED: '감사 사유(Operator Reason)가 필요합니다.',
   ACCOUNT_NOT_FOUND: '계정을 찾을 수 없습니다.',
+  ENROLLMENT_REQUIRED: '2FA 등록이 필요합니다.',
   DOWNSTREAM_ERROR: '하위 서비스 호출에 실패했습니다.',
 };
 

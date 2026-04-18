@@ -118,6 +118,44 @@ export const OperatorSessionSchema = z.object({
 });
 export type OperatorSession = z.infer<typeof OperatorSessionSchema>;
 
+// ---- Bulk Lock ----
+export const BulkLockRequestSchema = z.object({
+  accountIds: z.array(z.string()).min(1).max(100),
+  reason: z.string().min(8),
+  ticketId: z.string().optional(),
+});
+export type BulkLockRequest = z.infer<typeof BulkLockRequestSchema>;
+
+export const BulkLockOutcomeSchema = z.enum(['LOCKED', 'NOT_FOUND', 'ALREADY_LOCKED', 'FAILURE']);
+export type BulkLockOutcome = z.infer<typeof BulkLockOutcomeSchema>;
+
+export const BulkLockResultItemSchema = z.object({
+  accountId: z.string(),
+  outcome: BulkLockOutcomeSchema,
+  error: z.string().optional(),
+});
+export type BulkLockResultItem = z.infer<typeof BulkLockResultItemSchema>;
+
+export const BulkLockResponseSchema = z.object({
+  results: z.array(BulkLockResultItemSchema),
+});
+export type BulkLockResponse = z.infer<typeof BulkLockResponseSchema>;
+
+// ---- 2FA Enrollment ----
+export const TotpEnrollResponseSchema = z.object({
+  otpauthUri: z.string(),
+  recoveryCodes: z.array(z.string()),
+  enrolledAt: z.string(),
+  bootstrapToken: z.string(),
+  bootstrapTokenTtlSeconds: z.number().int().positive(),
+});
+export type TotpEnrollResponse = z.infer<typeof TotpEnrollResponseSchema>;
+
+export const TotpVerifyResponseSchema = z.object({
+  verified: z.literal(true),
+});
+export type TotpVerifyResponse = z.infer<typeof TotpVerifyResponseSchema>;
+
 // ---- Error envelope ----
 export const ApiErrorBodySchema = z.object({
   code: z.string(),
