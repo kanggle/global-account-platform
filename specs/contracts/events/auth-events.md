@@ -100,6 +100,10 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 - `isNewDevice`: `true`면 device_session row가 **이번 로그인 트랜잭션에서 새로 생성**됨. `false`면 기존 active row의 `last_seen_at`만 touch됨. `null`이면 알 수 없음 (legacy) — 소비자는 fingerprint fallback 사용.
 - 두 필드 모두 **optional·additive**. 기존 consumer는 필드를 무시해도 정상 동작 (forward-compatible). 소비자는 unknown-field-tolerant 파싱을 유지해야 한다.
 
+**필드 노트** (OAuth Social Login):
+- `loginMethod`: 로그인 방식을 나타내는 optional enum 필드. `EMAIL_PASSWORD | OAUTH_GOOGLE | OAUTH_KAKAO`. 필드 생략 또는 `null`은 `EMAIL_PASSWORD`로 간주 (backward-compatible). 소셜 로그인 시 auth-service가 provider에 맞는 값을 설정한다.
+- 이 필드는 **additive**. 기존 consumer는 필드를 무시해도 정상 동작 (forward-compatible).
+
 **Consumers**: security-service (GeoAnomalyRule, DeviceChangeRule 평가, login_history 기록). DeviceChangeRule은 `isNewDevice`가 제공되면 이를 authoritative signal로 사용하고, 없으면 `deviceFingerprint` 기반 known-device 비교로 fallback한다.
 
 ---
