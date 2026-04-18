@@ -49,7 +49,6 @@ export function LoginForm() {
         }
         if (err.code === 'BAD_REQUEST' && !needsTotp) {
           setNeedsTotp(true);
-          setSubmitError('TOTP 코드를 입력하세요.');
           return;
         }
         setSubmitError(messageForCode(err.code, err.message));
