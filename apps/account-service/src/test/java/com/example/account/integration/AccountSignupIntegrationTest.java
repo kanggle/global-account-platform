@@ -49,7 +49,9 @@ class AccountSignupIntegrationTest {
             .withDatabaseName("account_db")
             .withUsername("account_user")
             .withPassword("account_pass")
-            .withCommand("--default-authentication-plugin=mysql_native_password");
+            .withCommand("mysqld",
+                    "--default-authentication-plugin=mysql_native_password",
+                    "--log-bin-trust-function-creators=1");
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
