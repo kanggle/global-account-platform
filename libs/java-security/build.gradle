@@ -9,7 +9,7 @@ dependencies {
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
     // password4j for argon2id hashing (pure Java, Windows compatible)
-    implementation 'com.password4j:password4j:1.8.2'
+    implementation 'com.password4j:password4j:1.8.4'
 
     // Test
     testImplementation 'org.junit.jupiter:junit-jupiter'
