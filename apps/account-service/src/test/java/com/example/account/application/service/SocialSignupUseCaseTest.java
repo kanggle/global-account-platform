@@ -52,7 +52,7 @@ class SocialSignupUseCaseTest {
         given(accountRepository.findByEmail("new@example.com")).willReturn(Optional.empty());
 
         Account savedAccount = Account.reconstitute(
-                "acc-new", "new@example.com", AccountStatus.ACTIVE,
+                "acc-new", "new@example.com", "hash-new", AccountStatus.ACTIVE,
                 Instant.now(), Instant.now(), null, 0);
         given(accountRepository.save(any(Account.class))).willReturn(savedAccount);
 
@@ -80,7 +80,7 @@ class SocialSignupUseCaseTest {
                 "existing@example.com", "KAKAO", "kakao-456", "Jane");
 
         Account existingAccount = Account.reconstitute(
-                "acc-existing", "existing@example.com", AccountStatus.ACTIVE,
+                "acc-existing", "existing@example.com", "hash-existing", AccountStatus.ACTIVE,
                 Instant.now(), Instant.now(), null, 0);
         given(accountRepository.findByEmail("existing@example.com"))
                 .willReturn(Optional.of(existingAccount));
@@ -107,7 +107,7 @@ class SocialSignupUseCaseTest {
                 "locked@example.com", "GOOGLE", "google-789", "Locked User");
 
         Account lockedAccount = Account.reconstitute(
-                "acc-locked", "locked@example.com", AccountStatus.LOCKED,
+                "acc-locked", "locked@example.com", "hash-locked", AccountStatus.LOCKED,
                 Instant.now(), Instant.now(), null, 0);
         given(accountRepository.findByEmail("locked@example.com"))
                 .willReturn(Optional.of(lockedAccount));
@@ -130,7 +130,7 @@ class SocialSignupUseCaseTest {
         given(accountRepository.findByEmail("race@example.com"))
                 .willReturn(Optional.empty())  // first check: not found
                 .willReturn(Optional.of(Account.reconstitute(  // after race: found
-                        "acc-raced", "race@example.com", AccountStatus.ACTIVE,
+                        "acc-raced", "race@example.com", "hash-raced", AccountStatus.ACTIVE,
                         Instant.now(), Instant.now(), null, 0)));
 
         given(accountRepository.save(any(Account.class)))
@@ -152,7 +152,7 @@ class SocialSignupUseCaseTest {
                 "  Test@Example.COM  ", "GOOGLE", "google-norm", "Norm");
 
         Account existingAccount = Account.reconstitute(
-                "acc-norm", "test@example.com", AccountStatus.ACTIVE,
+                "acc-norm", "test@example.com", "hash-norm", AccountStatus.ACTIVE,
                 Instant.now(), Instant.now(), null, 0);
         given(accountRepository.findByEmail("test@example.com"))
                 .willReturn(Optional.of(existingAccount));
