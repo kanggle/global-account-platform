@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -48,10 +49,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @ActiveProfiles("test")
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062: CI에서 happy path 503 + Kakao/MS outbox loginMethod 빈 값. "
-        + "AuthIntegrationTest와의 WireMock 18082 포트/CB 상태 간섭 의심. "
-        + "Docker 로컬 재현 환경 확보 후 조사.")
 class OAuthLoginIntegrationTest {
 
     static boolean isDockerAvailable() {
@@ -79,7 +76,17 @@ class OAuthLoginIntegrationTest {
     static KafkaContainer kafka = new KafkaContainer(
             DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
 
-    static WireMockServer wireMock;
+    // TASK-BE-062 §A: WireMock bound to a dynamic port to avoid collision with
+    // AuthIntegrationTest's 18082 stub (both tests share the same Gradle JVM).
+    // The server is started eagerly in a static initializer so the DynamicPropertySource
+    // lambdas can read its actual port when the Spring context is built.
+    static final WireMockServer wireMock =
+            new WireMockServer(WireMockConfiguration.options().dynamicPort());
+
+    static {
+        wireMock.start();
+        WireMock.configureFor("localhost", wireMock.port());
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -92,13 +99,6 @@ class OAuthLoginIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @BeforeAll
-    static void startWireMock() {
-        wireMock = new WireMockServer(18082);
-        wireMock.start();
-        WireMock.configureFor("localhost", 18082);
-    }
 
     @AfterAll
     static void stopWireMock() {
@@ -115,16 +115,16 @@ class OAuthLoginIntegrationTest {
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
-        registry.add("auth.account-service.base-url", () -> "http://localhost:18082");
+        registry.add("auth.account-service.base-url", wireMock::baseUrl);
 
         // Redirect OAuth providers to WireMock
-        registry.add("oauth.google.token-uri", () -> "http://localhost:18082/google/token");
-        registry.add("oauth.google.auth-uri", () -> "http://localhost:18082/google/authorize");
-        registry.add("oauth.kakao.token-uri", () -> "http://localhost:18082/kakao/token");
-        registry.add("oauth.kakao.auth-uri", () -> "http://localhost:18082/kakao/authorize");
-        registry.add("oauth.kakao.user-info-uri", () -> "http://localhost:18082/kakao/userinfo");
-        registry.add("oauth.microsoft.token-uri", () -> "http://localhost:18082/microsoft/token");
-        registry.add("oauth.microsoft.auth-uri", () -> "http://localhost:18082/microsoft/authorize");
+        registry.add("oauth.google.token-uri", () -> wireMock.baseUrl() + "/google/token");
+        registry.add("oauth.google.auth-uri", () -> wireMock.baseUrl() + "/google/authorize");
+        registry.add("oauth.kakao.token-uri", () -> wireMock.baseUrl() + "/kakao/token");
+        registry.add("oauth.kakao.auth-uri", () -> wireMock.baseUrl() + "/kakao/authorize");
+        registry.add("oauth.kakao.user-info-uri", () -> wireMock.baseUrl() + "/kakao/userinfo");
+        registry.add("oauth.microsoft.token-uri", () -> wireMock.baseUrl() + "/microsoft/token");
+        registry.add("oauth.microsoft.auth-uri", () -> wireMock.baseUrl() + "/microsoft/authorize");
     }
 
     @BeforeEach
