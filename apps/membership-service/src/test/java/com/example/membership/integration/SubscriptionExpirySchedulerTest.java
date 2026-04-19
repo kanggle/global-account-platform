@@ -107,7 +107,7 @@ class SubscriptionExpirySchedulerTest {
     @DisplayName("past-due ACTIVE subscription → scheduler transitions it to EXPIRED + emits outbox event")
     void expiresPastDueSubscription() {
         LocalDateTime now = LocalDateTime.now();
-        String accountId = "acc-exp-" + UUID.randomUUID();
+        String accountId = UUID.randomUUID().toString();
 
         Subscription sub = Subscription.activate(
                 accountId, PlanLevel.FAN_CLUB, 30, now.minusDays(31), machine);
@@ -137,7 +137,7 @@ class SubscriptionExpirySchedulerTest {
     @DisplayName("FREE subscription (expires_at IS NULL) is excluded by the scheduler")
     void freeSubscriptionIsExcluded() {
         LocalDateTime now = LocalDateTime.now();
-        String accountId = "acc-free-" + UUID.randomUUID();
+        String accountId = UUID.randomUUID().toString();
 
         Subscription free = Subscription.activate(
                 accountId, PlanLevel.FREE, 0, now.minusDays(10), machine);

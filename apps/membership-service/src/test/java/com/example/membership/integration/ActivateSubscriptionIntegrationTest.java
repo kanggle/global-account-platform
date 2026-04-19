@@ -128,7 +128,7 @@ class ActivateSubscriptionIntegrationTest {
     @Test
     @DisplayName("ACTIVE account + fresh key → 201 Created and outbox event emitted")
     void activeAccount_returns201AndEmitsEvent() throws Exception {
-        String accountId = "acc-active-" + UUID.randomUUID();
+        String accountId = UUID.randomUUID().toString();
         String idem = "idem-" + UUID.randomUUID();
         stubAccountStatus(accountId, "ACTIVE");
 
@@ -150,7 +150,7 @@ class ActivateSubscriptionIntegrationTest {
     @Test
     @DisplayName("LOCKED account → 409 ACCOUNT_NOT_ELIGIBLE, no subscription row created")
     void lockedAccount_returns409() throws Exception {
-        String accountId = "acc-locked-" + UUID.randomUUID();
+        String accountId = UUID.randomUUID().toString();
         stubAccountStatus(accountId, "LOCKED");
 
         mockMvc.perform(post("/api/membership/subscriptions")
@@ -169,7 +169,7 @@ class ActivateSubscriptionIntegrationTest {
     @Test
     @DisplayName("account-service 503 → 503 ACCOUNT_STATUS_UNAVAILABLE (fail-closed)")
     void accountServiceUnavailable_returns503() throws Exception {
-        String accountId = "acc-down-" + UUID.randomUUID();
+        String accountId = UUID.randomUUID().toString();
         wireMock.stubFor(WireMock.get(urlPathMatching("/internal/accounts/" + accountId + "/status"))
                 .willReturn(aResponse().withStatus(503)));
 
@@ -189,7 +189,7 @@ class ActivateSubscriptionIntegrationTest {
     @Test
     @DisplayName("Idempotency-Key replay → 200 OK and no duplicate subscription")
     void idempotentReplay_returns200() throws Exception {
-        String accountId = "acc-idem-" + UUID.randomUUID();
+        String accountId = UUID.randomUUID().toString();
         String idem = "idem-replay-" + UUID.randomUUID();
         stubAccountStatus(accountId, "ACTIVE");
 
