@@ -4,7 +4,13 @@ TASK-BE-062
 
 # Title
 
-CI에서 @Disabled 처리된 통합 테스트 8건(클래스 기준) 원인 조사 및 복원
+CI에서 @Disabled 처리된 통합 테스트 5건(클래스 기준) 원인 조사 및 복원
+
+> **진행 현황 (2026-04-19)**: 초기 @Disabled 8건 중 3건을 CI 이터레이션으로
+> 복원 완료. `LoginHistoryImmutabilityTest`(event_id VARCHAR(36) 길이 수정),
+> `ActivateSubscriptionIntegrationTest` + `SubscriptionExpirySchedulerTest`
+> (membership JpaConfig @EntityScan 확장 + accountId UUID로 축소 +
+> subscription_status_history TRUNCATE). 남은 5건만 이 태스크의 대상.
 
 # Status
 
@@ -93,11 +99,11 @@ CI 파이프라인 첫 실측(run 24619397242) 시 재현된 실패를 임시로
 - [ ] `OAuthLoginIntegrationTest`의 `@Disabled` 제거 + CI에서 7 tests all passed
 - [ ] `AuthIntegrationTest.refreshTokenReuseDetected`의 `@Disabled` 제거 + CI에서 passed (필요 시 코드 수정 먼저)
 - [ ] `AccountSignupIntegrationTest.signup_duplicateEmail_returns409`의 `@Disabled` 제거 + CI에서 passed
-- [ ] `ActivateSubscriptionIntegrationTest`의 `@Disabled` 제거 (NoSuchBeanDefinitionException — libs/java-messaging bean wiring 조사 필요)
-- [ ] `SubscriptionExpirySchedulerTest`의 `@Disabled` 제거 (동일 bean wiring 증상)
+- [x] `ActivateSubscriptionIntegrationTest`의 `@Disabled` 제거 ✅ (2026-04-19)
+- [x] `SubscriptionExpirySchedulerTest`의 `@Disabled` 제거 ✅ (2026-04-19)
 - [ ] `DetectionE2EIntegrationTest`의 `@Disabled` 제거 (AssertionError 근본 원인 조사)
 - [ ] `DlqRoutingIntegrationTest`의 `@Disabled` 제거 (Kafka DLQ timeout x3)
-- [ ] `LoginHistoryImmutabilityTest`의 `@Disabled` 제거 (MysqlDataTruncation — 트리거/컬럼 타입 mismatch)
+- [x] `LoginHistoryImmutabilityTest`의 `@Disabled` 제거 ✅ (2026-04-19: event_id VARCHAR(36) 준수)
 - [ ] AuthIntegrationTest.java의 loose assertion(`TOKEN_REUSE_DETECTED | SESSION_REVOKED`)을 단일 값으로 정밀화 (정책 결정 반영)
 - [ ] `./gradlew :apps:auth-service:test` 로컬(Docker 동작 환경)에서 통과
 - [ ] `./gradlew build` CI에서 backend job 전체 green
