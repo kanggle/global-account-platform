@@ -2,7 +2,6 @@ package com.example.account.presentation;
 
 import com.example.account.application.exception.AccountNotFoundException;
 import com.example.account.application.result.AccountStatusResult;
-import com.example.account.application.result.CredentialLookupResult;
 import com.example.account.application.result.DeleteAccountResult;
 import com.example.account.application.result.SocialSignupResult;
 import com.example.account.application.result.StatusChangeResult;
@@ -15,7 +14,6 @@ import com.example.account.infrastructure.config.SecurityConfig;
 import com.example.account.presentation.advice.GlobalExceptionHandler;
 import com.example.account.presentation.internal.AccountLockController;
 import com.example.account.presentation.internal.AccountStatusQueryController;
-import com.example.account.presentation.internal.CredentialLookupController;
 import com.example.account.presentation.internal.SocialSignupController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -37,7 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest({CredentialLookupController.class, AccountStatusQueryController.class, AccountLockController.class, SocialSignupController.class})
+@WebMvcTest({AccountStatusQueryController.class, AccountLockController.class, SocialSignupController.class})
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
 @DisplayName("Internal Controller slice tests")
 class InternalControllerTest {
@@ -52,34 +50,6 @@ class InternalControllerTest {
 
     @MockitoBean
     private SocialSignupUseCase socialSignupUseCase;
-
-    @Test
-    @DisplayName("GET /internal/accounts/credentials returns credentialHash and hashAlgorithm fields")
-    void lookupCredentials_validEmail_returns200WithAllFields() throws Exception {
-        given(accountStatusUseCase.lookupByEmail(eq("test@example.com")))
-                .willReturn(new CredentialLookupResult("acc-123", null, "none", "ACTIVE"));
-
-        mockMvc.perform(get("/internal/accounts/credentials")
-                        .param("email", "test@example.com")
-                        .header("X-Internal-Token", INTERNAL_TOKEN))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountId").value("acc-123"))
-                .andExpect(jsonPath("$.accountStatus").value("ACTIVE"))
-                .andExpect(jsonPath("$.hashAlgorithm").value("none"));
-    }
-
-    @Test
-    @DisplayName("GET /internal/accounts/credentials unknown email returns 404")
-    void lookupCredentials_unknownEmail_returns404() throws Exception {
-        given(accountStatusUseCase.lookupByEmail(any()))
-                .willThrow(new AccountNotFoundException("email"));
-
-        mockMvc.perform(get("/internal/accounts/credentials")
-                        .param("email", "unknown@example.com")
-                        .header("X-Internal-Token", INTERNAL_TOKEN))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("ACCOUNT_NOT_FOUND"));
-    }
 
     @Test
     @DisplayName("GET /internal/accounts/{id}/status returns 200")

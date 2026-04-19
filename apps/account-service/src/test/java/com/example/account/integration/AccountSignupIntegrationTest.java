@@ -1,5 +1,6 @@
 package com.example.account.integration;
 
+import com.example.account.application.port.AuthServicePort;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
@@ -13,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -72,6 +74,12 @@ class AccountSignupIntegrationTest {
 
     @Autowired
     private AccountStatusHistoryRepository historyRepository;
+
+    // TASK-BE-063: signup now calls auth-service /internal/auth/credentials. The
+    // integration here focuses on account-service persistence, so we stub the
+    // outbound call with a no-op mock.
+    @MockitoBean
+    private AuthServicePort authServicePort;
 
     @Test
     @DisplayName("회원가입 후 계정이 ACTIVE 상태로 생성된다")
