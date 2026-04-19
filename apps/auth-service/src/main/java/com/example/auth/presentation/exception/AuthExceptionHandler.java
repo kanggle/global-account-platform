@@ -20,6 +20,13 @@ public class AuthExceptionHandler {
                 .body(ErrorResponse.of("CREDENTIALS_INVALID", "Invalid email or password"));
     }
 
+    @ExceptionHandler(CredentialAlreadyExistsException.class)
+    public ResponseEntity<ErrorResponse> handleCredentialAlreadyExists(CredentialAlreadyExistsException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("CREDENTIAL_ALREADY_EXISTS",
+                        "Credential already exists for this account"));
+    }
+
     @ExceptionHandler(AccountLockedException.class)
     public ResponseEntity<ErrorResponse> handleAccountLocked(AccountLockedException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)

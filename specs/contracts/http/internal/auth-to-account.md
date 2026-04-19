@@ -1,43 +1,12 @@
 # Internal HTTP Contract: auth-service → account-service
 
-auth-service가 로그인 처리 중 account-service를 호출하여 credential을 조회하고 계정 상태를 확인한다.
+auth-service가 로그인/refresh 플로우에서 계정의 현재 상태를 조회한다.
 
 **호출 방향**: auth-service (client) → account-service (server)
 **노출 경로**: `/internal/accounts/*` — 게이트웨이 퍼블릭 라우트에 노출 금지 ([rules/domains/saas.md](../../../rules/domains/saas.md) S2)
 **인증**: mTLS 또는 내부 서비스 토큰 (구현 시 결정)
 
----
-
-## GET /internal/accounts/credentials
-
-이메일로 credential 정보 조회. auth-service가 로그인 시 패스워드 해시를 가져오기 위해 사용.
-
-**Query Parameters**:
-
-| 파라미터 | 타입 | 필수 | 설명 |
-|---|---|---|---|
-| `email` | string | Yes | 로그인 이메일 |
-
-**Response 200**:
-```json
-{
-  "accountId": "string (UUID)",
-  "credentialHash": "string (argon2id hash)",
-  "hashAlgorithm": "argon2id",
-  "accountStatus": "ACTIVE"
-}
-```
-
-**Response 404**: 이메일에 해당하는 계정 없음
-```json
-{
-  "code": "ACCOUNT_NOT_FOUND",
-  "message": "No account found for the given email",
-  "timestamp": "2026-04-12T10:00:00Z"
-}
-```
-
-**주의**: 이 응답에는 `credentialHash`가 포함된다. **반드시 내부 네트워크에서만** 전송되어야 하며, 로그에 기록하면 안 된다 ([rules/traits/regulated.md](../../../rules/traits/regulated.md) R4). 분류 등급: **restricted**.
+> **TASK-BE-063 (credential ownership)** — credential 데이터는 이제 auth-service 가 소유한다. 과거의 `GET /internal/accounts/credentials` 엔드포인트는 제거되었다. auth-service 는 로그인 시 로컬 `CredentialRepository` 로 credential 을 조회하고, 본 문서의 status 엔드포인트로 계정 활성 여부만 확인한다. credential 쓰기 경로는 [auth-internal.md](./auth-internal.md) 참조.
 
 ---
 

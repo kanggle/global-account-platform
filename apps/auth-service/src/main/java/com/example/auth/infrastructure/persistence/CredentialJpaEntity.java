@@ -21,6 +21,12 @@ public class CredentialJpaEntity {
     @Column(name = "account_id", nullable = false, unique = true, length = 36)
     private String accountId;
 
+    // TASK-BE-063: Email is denormalized onto auth_db.credentials so auth-service
+    // can resolve email → credential without a cross-service call. Unique index
+    // enforces one-credential-per-email at the DB level.
+    @Column(name = "email", unique = true, length = 320)
+    private String email;
+
     @Column(name = "credential_hash", nullable = false)
     private String credentialHash;
 
@@ -38,13 +44,14 @@ public class CredentialJpaEntity {
     private int version;
 
     public Credential toDomain() {
-        return new Credential(id, accountId, credentialHash, hashAlgorithm, createdAt, updatedAt, version);
+        return new Credential(id, accountId, email, credentialHash, hashAlgorithm, createdAt, updatedAt, version);
     }
 
     public static CredentialJpaEntity fromDomain(Credential credential) {
         CredentialJpaEntity entity = new CredentialJpaEntity();
         entity.id = credential.getId();
         entity.accountId = credential.getAccountId();
+        entity.email = credential.getEmail();
         entity.credentialHash = credential.getCredentialHash();
         entity.hashAlgorithm = credential.getHashAlgorithm();
         entity.createdAt = credential.getCreatedAt();

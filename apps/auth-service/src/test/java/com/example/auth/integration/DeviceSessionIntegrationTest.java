@@ -1,8 +1,12 @@
 package com.example.auth.integration;
 
+import com.example.auth.domain.credentials.Credential;
+import com.example.auth.domain.credentials.CredentialHash;
 import com.example.auth.domain.session.DeviceSession;
 import com.example.auth.domain.session.RevokeReason;
 import com.example.auth.domain.repository.DeviceSessionRepository;
+import com.example.auth.infrastructure.persistence.CredentialJpaEntity;
+import com.example.auth.infrastructure.persistence.CredentialJpaRepository;
 import com.example.messaging.outbox.OutboxJpaRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -87,6 +91,7 @@ class DeviceSessionIntegrationTest {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private DeviceSessionRepository deviceSessionRepository;
     @Autowired private OutboxJpaRepository outboxJpaRepository;
+    @Autowired private CredentialJpaRepository credentialJpaRepository;
 
     private static final String TEST_EMAIL = "session-it@example.com";
     private static final String TEST_PASSWORD = "password-session-1";
@@ -119,15 +124,22 @@ class DeviceSessionIntegrationTest {
     @BeforeEach
     void stubAccountService() {
         wireMock.resetAll();
+
+        // TASK-BE-063: credential lookup is now local. Seed the credentials row
+        // before each test and stub account-service for the status-only check.
+        credentialJpaRepository.deleteAll();
+        Instant now = Instant.now();
         String hash = new Argon2idPasswordHasher().hash(TEST_PASSWORD);
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/credentials"))
-                .withQueryParam("email", equalTo(TEST_EMAIL))
+        credentialJpaRepository.save(CredentialJpaEntity.fromDomain(
+                Credential.create(ACCOUNT_ID, TEST_EMAIL, CredentialHash.argon2id(hash), now)));
+
+        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/" + ACCOUNT_ID + "/status"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("""
-                                {"accountId":"%s","credentialHash":"%s","hashAlgorithm":"argon2id","accountStatus":"ACTIVE"}
-                                """.formatted(ACCOUNT_ID, hash))));
+                                {"accountId":"%s","status":"ACTIVE","statusChangedAt":"%s"}
+                                """.formatted(ACCOUNT_ID, now.toString()))));
 
         // Clean slate for the account under test
         deviceSessionRepository.findActiveByAccountId(ACCOUNT_ID)

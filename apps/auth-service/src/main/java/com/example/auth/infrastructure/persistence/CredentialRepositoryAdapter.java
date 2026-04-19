@@ -19,8 +19,22 @@ public class CredentialRepositoryAdapter implements CredentialRepository {
     }
 
     @Override
+    public Optional<Credential> findByAccountIdEmail(String email) {
+        if (email == null) {
+            return Optional.empty();
+        }
+        return credentialJpaRepository.findByEmail(Credential.normalizeEmail(email))
+                .map(CredentialJpaEntity::toDomain);
+    }
+
+    @Override
     public Credential save(Credential credential) {
         CredentialJpaEntity entity = CredentialJpaEntity.fromDomain(credential);
         return credentialJpaRepository.save(entity).toDomain();
+    }
+
+    @Override
+    public boolean existsByAccountId(String accountId) {
+        return credentialJpaRepository.findByAccountId(accountId).isPresent();
     }
 }

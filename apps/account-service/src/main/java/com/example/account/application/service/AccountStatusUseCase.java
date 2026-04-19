@@ -4,7 +4,6 @@ import com.example.account.application.command.ChangeStatusCommand;
 import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.application.exception.AccountNotFoundException;
 import com.example.account.application.result.AccountStatusResult;
-import com.example.account.application.result.CredentialLookupResult;
 import com.example.account.application.result.DeleteAccountResult;
 import com.example.account.application.result.StatusChangeResult;
 import com.example.account.domain.account.Account;
@@ -154,19 +153,4 @@ public class AccountStatusUseCase {
         );
     }
 
-    @Transactional(readOnly = true)
-    public CredentialLookupResult lookupByEmail(String email) {
-        Account account = accountRepository.findByEmail(email.trim().toLowerCase())
-                .orElseThrow(() -> new AccountNotFoundException("email"));
-
-        // account-service does not own credentials (auth-service owns them).
-        // Return null/none stubs for credentialHash and hashAlgorithm.
-        // TODO: integrate with auth-service when credential lookup is implemented
-        return new CredentialLookupResult(
-                account.getId(),
-                null,
-                "none",
-                account.getStatus().name()
-        );
-    }
 }

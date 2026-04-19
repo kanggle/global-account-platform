@@ -130,12 +130,12 @@ public class OAuthLoginUseCase {
             socialIdentityJpaRepository.save(newIdentity);
         }
 
-        // Check account status via credential lookup
-        var credentialOpt = accountServicePort.lookupCredentialsByEmail(userInfo.email());
-        if (credentialOpt.isPresent()) {
-            String status = credentialOpt.get().accountStatus();
-            checkAccountStatus(status);
-        }
+        // TASK-BE-063: credentials are owned locally by auth-service now, so the
+        // pre-token account-status check uses the status-only internal endpoint.
+        // A missing status is treated as the account being unavailable — skip the
+        // block and let the rest of the flow proceed (social signup path created it).
+        accountServicePort.getAccountStatus(accountId)
+                .ifPresent(statusResult -> checkAccountStatus(statusResult.accountStatus()));
 
         // Register/update device session
         RegisterDeviceSessionResult sessionResult =

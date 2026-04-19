@@ -3,6 +3,7 @@ package com.example.account.application.service;
 import com.example.account.application.command.SignupCommand;
 import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.application.exception.AccountAlreadyExistsException;
+import com.example.account.application.port.AuthServicePort;
 import com.example.account.application.result.SignupResult;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.profile.Profile;
@@ -20,6 +21,7 @@ public class SignupUseCase {
     private final AccountRepository accountRepository;
     private final ProfileRepository profileRepository;
     private final AccountEventPublisher eventPublisher;
+    private final AuthServicePort authServicePort;
 
     @Transactional
     public SignupResult execute(SignupCommand command) {
@@ -42,7 +44,17 @@ public class SignupUseCase {
             );
             profileRepository.save(profile);
 
-            // Publish outbox event
+            // TASK-BE-063: persist credential in auth-service via /internal/auth/credentials.
+            // Any failure (409 from a racing signup, 5xx, timeout) propagates and rolls back
+            // the account + profile rows above — signup is atomic end-to-end.
+            try {
+                authServicePort.createCredential(account.getId(), account.getEmail(), command.password());
+            } catch (AuthServicePort.CredentialAlreadyExistsConflict e) {
+                throw new AccountAlreadyExistsException(command.email());
+            }
+
+            // Publish outbox event only after credential is persisted (avoids leaking
+            // "account created" if the credential write later fails).
             eventPublisher.publishAccountCreated(
                     account.getId(),
                     account.getEmail(),
