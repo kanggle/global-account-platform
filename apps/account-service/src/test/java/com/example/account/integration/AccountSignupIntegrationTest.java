@@ -6,12 +6,14 @@ import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -81,6 +83,17 @@ class AccountSignupIntegrationTest {
     @MockitoBean
     private AuthServicePort authServicePort;
 
+    // TASK-BE-062 §C: without a KafkaContainer the first signup used to hang ~50s on
+    // producer metadata lookup. Signup itself only writes to the outbox table; the
+    // KafkaTemplate and outbox poller are bean-wired but never needed in this test,
+    // so stubbing both removes the hidden Kafka dependency from context startup.
+    @MockitoBean
+    @SuppressWarnings("rawtypes")
+    private KafkaTemplate kafkaTemplate;
+
+    @MockitoBean
+    private AccountOutboxPollingScheduler outboxPollingScheduler;
+
     @Test
     @DisplayName("회원가입 후 계정이 ACTIVE 상태로 생성된다")
     void signup_createsActiveAccount() throws Exception {
@@ -105,10 +118,6 @@ class AccountSignupIntegrationTest {
 
     @Test
     @DisplayName("중복 이메일 가입 시 409 반환")
-    @org.junit.jupiter.api.Disabled(
-            "TASK-BE-062: CI에서 첫 signup 요청 50s 후 500. Kafka 토픽 account.created 메타데이터 "
-            + "타임아웃과 연관 추정 — 동 클래스의 signup_thenLock_historyRecorded(0.8s)는 통과하므로 "
-            + "순서/topic 생성 타이밍 의존성. 로컬 Docker 환경 확보 후 조사.")
     void signup_duplicateEmail_returns409() throws Exception {
         String uniqueEmail = "dup-" + UUID.randomUUID() + "@example.com";
 
