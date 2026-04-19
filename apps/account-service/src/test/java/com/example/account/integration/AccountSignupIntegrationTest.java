@@ -6,12 +6,14 @@ import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -80,6 +82,17 @@ class AccountSignupIntegrationTest {
     // outbound call with a no-op mock.
     @MockitoBean
     private AuthServicePort authServicePort;
+
+    // TASK-BE-063 post-CI: without a KafkaContainer the first signup hangs ~50s on
+    // producer metadata lookup. Signup itself only writes to the outbox table; the
+    // KafkaTemplate and outbox poller are bean-wired but never needed in this test,
+    // so stubbing both removes the hidden Kafka dependency from context startup.
+    @MockitoBean
+    @SuppressWarnings("rawtypes")
+    private KafkaTemplate kafkaTemplate;
+
+    @MockitoBean
+    private AccountOutboxPollingScheduler outboxPollingScheduler;
 
     @Test
     @DisplayName("회원가입 후 계정이 ACTIVE 상태로 생성된다")
