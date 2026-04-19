@@ -2,7 +2,7 @@
 
 > Weverse Account에서 영감받은 **글로벌 계정/인증/보안 백엔드 플랫폼**. 다수의 하위 제품이 공유하는 계정 인프라 레이어를 프로덕션 수준으로 구현합니다.
 
-[![CI](https://github.com/<owner>/global-account-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/<owner>/global-account-platform/actions/workflows/ci.yml)
+[![CI](https://github.com/kanggle/global-account-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/kanggle/global-account-platform/actions/workflows/ci.yml)
 
 ---
 
