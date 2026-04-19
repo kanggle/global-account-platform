@@ -1,5 +1,7 @@
 package com.example.auth.integration;
 
+import com.example.auth.domain.credentials.Credential;
+import com.example.auth.domain.credentials.CredentialHash;
 import com.example.auth.infrastructure.persistence.CredentialJpaEntity;
 import com.example.auth.infrastructure.persistence.CredentialJpaRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -82,6 +84,8 @@ class AuthIntegrationTest {
     private static final String TEST_EMAIL = "user@example.com";
     private static final String TEST_PASSWORD = "password123";
     private static final String ACCOUNT_ID = "acc-integration-test";
+    private static final String LOCKED_EMAIL = "locked@example.com";
+    private static final String LOCKED_ACCOUNT_ID = "acc-locked";
 
     @BeforeAll
     static void startWireMock() {
@@ -109,41 +113,30 @@ class AuthIntegrationTest {
     }
 
     @BeforeEach
-    void setupWireMock() {
+    void setup() {
         wireMock.resetAll();
 
-        // Hash the test password
+        // TASK-BE-063: credentials now live in auth_db; seed the active account
+        // row locally and stub account-service for the status-only check.
+        credentialJpaRepository.deleteAll();
         Argon2idPasswordHasher hasher = new Argon2idPasswordHasher();
         String hash = hasher.hash(TEST_PASSWORD);
+        Instant now = Instant.now();
+        credentialJpaRepository.save(CredentialJpaEntity.fromDomain(
+                Credential.create(ACCOUNT_ID, TEST_EMAIL, CredentialHash.argon2id(hash), now)));
 
-        // Stub account-service credential lookup
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/credentials"))
-                .withQueryParam("email", equalTo(TEST_EMAIL))
+        // Status-only stub used by LoginUseCase after local credential lookup
+        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/" + ACCOUNT_ID + "/status"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("""
                                 {
                                     "accountId": "%s",
-                                    "credentialHash": "%s",
-                                    "hashAlgorithm": "argon2id",
-                                    "accountStatus": "ACTIVE"
+                                    "status": "ACTIVE",
+                                    "statusChangedAt": "%s"
                                 }
-                                """.formatted(ACCOUNT_ID, hash))));
-
-        // Stub for unknown email
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/credentials"))
-                .withQueryParam("email", equalTo("unknown@example.com"))
-                .willReturn(aResponse()
-                        .withStatus(404)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("""
-                                {
-                                    "code": "ACCOUNT_NOT_FOUND",
-                                    "message": "No account found",
-                                    "timestamp": "%s"
-                                }
-                                """.formatted(Instant.now().toString()))));
+                                """.formatted(ACCOUNT_ID, now.toString()))));
     }
 
     @Test
@@ -180,7 +173,7 @@ class AuthIntegrationTest {
 
     @Test
     @Order(3)
-    @DisplayName("Login fails with unknown email")
+    @DisplayName("Login fails with unknown email (no local credential)")
     void loginFailsUnknownEmail() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -195,11 +188,9 @@ class AuthIntegrationTest {
     @Order(4)
     @DisplayName("Login rate limit after 5 failures")
     void loginRateLimit() throws Exception {
-        // Clear any existing failure counts
         String emailHash = "login:fail:" + hashEmail(TEST_EMAIL);
         redisTemplate.delete(emailHash);
 
-        // Simulate 5 failures by setting the counter directly
         String key = "login:fail:" + hashEmail(TEST_EMAIL);
         redisTemplate.opsForValue().set(key, "5");
 
@@ -211,7 +202,6 @@ class AuthIntegrationTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("LOGIN_RATE_LIMITED"));
 
-        // Clean up
         redisTemplate.delete(key);
     }
 
@@ -219,7 +209,6 @@ class AuthIntegrationTest {
     @Order(5)
     @DisplayName("Login and then refresh token")
     void loginAndRefresh() throws Exception {
-        // First login
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -231,7 +220,6 @@ class AuthIntegrationTest {
         String responseBody = loginResult.getResponse().getContentAsString();
         String refreshToken = objectMapper.readTree(responseBody).get("refreshToken").asText();
 
-        // Then refresh
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -247,7 +235,6 @@ class AuthIntegrationTest {
     @Order(6)
     @DisplayName("Login and then logout")
     void loginAndLogout() throws Exception {
-        // First login
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -259,7 +246,6 @@ class AuthIntegrationTest {
         String responseBody = loginResult.getResponse().getContentAsString();
         String refreshToken = objectMapper.readTree(responseBody).get("refreshToken").asText();
 
-        // Then logout
         mockMvc.perform(post("/api/auth/logout")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -267,7 +253,6 @@ class AuthIntegrationTest {
                                 """.formatted(refreshToken)))
                 .andExpect(status().isNoContent());
 
-        // Try to refresh with the same token - should fail
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -284,7 +269,6 @@ class AuthIntegrationTest {
             + "`refresh:invalidate-all:{accountId}` Redis 마커가 설정되지 않음. "
             + "원래 의도는 TokenReuseDetectedException 경로 — 실제 구현 순서/의도 조사 필요.")
     void refreshTokenReuseDetected() throws Exception {
-        // Login
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -295,7 +279,6 @@ class AuthIntegrationTest {
         String originalRefresh = objectMapper.readTree(loginResult.getResponse().getContentAsString())
                 .get("refreshToken").asText();
 
-        // First refresh (legitimate rotation)
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -303,22 +286,15 @@ class AuthIntegrationTest {
                                 """.formatted(originalRefresh)))
                 .andExpect(status().isOk());
 
-        // Replay the original refresh token → reuse detection path
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"refreshToken":"%s"}
                                 """.formatted(originalRefresh)))
                 .andExpect(status().isUnauthorized())
-                // Either SESSION_REVOKED (revoke path fires first via isRevoked()) or
-                // TOKEN_REUSE_DETECTED (reuse-detect path fires first). Both indicate the
-                // replay was correctly rejected; the controller-level ordering is an
-                // implementation detail. TODO: tighten to the specific security path once
-                // the intended ordering is documented.
                 .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.oneOf(
                         "TOKEN_REUSE_DETECTED", "SESSION_REVOKED")));
 
-        // Redis bulk-invalidation marker must be set for this account
         Boolean hasMarker = redisTemplate.hasKey("refresh:invalidate-all:" + ACCOUNT_ID);
         assertThat(hasMarker).isTrue();
     }
@@ -337,13 +313,13 @@ class AuthIntegrationTest {
 
     @Test
     @Order(8)
-    @DisplayName("Account service down returns 503")
+    @DisplayName("Account-status service down → login returns 503 (fail-closed)")
     void accountServiceDown() throws Exception {
         wireMock.resetAll();
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/credentials"))
+        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/" + ACCOUNT_ID + "/status"))
                 .willReturn(aResponse()
                         .withStatus(503)
-                        .withFixedDelay(6000))); // timeout
+                        .withFixedDelay(6000)));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -356,30 +332,95 @@ class AuthIntegrationTest {
 
     @Test
     @Order(9)
-    @DisplayName("Locked account returns 403")
+    @DisplayName("Locked account → 403 ACCOUNT_LOCKED")
     void loginLockedAccount() throws Exception {
+        // Seed a locked-user credential row
+        Argon2idPasswordHasher hasher = new Argon2idPasswordHasher();
+        String hash = hasher.hash(TEST_PASSWORD);
+        credentialJpaRepository.save(CredentialJpaEntity.fromDomain(
+                Credential.create(LOCKED_ACCOUNT_ID, LOCKED_EMAIL,
+                        CredentialHash.argon2id(hash), Instant.now())));
+
         wireMock.resetAll();
-        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/credentials"))
-                .withQueryParam("email", equalTo("locked@example.com"))
+        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/" + LOCKED_ACCOUNT_ID + "/status"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("""
                                 {
-                                    "accountId": "acc-locked",
-                                    "credentialHash": "dummy-hash",
-                                    "hashAlgorithm": "argon2id",
-                                    "accountStatus": "LOCKED"
+                                    "accountId": "%s",
+                                    "status": "LOCKED",
+                                    "statusChangedAt": "%s"
                                 }
-                                """)));
+                                """.formatted(LOCKED_ACCOUNT_ID, Instant.now().toString()))));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"email":"locked@example.com","password":"password123"}
-                                """))
+                                {"email":"%s","password":"%s"}
+                                """.formatted(LOCKED_EMAIL, TEST_PASSWORD)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_LOCKED"));
+    }
+
+    @Test
+    @Order(10)
+    @DisplayName("TASK-BE-063: POST /internal/auth/credentials seeds a credential that subsequent login can use")
+    void internalCredentialCreateEndToEnd() throws Exception {
+        String newAccountId = "acc-e2e-" + System.currentTimeMillis();
+        String newEmail = "e2e-" + System.currentTimeMillis() + "@example.com";
+
+        // Stub status lookup for the new account
+        wireMock.stubFor(WireMock.get(urlPathEqualTo("/internal/accounts/" + newAccountId + "/status"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {
+                                    "accountId": "%s",
+                                    "status": "ACTIVE",
+                                    "statusChangedAt": "%s"
+                                }
+                                """.formatted(newAccountId, Instant.now().toString()))));
+
+        // Call the internal credential-create endpoint (account-service would do this
+        // during signup). Then log in with the same email+password.
+        mockMvc.perform(post("/internal/auth/credentials")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "accountId": "%s",
+                                  "email": "%s",
+                                  "password": "%s"
+                                }
+                                """.formatted(newAccountId, newEmail, TEST_PASSWORD)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.accountId").value(newAccountId));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s"}
+                                """.formatted(newEmail, TEST_PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    }
+
+    @Test
+    @Order(11)
+    @DisplayName("TASK-BE-063: duplicate credential create returns 409")
+    void duplicateCredentialReturns409() throws Exception {
+        mockMvc.perform(post("/internal/auth/credentials")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "accountId": "%s",
+                                  "email": "%s",
+                                  "password": "%s"
+                                }
+                                """.formatted(ACCOUNT_ID, TEST_EMAIL, TEST_PASSWORD)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CREDENTIAL_ALREADY_EXISTS"));
     }
 
     private static String hashEmail(String email) {

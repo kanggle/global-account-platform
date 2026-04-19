@@ -6,26 +6,58 @@ import java.util.Objects;
 /**
  * Domain entity representing a user's credential (password hash).
  * Pure POJO - no framework annotations.
+ *
+ * <p>As of TASK-BE-063, the credential entity also carries the login email so
+ * auth-service can resolve email → credential locally without a cross-service
+ * round trip. The canonical source of email truth remains account-service; this
+ * is a minimal denormalized copy required for login.</p>
  */
 public class Credential {
 
     private final Long id;
     private final String accountId;
+    private final String email;
     private final String credentialHash;
     private final String hashAlgorithm;
     private final Instant createdAt;
     private final Instant updatedAt;
     private final int version;
 
-    public Credential(Long id, String accountId, String credentialHash, String hashAlgorithm,
+    public Credential(Long id, String accountId, String email, String credentialHash, String hashAlgorithm,
                       Instant createdAt, Instant updatedAt, int version) {
         this.id = id;
         this.accountId = Objects.requireNonNull(accountId, "accountId must not be null");
+        this.email = Objects.requireNonNull(email, "email must not be null");
         this.credentialHash = Objects.requireNonNull(credentialHash, "credentialHash must not be null");
         this.hashAlgorithm = Objects.requireNonNull(hashAlgorithm, "hashAlgorithm must not be null");
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
         this.updatedAt = Objects.requireNonNull(updatedAt, "updatedAt must not be null");
         this.version = version;
+    }
+
+    /**
+     * Factory for creating a brand-new credential record (no id yet, version 0).
+     * Email is normalized to lower-case + trimmed — the login path performs the
+     * same normalization so lookups stay consistent.
+     */
+    public static Credential create(String accountId, String email, CredentialHash hash, Instant now) {
+        Objects.requireNonNull(hash, "hash must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        return new Credential(
+                null,
+                accountId,
+                normalizeEmail(email),
+                hash.hash(),
+                hash.algorithm(),
+                now,
+                now,
+                0
+        );
+    }
+
+    public static String normalizeEmail(String email) {
+        Objects.requireNonNull(email, "email must not be null");
+        return email.trim().toLowerCase();
     }
 
     public Long getId() {
@@ -34,6 +66,10 @@ public class Credential {
 
     public String getAccountId() {
         return accountId;
+    }
+
+    public String getEmail() {
+        return email;
     }
 
     public String getCredentialHash() {

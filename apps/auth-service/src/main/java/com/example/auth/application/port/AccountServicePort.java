@@ -1,6 +1,6 @@
 package com.example.auth.application.port;
 
-import com.example.auth.application.result.CredentialLookupResult;
+import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.SocialSignupResult;
 
 import java.util.Optional;
@@ -12,12 +12,17 @@ import java.util.Optional;
 public interface AccountServicePort {
 
     /**
-     * Looks up credentials by email via internal HTTP to account-service.
+     * Looks up an account's current status by id.
      *
-     * @return credential info including account status, or empty if no account found
+     * <p>TASK-BE-063: replaces the previous email-based credential lookup. The
+     * login path now resolves email → credential locally, then calls this to
+     * verify the account is still ACTIVE.</p>
+     *
+     * @param accountId the account to check
+     * @return the account's status, or empty if the account does not exist
      * @throws com.example.auth.application.exception.AccountServiceUnavailableException if account-service is down
      */
-    Optional<CredentialLookupResult> lookupCredentialsByEmail(String email);
+    Optional<AccountStatusLookupResult> getAccountStatus(String accountId);
 
     /**
      * Creates or retrieves an account for social login via internal HTTP to account-service.

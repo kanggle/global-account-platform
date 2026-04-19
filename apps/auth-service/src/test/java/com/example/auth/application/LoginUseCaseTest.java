@@ -7,9 +7,12 @@ import com.example.auth.application.exception.CredentialsInvalidException;
 import com.example.auth.application.exception.LoginRateLimitedException;
 import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.port.TokenGeneratorPort;
-import com.example.auth.application.result.CredentialLookupResult;
+import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.LoginResult;
 import com.example.auth.application.result.RegisterDeviceSessionResult;
+import com.example.auth.domain.credentials.Credential;
+import com.example.auth.domain.credentials.CredentialHash;
+import com.example.auth.domain.repository.CredentialRepository;
 import com.example.auth.domain.repository.LoginAttemptCounter;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
@@ -25,6 +28,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +39,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class LoginUseCaseTest {
 
+    @Mock
+    private CredentialRepository credentialRepository;
     @Mock
     private AccountServicePort accountServicePort;
     @Mock
@@ -59,6 +65,10 @@ class LoginUseCaseTest {
     private static final String HASH = "$argon2id$hash";
     private static final SessionContext CTX = new SessionContext("127.0.0.1", "Chrome/120", "fp-123");
 
+    private static Credential credential(String accountId, String email, String hash) {
+        return Credential.create(accountId, email, CredentialHash.argon2id(hash), Instant.now());
+    }
+
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(loginUseCase, "maxFailureCount", 5);
@@ -69,8 +79,10 @@ class LoginUseCaseTest {
     void loginSuccess() {
         // given
         when(loginAttemptCounter.getFailureCount(anyString())).thenReturn(0);
-        when(accountServicePort.lookupCredentialsByEmail(EMAIL))
-                .thenReturn(Optional.of(new CredentialLookupResult(ACCOUNT_ID, HASH, "argon2id", "ACTIVE")));
+        when(credentialRepository.findByAccountIdEmail(EMAIL))
+                .thenReturn(Optional.of(credential(ACCOUNT_ID, EMAIL, HASH)));
+        when(accountServicePort.getAccountStatus(ACCOUNT_ID))
+                .thenReturn(Optional.of(new AccountStatusLookupResult(ACCOUNT_ID, "ACTIVE")));
         when(passwordHasher.verify(PASSWORD, HASH)).thenReturn(true);
         when(registerOrUpdateDeviceSessionUseCase.execute(eq(ACCOUNT_ID), any(SessionContext.class)))
                 .thenReturn(new RegisterDeviceSessionResult("dev-1", true, java.util.List.of()));
@@ -98,8 +110,10 @@ class LoginUseCaseTest {
     @DisplayName("Login fails with invalid password")
     void loginFailsInvalidPassword() {
         when(loginAttemptCounter.getFailureCount(anyString())).thenReturn(0);
-        when(accountServicePort.lookupCredentialsByEmail(EMAIL))
-                .thenReturn(Optional.of(new CredentialLookupResult(ACCOUNT_ID, HASH, "argon2id", "ACTIVE")));
+        when(credentialRepository.findByAccountIdEmail(EMAIL))
+                .thenReturn(Optional.of(credential(ACCOUNT_ID, EMAIL, HASH)));
+        when(accountServicePort.getAccountStatus(ACCOUNT_ID))
+                .thenReturn(Optional.of(new AccountStatusLookupResult(ACCOUNT_ID, "ACTIVE")));
         when(passwordHasher.verify(PASSWORD, HASH)).thenReturn(false);
 
         assertThatThrownBy(() -> loginUseCase.execute(new LoginCommand(EMAIL, PASSWORD, CTX)))
@@ -109,10 +123,25 @@ class LoginUseCaseTest {
     }
 
     @Test
-    @DisplayName("Login fails when account not found")
-    void loginFailsAccountNotFound() {
+    @DisplayName("Login fails when credential row is missing (no local row → CredentialsInvalid)")
+    void loginFailsCredentialMissing() {
         when(loginAttemptCounter.getFailureCount(anyString())).thenReturn(0);
-        when(accountServicePort.lookupCredentialsByEmail(EMAIL)).thenReturn(Optional.empty());
+        when(credentialRepository.findByAccountIdEmail(EMAIL)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> loginUseCase.execute(new LoginCommand(EMAIL, PASSWORD, CTX)))
+                .isInstanceOf(CredentialsInvalidException.class);
+
+        verify(loginAttemptCounter).incrementFailureCount(anyString());
+        verify(accountServicePort, never()).getAccountStatus(anyString());
+    }
+
+    @Test
+    @DisplayName("Login fails when account-service can no longer find the account (stale credential)")
+    void loginFailsAccountGoneForCredential() {
+        when(loginAttemptCounter.getFailureCount(anyString())).thenReturn(0);
+        when(credentialRepository.findByAccountIdEmail(EMAIL))
+                .thenReturn(Optional.of(credential(ACCOUNT_ID, EMAIL, HASH)));
+        when(accountServicePort.getAccountStatus(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> loginUseCase.execute(new LoginCommand(EMAIL, PASSWORD, CTX)))
                 .isInstanceOf(CredentialsInvalidException.class);
@@ -128,15 +157,18 @@ class LoginUseCaseTest {
         assertThatThrownBy(() -> loginUseCase.execute(new LoginCommand(EMAIL, PASSWORD, CTX)))
                 .isInstanceOf(LoginRateLimitedException.class);
 
-        verify(accountServicePort, never()).lookupCredentialsByEmail(anyString());
+        verify(credentialRepository, never()).findByAccountIdEmail(anyString());
+        verify(accountServicePort, never()).getAccountStatus(anyString());
     }
 
     @Test
     @DisplayName("Login fails when account is locked")
     void loginFailsAccountLocked() {
         when(loginAttemptCounter.getFailureCount(anyString())).thenReturn(0);
-        when(accountServicePort.lookupCredentialsByEmail(EMAIL))
-                .thenReturn(Optional.of(new CredentialLookupResult(ACCOUNT_ID, HASH, "argon2id", "LOCKED")));
+        when(credentialRepository.findByAccountIdEmail(EMAIL))
+                .thenReturn(Optional.of(credential(ACCOUNT_ID, EMAIL, HASH)));
+        when(accountServicePort.getAccountStatus(ACCOUNT_ID))
+                .thenReturn(Optional.of(new AccountStatusLookupResult(ACCOUNT_ID, "LOCKED")));
 
         assertThatThrownBy(() -> loginUseCase.execute(new LoginCommand(EMAIL, PASSWORD, CTX)))
                 .isInstanceOf(AccountLockedException.class);

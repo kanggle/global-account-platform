@@ -2,7 +2,7 @@ package com.example.auth.infrastructure.client;
 
 import com.example.auth.application.exception.AccountServiceUnavailableException;
 import com.example.auth.application.port.AccountServicePort;
-import com.example.auth.application.result.CredentialLookupResult;
+import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.SocialSignupResult;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -11,12 +11,11 @@ import io.github.resilience4j.retry.RetryConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
-
-import org.springframework.http.MediaType;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -26,8 +25,12 @@ import java.util.function.Supplier;
 
 /**
  * Internal HTTP client for account-service.
- * Configured with timeouts (connect=3s, read=5s), retry (2 retries, exponential backoff + jitter,
- * no retry on 4xx), and circuit breaker (50% failure rate / 10s sliding window).
+ *
+ * <p>TASK-BE-063: the login hot path no longer calls account-service for credential
+ * lookup — auth-service owns credentials locally. This client is now a
+ * status-and-social-signup adapter only. Configured with timeouts (connect=3s,
+ * read=5s), retry (2 retries, exponential backoff + jitter, no retry on 4xx),
+ * and circuit breaker (50% failure rate / 10s sliding window).</p>
  */
 @Slf4j
 @Component
@@ -78,13 +81,12 @@ public class AccountServiceClient implements AccountServicePort {
     }
 
     @Override
-    public Optional<CredentialLookupResult> lookupCredentialsByEmail(String email) {
-        Supplier<Optional<CredentialLookupResult>> supplier = () -> doLookup(email);
+    public Optional<AccountStatusLookupResult> getAccountStatus(String accountId) {
+        Supplier<Optional<AccountStatusLookupResult>> supplier = () -> doGetStatus(accountId);
 
-        // Wrap with retry, then circuit breaker (retry is inner, CB is outer)
-        Supplier<Optional<CredentialLookupResult>> retryingSupplier =
+        Supplier<Optional<AccountStatusLookupResult>> retryingSupplier =
                 Retry.decorateSupplier(retry, supplier);
-        Supplier<Optional<CredentialLookupResult>> resilientSupplier =
+        Supplier<Optional<AccountStatusLookupResult>> resilientSupplier =
                 CircuitBreaker.decorateSupplier(circuitBreaker, retryingSupplier);
 
         try {
@@ -92,19 +94,22 @@ public class AccountServiceClient implements AccountServicePort {
         } catch (HttpClientErrorException.NotFound e) {
             return Optional.empty();
         } catch (HttpClientErrorException e) {
-            // Other 4xx errors: not retried, propagate as empty or error
-            log.warn("Account service returned client error {}: {}", e.getStatusCode(), e.getMessage());
+            log.warn("Account service status lookup returned client error {}: {}",
+                    e.getStatusCode(), e.getMessage());
             return Optional.empty();
         } catch (Exception e) {
-            log.error("Account service call failed after retries: {}", e.getMessage());
+            log.error("Account service status lookup failed after retries: {}", e.getMessage());
             throw new AccountServiceUnavailableException("Account service is unavailable", e);
         }
     }
 
-    private Optional<CredentialLookupResult> doLookup(String email) {
+    private Optional<AccountStatusLookupResult> doGetStatus(String accountId) {
         try {
-            CredentialLookupResult result = restClient.get()
-                    .uri("/internal/accounts/credentials?email={email}", email)
+            // account-service returns { accountId, status, statusChangedAt } — map the
+            // "status" field onto our port's accountStatus slot.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> body = restClient.get()
+                    .uri("/internal/accounts/{id}/status", accountId)
                     .retrieve()
                     .onStatus(HttpStatusCode::is4xxClientError, (request, response) -> {
                         if (response.getStatusCode().value() == 404) {
@@ -116,13 +121,21 @@ public class AccountServiceClient implements AccountServicePort {
                                 response.getStatusCode(), "Client Error",
                                 response.getHeaders(), new byte[0], null);
                     })
-                    .body(CredentialLookupResult.class);
+                    .body(Map.class);
 
-            return Optional.ofNullable(result);
+            if (body == null) {
+                return Optional.empty();
+            }
+            String returnedId = (String) body.getOrDefault("accountId", accountId);
+            String status = (String) body.get("status");
+            if (status == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new AccountStatusLookupResult(returnedId, status));
         } catch (HttpClientErrorException.NotFound e) {
             return Optional.empty();
         } catch (HttpClientErrorException e) {
-            throw e; // Let retry logic decide (4xx won't be retried)
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Account service communication error", e);
         }

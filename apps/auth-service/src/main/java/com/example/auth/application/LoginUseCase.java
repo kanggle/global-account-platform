@@ -8,9 +8,11 @@ import com.example.auth.application.exception.CredentialsInvalidException;
 import com.example.auth.application.exception.LoginRateLimitedException;
 import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.port.TokenGeneratorPort;
-import com.example.auth.application.result.CredentialLookupResult;
+import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.LoginResult;
 import com.example.auth.application.result.RegisterDeviceSessionResult;
+import com.example.auth.domain.credentials.Credential;
+import com.example.auth.domain.repository.CredentialRepository;
 import com.example.auth.domain.repository.LoginAttemptCounter;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
@@ -28,12 +30,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.Optional;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class LoginUseCase {
 
+    private final CredentialRepository credentialRepository;
     private final AccountServicePort accountServicePort;
     private final PasswordHasher passwordHasher;
     private final TokenGeneratorPort tokenGeneratorPort;
@@ -61,30 +65,48 @@ public class LoginUseCase {
         // Publish login attempted event
         authEventPublisher.publishLoginAttempted(null, emailHash, ctx);
 
-        // Lookup credentials from account-service
-        CredentialLookupResult credential = accountServicePort.lookupCredentialsByEmail(command.email())
-                .orElseThrow(() -> {
-                    loginAttemptCounter.incrementFailureCount(emailHash);
-                    int newCount = loginAttemptCounter.getFailureCount(emailHash);
-                    authEventPublisher.publishLoginFailed(null, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
-                    return new CredentialsInvalidException();
-                });
+        // TASK-BE-063: Credential lookup is now local. auth_db.credentials owns
+        // both credential_hash and the email lookup index, so we no longer need
+        // to call account-service for password verification.
+        Optional<Credential> credentialOpt = credentialRepository.findByAccountIdEmail(command.email());
+        if (credentialOpt.isEmpty()) {
+            loginAttemptCounter.incrementFailureCount(emailHash);
+            int newCount = loginAttemptCounter.getFailureCount(emailHash);
+            authEventPublisher.publishLoginFailed(null, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
+            throw new CredentialsInvalidException();
+        }
+        Credential credential = credentialOpt.get();
+        String accountId = credential.getAccountId();
 
-        String accountId = credential.accountId();
-
-        // Check account status
-        checkAccountStatus(credential.accountStatus(), accountId, emailHash, ctx);
-
-        // Verify password — TASK-BE-063: account-service currently returns null credentialHash
-        // (credential 저장 경로 결여). null-guard로 NPE 대신 정상 401 CREDENTIALS_INVALID 반환.
-        // 근본 해결 후 이 가드는 제거 가능.
-        if (credential.credentialHash() == null) {
+        // Short-lived null-guard ("단기 패치" from TASK-BE-063): if a credential
+        // row somehow carries a null hash (e.g. partial legacy row), treat it as
+        // invalid credentials rather than NPE-ing into 500 INTERNAL_ERROR.
+        // With V0006 enforcing NOT NULL on credential_hash this is belt-and-suspenders.
+        if (credential.getCredentialHash() == null) {
+            log.warn("Credential row has null hash for accountId={}; treating as invalid", accountId);
             loginAttemptCounter.incrementFailureCount(emailHash);
             int newCount = loginAttemptCounter.getFailureCount(emailHash);
             authEventPublisher.publishLoginFailed(accountId, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
             throw new CredentialsInvalidException();
         }
-        boolean passwordValid = passwordHasher.verify(command.password(), credential.credentialHash());
+
+        // Account status is still owned by account-service (S1 physical
+        // separation of Identity and Account/Profile).
+        AccountStatusLookupResult status = accountServicePort.getAccountStatus(accountId)
+                .orElseThrow(() -> {
+                    // Credential exists but account is gone — treat as invalid
+                    // to avoid leaking "credential-yes, account-no" signal.
+                    loginAttemptCounter.incrementFailureCount(emailHash);
+                    int newCount = loginAttemptCounter.getFailureCount(emailHash);
+                    authEventPublisher.publishLoginFailed(accountId, emailHash,
+                            "CREDENTIALS_INVALID", newCount, ctx);
+                    return new CredentialsInvalidException();
+                });
+
+        checkAccountStatus(status.accountStatus(), accountId, emailHash, ctx);
+
+        // Verify password
+        boolean passwordValid = passwordHasher.verify(command.password(), credential.getCredentialHash());
         if (!passwordValid) {
             loginAttemptCounter.incrementFailureCount(emailHash);
             int newCount = loginAttemptCounter.getFailureCount(emailHash);

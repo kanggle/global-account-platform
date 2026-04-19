@@ -1,8 +1,12 @@
 package com.example.auth.integration;
 
+import com.example.auth.domain.credentials.Credential;
+import com.example.auth.domain.credentials.CredentialHash;
 import com.example.auth.domain.session.DeviceSession;
 import com.example.auth.domain.session.RevokeReason;
 import com.example.auth.domain.repository.DeviceSessionRepository;
+import com.example.auth.infrastructure.persistence.CredentialJpaEntity;
+import com.example.auth.infrastructure.persistence.CredentialJpaRepository;
 import com.example.messaging.outbox.OutboxJpaRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
