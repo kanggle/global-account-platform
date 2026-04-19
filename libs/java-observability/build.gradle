@@ -8,7 +8,7 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
 
     // OpenTelemetry API (for trace context extraction)
-    implementation 'io.opentelemetry:opentelemetry-api:1.43.0'
+    implementation 'io.opentelemetry:opentelemetry-api:1.61.0'
 
     // Logback JSON encoder
     implementation 'net.logstash.logback:logstash-logback-encoder:8.0'
