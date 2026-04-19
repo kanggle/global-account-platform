@@ -12,6 +12,11 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  */
 @Configuration
 @EnableJpaRepositories(basePackages = "com.example.membership.infrastructure.persistence")
-@EntityScan(basePackages = "com.example.membership.infrastructure.persistence")
+// membership-service의 일부 도메인 클래스(예: MembershipPlan)는 도메인 패키지에
+// @Entity를 선언하므로 entity 스캔 대상은 두 패키지를 모두 포함해야 한다.
+@EntityScan(basePackages = {
+        "com.example.membership.domain",
+        "com.example.membership.infrastructure.persistence"
+})
 public class JpaConfig {
 }
