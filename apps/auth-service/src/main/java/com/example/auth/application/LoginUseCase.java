@@ -75,7 +75,15 @@ public class LoginUseCase {
         // Check account status
         checkAccountStatus(credential.accountStatus(), accountId, emailHash, ctx);
 
-        // Verify password
+        // Verify password — TASK-BE-063: account-service currently returns null credentialHash
+        // (credential 저장 경로 결여). null-guard로 NPE 대신 정상 401 CREDENTIALS_INVALID 반환.
+        // 근본 해결 후 이 가드는 제거 가능.
+        if (credential.credentialHash() == null) {
+            loginAttemptCounter.incrementFailureCount(emailHash);
+            int newCount = loginAttemptCounter.getFailureCount(emailHash);
+            authEventPublisher.publishLoginFailed(accountId, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
+            throw new CredentialsInvalidException();
+        }
         boolean passwordValid = passwordHasher.verify(command.password(), credential.credentialHash());
         if (!passwordValid) {
             loginAttemptCounter.incrementFailureCount(emailHash);

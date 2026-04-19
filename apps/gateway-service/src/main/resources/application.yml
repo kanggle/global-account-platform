@@ -23,7 +23,7 @@ spring:
             - StripPrefix=0
 
         - id: admin-service
-          uri: ${ADMIN_SERVICE_URL:http://localhost:8083}
+          uri: ${ADMIN_SERVICE_URL:http://localhost:8085}
           predicates:
             - Path=/api/admin/**
           filters:

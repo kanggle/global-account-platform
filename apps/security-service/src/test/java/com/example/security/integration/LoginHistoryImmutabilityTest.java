@@ -25,7 +25,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @Testcontainers
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled("TASK-BE-062: CI 첫 실측에서 발견된 pre-existing 통합 테스트 이슈. 로컬 Docker 환경 확보 후 근본 조사.")
 class LoginHistoryImmutabilityTest {
 
     static boolean isDockerAvailable() {
@@ -70,10 +69,10 @@ class LoginHistoryImmutabilityTest {
     @Test
     @DisplayName("UPDATE on login_history is rejected by trigger")
     void updateIsRejected() {
-        // Insert a test row
+        // Insert a test row (event_id must be UUID-shaped, VARCHAR(36))
         jdbcTemplate.update(
                 "INSERT INTO login_history (event_id, account_id, outcome, occurred_at) VALUES (?, ?, ?, ?)",
-                "evt-immutability-update-" + Instant.now().toEpochMilli(),
+                java.util.UUID.randomUUID().toString(),
                 "acc-immutability-001",
                 "SUCCESS",
                 Instant.now()
@@ -91,10 +90,10 @@ class LoginHistoryImmutabilityTest {
     @Test
     @DisplayName("DELETE on login_history is rejected by trigger")
     void deleteIsRejected() {
-        // Insert a test row
+        // Insert a test row (event_id must be UUID-shaped, VARCHAR(36))
         jdbcTemplate.update(
                 "INSERT INTO login_history (event_id, account_id, outcome, occurred_at) VALUES (?, ?, ?, ?)",
-                "evt-immutability-delete-" + Instant.now().toEpochMilli(),
+                java.util.UUID.randomUUID().toString(),
                 "acc-immutability-002",
                 "SUCCESS",
                 Instant.now()
