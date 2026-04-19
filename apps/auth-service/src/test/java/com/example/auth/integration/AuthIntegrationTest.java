@@ -264,10 +264,6 @@ class AuthIntegrationTest {
     @Test
     @Order(65)
     @DisplayName("Refresh token reuse → 401 TOKEN_REUSE_DETECTED, all sessions revoked, Redis marker set")
-    @org.junit.jupiter.api.Disabled(
-            "TASK-BE-062: 현 구현에서 replay 경로가 SessionRevokedException 으로 빠지면서 "
-            + "`refresh:invalidate-all:{accountId}` Redis 마커가 설정되지 않음. "
-            + "원래 의도는 TokenReuseDetectedException 경로 — 실제 구현 순서/의도 조사 필요.")
     void refreshTokenReuseDetected() throws Exception {
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -286,14 +282,17 @@ class AuthIntegrationTest {
                                 """.formatted(originalRefresh)))
                 .andExpect(status().isOk());
 
+        // Replay the original refresh token. TASK-BE-062 §B: reuse detection must run before
+        // the blacklist / revoked checks so the incident-response path (Redis marker set,
+        // every device_session revoked) runs. If we get here with SESSION_REVOKED it means
+        // the ordering regressed.
         mockMvc.perform(post("/api/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"refreshToken":"%s"}
                                 """.formatted(originalRefresh)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.oneOf(
-                        "TOKEN_REUSE_DETECTED", "SESSION_REVOKED")));
+                .andExpect(jsonPath("$.code").value("TOKEN_REUSE_DETECTED"));
 
         Boolean hasMarker = redisTemplate.hasKey("refresh:invalidate-all:" + ACCOUNT_ID);
         assertThat(hasMarker).isTrue();

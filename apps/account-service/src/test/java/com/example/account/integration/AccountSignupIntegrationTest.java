@@ -118,10 +118,6 @@ class AccountSignupIntegrationTest {
 
     @Test
     @DisplayName("중복 이메일 가입 시 409 반환")
-    @org.junit.jupiter.api.Disabled(
-            "TASK-BE-062: CI에서 첫 signup 요청 50s 후 500. Kafka 토픽 account.created 메타데이터 "
-            + "타임아웃과 연관 추정 — 동 클래스의 signup_thenLock_historyRecorded(0.8s)는 통과하므로 "
-            + "순서/topic 생성 타이밍 의존성. 로컬 Docker 환경 확보 후 조사.")
     void signup_duplicateEmail_returns409() throws Exception {
         String uniqueEmail = "dup-" + UUID.randomUUID() + "@example.com";
 
