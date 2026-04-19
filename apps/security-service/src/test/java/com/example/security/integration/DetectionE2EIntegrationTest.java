@@ -43,7 +43,11 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled("TASK-BE-062: CI 첫 실측에서 발견된 pre-existing 통합 테스트 이슈. 로컬 Docker 환경 확보 후 근본 조사.")
+@org.junit.jupiter.api.Disabled(
+        "TASK-BE-062 (residual): detection pipeline end-to-end 검증이 필요한 통합 테스트. "
+        + "TASK-BE-062 에서 auth/account 계열 3건은 복원했으나 본 건은 detection 윈도우/집계 "
+        + "로직이 Docker Testcontainers 환경에서 실측돼야 AssertionError 근본 원인을 좁힐 수 있음. "
+        + "후속 task 에서 수리 권장.")
 class DetectionE2EIntegrationTest {
 
     static boolean isDockerAvailable() {
