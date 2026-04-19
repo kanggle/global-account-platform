@@ -111,8 +111,10 @@ class ActivateSubscriptionIntegrationTest {
     @BeforeEach
     void reset() {
         wireMock.resetAll();
-        // Clean subscriptions so each test is isolated
-        jdbcTemplate.update("DELETE FROM subscription_status_history");
+        // Clean subscriptions so each test is isolated.
+        // subscription_status_history has an append-only trigger blocking DELETE —
+        // bypass via TRUNCATE which does not fire row-level triggers.
+        jdbcTemplate.execute("TRUNCATE TABLE subscription_status_history");
         jdbcTemplate.update("DELETE FROM subscriptions");
         jdbcTemplate.update("DELETE FROM outbox");
     }
