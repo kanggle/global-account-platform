@@ -53,7 +53,8 @@ class AccountLockHistoryJpaRepositoryTest {
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("security_db")
             .withUsername("test")
-            .withPassword("test");
+            .withPassword("test")
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
 
     @DynamicPropertySource
     static void overrideProps(DynamicPropertyRegistry registry) {

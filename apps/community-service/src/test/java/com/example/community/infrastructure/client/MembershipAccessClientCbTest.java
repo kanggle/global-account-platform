@@ -61,8 +61,10 @@ class MembershipAccessClientCbTest {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("community.membership-service.base-url", () -> "http://localhost:" + wm.port());
-        registry.add("community.membership-service.connect-timeout-ms", () -> "500");
-        registry.add("community.membership-service.read-timeout-ms", () -> "500");
+        // Timeouts tight enough to exercise failure path but generous enough for slow
+        // CI runners on cold start (first WireMock response can exceed 500ms in CI).
+        registry.add("community.membership-service.connect-timeout-ms", () -> "2000");
+        registry.add("community.membership-service.read-timeout-ms", () -> "3000");
         // Tighten CB so it trips quickly in the test.
         registry.add("resilience4j.circuitbreaker.instances.membershipService.sliding-window-type", () -> "COUNT_BASED");
         registry.add("resilience4j.circuitbreaker.instances.membershipService.sliding-window-size", () -> "4");

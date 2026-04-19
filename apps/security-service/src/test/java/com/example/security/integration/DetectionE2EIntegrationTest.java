@@ -57,7 +57,8 @@ class DetectionE2EIntegrationTest {
     static MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
             .withDatabaseName("security_db")
             .withUsername("test")
-            .withPassword("test");
+            .withPassword("test")
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
 
     @Container
     static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"));

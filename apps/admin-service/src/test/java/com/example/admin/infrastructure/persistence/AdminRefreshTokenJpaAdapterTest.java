@@ -51,7 +51,8 @@ class AdminRefreshTokenJpaAdapterTest {
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("admin_db")
             .withUsername("test")
-            .withPassword("test");
+            .withPassword("test")
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
 
     @DynamicPropertySource
     static void overrideProps(DynamicPropertyRegistry registry) {

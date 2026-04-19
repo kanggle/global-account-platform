@@ -59,7 +59,8 @@ class SubscriptionExpirySchedulerTest {
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("membership_db")
             .withUsername("test")
-            .withPassword("test");
+            .withPassword("test")
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
 
     @Container
     @SuppressWarnings("resource")
