@@ -56,6 +56,22 @@ public class RefreshTokenUseCase {
             throw new TokenExpiredException();
         }
 
+        // Look up the refresh token in DB. Reuse detection must run BEFORE any revoked/
+        // blacklisted/invalidate-all short-circuit so a replay of a rotated token still
+        // triggers the incident-response path (TASK-BE-062 §B — security-first ordering).
+        RefreshToken existingToken = refreshTokenRepository.findByJti(jti)
+                .orElseThrow(TokenExpiredException::new);
+
+        // Check for reuse FIRST. If a child token with rotated_from=jti exists, this presentation
+        // is a replay regardless of the token's own revoked flag, the Redis blacklist entry, or
+        // the bulk-invalidation marker. Missing any of those signals would silently downgrade a
+        // security incident to a plain "session revoked" 401.
+        if (tokenReuseDetector.isReuse(existingToken)) {
+            handleReuseDetected(existingToken, jti, accountId, ctx);
+            // handleReuseDetected always throws
+            throw new TokenReuseDetectedException();
+        }
+
         // Check blacklist (fail-closed: if Redis is down, deny refresh)
         if (tokenBlacklist.isBlacklisted(jti)) {
             throw new SessionRevokedException();
@@ -76,18 +92,6 @@ public class RefreshTokenUseCase {
             if (tokenIat.isBefore(invalidatedAt.get())) {
                 throw new SessionRevokedException();
             }
-        }
-
-        // Look up the refresh token in DB
-        RefreshToken existingToken = refreshTokenRepository.findByJti(jti)
-                .orElseThrow(TokenExpiredException::new);
-
-        // Check for reuse BEFORE inspecting revoked/expired flags — reuse of a previously-rotated
-        // (and therefore revoked) token must still trigger the full incident-response path.
-        if (tokenReuseDetector.isReuse(existingToken)) {
-            handleReuseDetected(existingToken, jti, accountId, ctx);
-            // handleReuseDetected always throws
-            throw new TokenReuseDetectedException();
         }
 
         // Check if revoked

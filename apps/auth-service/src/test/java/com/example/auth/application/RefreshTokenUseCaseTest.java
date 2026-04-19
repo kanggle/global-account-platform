@@ -95,11 +95,19 @@ class RefreshTokenUseCaseTest {
     }
 
     @Test
-    @DisplayName("Refresh fails when token is blacklisted")
+    @DisplayName("Refresh fails when token is blacklisted (no reuse chain)")
     void refreshFailsBlacklisted() {
+        // TASK-BE-062 §B: reuse check runs BEFORE the blacklist lookup, so we must
+        // load a non-reused DB token to reach the blacklist branch.
         String refreshTokenStr = "blacklisted-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+
+        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
+                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
+                null, false, "fp-123");
+        when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(true);
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
@@ -113,8 +121,6 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "unknown-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn("unknown-jti");
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
-        when(tokenBlacklist.isBlacklisted("unknown-jti")).thenReturn(false);
-        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
         when(refreshTokenRepository.findByJti("unknown-jti")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
@@ -148,8 +154,6 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "reused-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
-        when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
-        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
@@ -203,11 +207,20 @@ class RefreshTokenUseCaseTest {
     @Test
     @DisplayName("Refresh fails with SESSION_REVOKED when invalidate-all marker exists and token iat precedes it")
     void refreshFailsWhenInvalidateAllMarkerPredatesToken() {
+        // TASK-BE-062 §B: reordering — findByJti + isReuse run before the marker check,
+        // so the stub chain must include both. The token is NOT reused and NOT blacklisted;
+        // the bulk-invalidate marker is what causes the 401.
         String refreshTokenStr = "stale-token";
         Instant markerAt = Instant.now().minusSeconds(60);
         Instant tokenIat = markerAt.minusSeconds(60); // issued before the marker
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+
+        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
+                tokenIat, tokenIat.plusSeconds(600000),
+                null, false, "fp-123");
+        when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
         when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.of(markerAt));
         when(tokenGeneratorPort.extractIssuedAt(refreshTokenStr)).thenReturn(tokenIat);
@@ -215,8 +228,6 @@ class RefreshTokenUseCaseTest {
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
                 new RefreshTokenCommand(refreshTokenStr, CTX)))
                 .isInstanceOf(SessionRevokedException.class);
-
-        verify(refreshTokenRepository, never()).findByJti(anyString());
     }
 
     @Test
@@ -225,8 +236,6 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "reused-revoked-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
-        when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
-        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
