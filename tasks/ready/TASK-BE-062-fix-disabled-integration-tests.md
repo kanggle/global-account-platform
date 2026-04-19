@@ -4,7 +4,7 @@ TASK-BE-062
 
 # Title
 
-CI에서 @Disabled 처리된 통합 테스트 2건 원인 조사 및 복원
+CI에서 @Disabled 처리된 통합 테스트 3건 원인 조사 및 복원
 
 # Status
 
@@ -51,6 +51,21 @@ CI 파이프라인 첫 실측(run 24619397242) 시 재현된 실패를 임시로
 - CB 격리 → `@BeforeEach`에서 `circuitBreakerRegistry.getAllCircuitBreakers().forEach(CircuitBreaker::reset)`
 - outbox `loginMethod` 값 실측 검증 — 스펙(auth-events.md)과 일치
 
+### C. `AccountSignupIntegrationTest.signup_duplicateEmail_returns409` (`apps/account-service`)
+
+증상:
+- 첫 `POST /api/accounts/signup` 요청이 **50.3초** 후 500 반환 (기대값 201)
+- 동 클래스의 `signup_thenLock_historyRecorded`는 0.85초에 성공
+
+조사 가설:
+1. Kafka producer 경로에서 토픽 `account.created` 메타데이터 조회 타임아웃 (60s 기본) — 첫 signup 시 outbox relay가 아직 ready 안 된 토픽에 sync publish 시도
+2. 테스트 순서 의존 — `signup_thenLock_historyRecorded`가 먼저 돌면 이미 토픽이 생성돼 있어 이 테스트는 빠름
+3. `allow.auto.create.topics` 설정 누락 또는 metadata 전파 지연
+
+복원 절차:
+- KafkaContainer에 `withEnv("KAFKA_AUTO_CREATE_TOPICS_ENABLE", "true")` 또는 @BeforeAll에서 토픽 사전 생성 스크립트
+- 또는 signup use case가 outbox-only 경로를 사용하도록 확인(이미 그러면 500 원인 재진단)
+
 ### B. `AuthIntegrationTest.refreshTokenReuseDetected` (`apps/auth-service`)
 
 증상:
@@ -77,6 +92,7 @@ CI 파이프라인 첫 실측(run 24619397242) 시 재현된 실패를 임시로
 
 - [ ] `OAuthLoginIntegrationTest`의 `@Disabled` 제거 + CI에서 7 tests all passed
 - [ ] `AuthIntegrationTest.refreshTokenReuseDetected`의 `@Disabled` 제거 + CI에서 passed (필요 시 코드 수정 먼저)
+- [ ] `AccountSignupIntegrationTest.signup_duplicateEmail_returns409`의 `@Disabled` 제거 + CI에서 passed
 - [ ] AuthIntegrationTest.java의 loose assertion(`TOKEN_REUSE_DETECTED | SESSION_REVOKED`)을 단일 값으로 정밀화 (정책 결정 반영)
 - [ ] `./gradlew :apps:auth-service:test` 로컬(Docker 동작 환경)에서 통과
 - [ ] `./gradlew build` CI에서 backend job 전체 green
