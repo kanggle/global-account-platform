@@ -45,6 +45,6 @@
     "eslint": "^9.14.0",
     "eslint-config-next": "15.0.3",
     "axe-core": "^4.10.2",
-    "@axe-core/react": "^4.10.0"
+    "@axe-core/react": "^4.11.2"
   }
 }
