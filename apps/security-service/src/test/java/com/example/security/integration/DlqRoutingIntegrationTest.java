@@ -41,10 +41,6 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 (residual): real-Kafka DLQ routing 검증이 필요한 통합 테스트. "
-        + "TASK-BE-062 에서 auth/account 계열 3건은 복원했으나 본 건은 Kafka ErrorHandlingDeserializer "
-        + "동작과 타이밍이 Docker Testcontainers 환경에서 실측돼야 함. 후속 task 에서 수리 권장.")
 class DlqRoutingIntegrationTest {
 
     static boolean isDockerAvailable() {
@@ -81,6 +77,23 @@ class DlqRoutingIntegrationTest {
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.data.redis.password", () -> "");
         registry.add("spring.flyway.locations", () -> "classpath:db/migration");
+
+        // TASK-BE-062 residual fix: src/test/resources/application.yml overrides the
+        // kafka consumer deserializers to plain StringDeserializer for most integration
+        // tests (faster startup, no strict-JSON validation needed for valid fixtures).
+        // The DLQ routing contract however DEPENDS on ErrorHandlingDeserializer wrapping
+        // StrictJsonStringDeserializer — without that wrapping the invalid-bytes scenario
+        // never raises DeserializationException and the malformed-JSON scenario bypasses
+        // the not-retryable fast-path. Restore the production wiring here so the DLQ
+        // path is exercised exactly as it would be in prod.
+        registry.add("spring.kafka.consumer.key-deserializer",
+                () -> "org.springframework.kafka.support.serializer.ErrorHandlingDeserializer");
+        registry.add("spring.kafka.consumer.value-deserializer",
+                () -> "org.springframework.kafka.support.serializer.ErrorHandlingDeserializer");
+        registry.add("spring.kafka.consumer.properties.spring.deserializer.key.delegate.class",
+                () -> "org.apache.kafka.common.serialization.StringDeserializer");
+        registry.add("spring.kafka.consumer.properties.spring.deserializer.value.delegate.class",
+                () -> "com.example.security.infrastructure.kafka.StrictJsonStringDeserializer");
     }
 
     @Autowired

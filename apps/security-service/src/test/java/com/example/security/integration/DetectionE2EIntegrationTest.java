@@ -43,11 +43,6 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 (residual): detection pipeline end-to-end 검증이 필요한 통합 테스트. "
-        + "TASK-BE-062 에서 auth/account 계열 3건은 복원했으나 본 건은 detection 윈도우/집계 "
-        + "로직이 Docker Testcontainers 환경에서 실측돼야 AssertionError 근본 원인을 좁힐 수 있음. "
-        + "후속 task 에서 수리 권장.")
 class DetectionE2EIntegrationTest {
 
     static boolean isDockerAvailable() {
@@ -128,7 +123,12 @@ class DetectionE2EIntegrationTest {
     @Test
     @DisplayName("10x auth.login.failed events → VelocityRule AUTO_LOCK → account-service lock called, suspicious_events row + outbox event")
     void velocityTriggersAutoLockE2E() {
-        String accountId = "acc-e2e-velocity-" + UUID.randomUUID();
+        // TASK-BE-062 residual fix: `suspicious_events.account_id` is VARCHAR(36) — any
+        // prefix before UUID (which is already 36 chars) overflows the column and the
+        // persist silently rolls back, leaving the assertion to fail with "row not found"
+        // masquerading as a detection-pipeline bug. A bare UUID fits the contract and
+        // keeps test IDs distinct across runs.
+        String accountId = UUID.randomUUID().toString();
 
         // Stub account-service lock endpoint
         wireMockServer.stubFor(post(urlEqualTo("/internal/accounts/" + accountId + "/lock"))
