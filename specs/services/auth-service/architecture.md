@@ -118,7 +118,7 @@ presentation → application → domain
 - 여러 도메인 서비스를 조합하여 사용 사례 흐름을 조율
 - 이벤트 발행은 **반드시 outbox 경유** ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T3)
 - use-case 결과는 도메인 결과를 presentation-friendly DTO로 매핑
-- **외부 HTTP는 `@Transactional` 밖에서 수행** (TASK-BE-069): OAuth 콜백처럼 외부 provider HTTP와 DB 쓰기가 섞인 경로는 use-case 가 HTTP 호출 후 별도 `@Transactional` 빈(`OAuthLoginTransactionalStep`)에 이미 조회된 데이터를 전달하는 방식으로 분리한다. 보상 노트: HTTP 성공 후 DB 커밋이 실패하면 사용자는 로그인 실패로 인식하고 outbox 롤백으로 downstream 이벤트는 발행되지 않는다 (기존 동작과 동일). provider-side revoke 보상은 수행하지 않는다.
+- **모든 HTTP는 `@Transactional` 밖에서 수행** (TASK-BE-069 + TASK-BE-072): OAuth 콜백처럼 외부 provider HTTP, 내부 account-service HTTP, DB 쓰기가 섞인 경로는 use-case(`OAuthLoginUseCase#callback`)가 먼저 (1) provider token+userinfo exchange, (2) 로컬 `SocialIdentityJpaRepository` 비-트랜잭션 조회, (3) `accountServicePort.socialSignup`(신규 identity 경로에만), (4) `accountServicePort.getAccountStatus`를 모두 수행한 뒤, 결과를 extended `OAuthCallbackTxnCommand` (accountId, isNewAccount, accountStatus)로 `@Transactional` 빈(`OAuthLoginTransactionalStep#persistLogin`)에 전달한다. 트랜잭션 내부에는 **어떠한 HTTP 호출도 없다** — Hikari connection pinning 제거가 목적(TASK-BE-062 #18 CI에서 관측). 보상 노트: provider HTTP + account-service HTTP가 성공한 뒤 DB 커밋이 실패하면 사용자는 로그인 실패로 인식하고 outbox 롤백으로 downstream 이벤트는 발행되지 않는다. account-service `socialSignup`은 (email, provider) 기준으로 멱등이므로 retry 시에도 중복 계정을 만들지 않는다. provider-side revoke 보상은 수행하지 않는다. TOCTOU: identity 존재 체크가 비-트랜잭션으로 이동했지만 트랜잭션 내 upsert와 DB unique key `(provider, provider_user_id)`가 동시 삽입을 막는다.
 
 ### domain/
 - 순수 비즈니스 규칙. 프레임워크 의존 없음

@@ -3,12 +3,9 @@ package com.example.auth.application;
 import com.example.auth.application.command.OAuthCallbackTxnCommand;
 import com.example.auth.application.event.AuthEventPublisher;
 import com.example.auth.application.exception.AccountLockedException;
-import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.port.TokenGeneratorPort;
-import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.OAuthLoginResult;
 import com.example.auth.application.result.RegisterDeviceSessionResult;
-import com.example.auth.application.result.SocialSignupResult;
 import com.example.auth.domain.oauth.OAuthProvider;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
@@ -19,6 +16,7 @@ import com.example.auth.infrastructure.persistence.SocialIdentityJpaRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,14 +36,20 @@ import static org.mockito.Mockito.when;
 /**
  * Unit test for {@link OAuthLoginTransactionalStep}.
  *
- * <p>Confirms the DB-side steps (social identity upsert, account status check,
- * device session registration, refresh token persist, event publish) execute
- * against the input command and do NOT touch any external HTTP client.
+ * <p>TASK-BE-072: the step no longer depends on {@code AccountServicePort} — all
+ * account-service HTTP (socialSignup + getAccountStatus) is performed by the
+ * orchestrator {@link OAuthLoginUseCase} before this bean is invoked. The command
+ * carries pre-resolved {@code accountId}, {@code isNewAccount}, and
+ * {@code accountStatus}. This test therefore has NO {@code AccountServicePort} mock.
+ *
+ * <p>Confirms the DB-side steps (social identity upsert, account status guard based
+ * on the pre-fetched value, device session registration, refresh token persist,
+ * event publish) execute against the input command and do NOT touch any external
+ * HTTP client.
  */
 @ExtendWith(MockitoExtension.class)
 class OAuthLoginTransactionalStepTest {
 
-    @Mock private AccountServicePort accountServicePort;
     @Mock private TokenGeneratorPort tokenGeneratorPort;
     @Mock private RefreshTokenRepository refreshTokenRepository;
     @Mock private AuthEventPublisher authEventPublisher;
@@ -61,18 +65,14 @@ class OAuthLoginTransactionalStepTest {
             "provider-user-1", "user@example.com", "User", OAuthProvider.GOOGLE);
 
     @Test
-    @DisplayName("persistLogin: new social identity → calls socialSignup, creates identity, "
-            + "persists refresh token, publishes events")
+    @DisplayName("persistLogin: new social identity path → creates identity with pre-resolved "
+            + "accountId, persists refresh token, publishes events")
     void persistLogin_newSocialIdentity() {
-        OAuthCallbackTxnCommand command =
-                new OAuthCallbackTxnCommand(OAuthProvider.GOOGLE, USER_INFO, CTX);
+        OAuthCallbackTxnCommand command = new OAuthCallbackTxnCommand(
+                OAuthProvider.GOOGLE, USER_INFO, CTX,
+                "acc-123", true, Optional.of("ACTIVE"));
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
                 .thenReturn(Optional.empty());
-        when(accountServicePort.socialSignup(
-                "user@example.com", "GOOGLE", "provider-user-1", "User"))
-                .thenReturn(new SocialSignupResult("acc-123", "ACTIVE", true));
-        when(accountServicePort.getAccountStatus("acc-123"))
-                .thenReturn(Optional.of(new AccountStatusLookupResult("acc-123", "ACTIVE")));
         when(registerOrUpdateDeviceSessionUseCase.execute(eq("acc-123"), any(SessionContext.class)))
                 .thenReturn(new RegisterDeviceSessionResult("dev-1", true, List.of()));
         when(tokenGeneratorPort.generateTokenPair("acc-123", "user", "dev-1"))
@@ -97,17 +97,16 @@ class OAuthLoginTransactionalStepTest {
     }
 
     @Test
-    @DisplayName("persistLogin: existing social identity → no socialSignup call, "
+    @DisplayName("persistLogin: existing social identity → uses the pre-resolved accountId, "
             + "returns newAccount=false")
     void persistLogin_existingSocialIdentity() {
-        OAuthCallbackTxnCommand command =
-                new OAuthCallbackTxnCommand(OAuthProvider.GOOGLE, USER_INFO, CTX);
+        OAuthCallbackTxnCommand command = new OAuthCallbackTxnCommand(
+                OAuthProvider.GOOGLE, USER_INFO, CTX,
+                "acc-existing", false, Optional.of("ACTIVE"));
         var existing = com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity.create(
                 "acc-existing", "GOOGLE", "provider-user-1", "user@example.com");
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
                 .thenReturn(Optional.of(existing));
-        when(accountServicePort.getAccountStatus("acc-existing"))
-                .thenReturn(Optional.of(new AccountStatusLookupResult("acc-existing", "ACTIVE")));
         when(registerOrUpdateDeviceSessionUseCase.execute(eq("acc-existing"), any(SessionContext.class)))
                 .thenReturn(new RegisterDeviceSessionResult("dev-2", false, List.of()));
         when(tokenGeneratorPort.generateTokenPair("acc-existing", "user", "dev-2"))
@@ -118,20 +117,23 @@ class OAuthLoginTransactionalStepTest {
         OAuthLoginResult result = step.persistLogin(command);
 
         assertThat(result.isNewAccount()).isFalse();
-        verify(accountServicePort, never()).socialSignup(anyString(), anyString(), anyString(), anyString());
+        ArgumentCaptor<com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity> captor =
+                ArgumentCaptor.forClass(com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity.class);
+        verify(socialIdentityJpaRepository).save(captor.capture());
+        assertThat(captor.getValue().getAccountId()).isEqualTo("acc-existing");
     }
 
     @Test
-    @DisplayName("persistLogin: account LOCKED → AccountLockedException BEFORE token issuance")
+    @DisplayName("persistLogin: pre-fetched status=LOCKED → AccountLockedException BEFORE "
+            + "token issuance; no session registration, no refresh token save")
     void persistLogin_accountLocked() {
-        OAuthCallbackTxnCommand command =
-                new OAuthCallbackTxnCommand(OAuthProvider.GOOGLE, USER_INFO, CTX);
+        OAuthCallbackTxnCommand command = new OAuthCallbackTxnCommand(
+                OAuthProvider.GOOGLE, USER_INFO, CTX,
+                "acc-locked", false, Optional.of("LOCKED"));
         var existing = com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity.create(
                 "acc-locked", "GOOGLE", "provider-user-1", "user@example.com");
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
                 .thenReturn(Optional.of(existing));
-        when(accountServicePort.getAccountStatus("acc-locked"))
-                .thenReturn(Optional.of(new AccountStatusLookupResult("acc-locked", "LOCKED")));
 
         assertThatThrownBy(() -> step.persistLogin(command))
                 .isInstanceOf(AccountLockedException.class);
@@ -139,5 +141,27 @@ class OAuthLoginTransactionalStepTest {
         verify(registerOrUpdateDeviceSessionUseCase, never()).execute(anyString(), any());
         verify(refreshTokenRepository, never()).save(any());
         verify(tokenGeneratorPort, never()).generateTokenPair(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("persistLogin: pre-fetched status is empty → status guard is skipped, "
+            + "the rest of the flow proceeds (TASK-BE-063 behaviour preserved)")
+    void persistLogin_accountStatusEmpty_proceeds() {
+        OAuthCallbackTxnCommand command = new OAuthCallbackTxnCommand(
+                OAuthProvider.GOOGLE, USER_INFO, CTX,
+                "acc-new", true, Optional.empty());
+        when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
+                .thenReturn(Optional.empty());
+        when(registerOrUpdateDeviceSessionUseCase.execute(eq("acc-new"), any(SessionContext.class)))
+                .thenReturn(new RegisterDeviceSessionResult("dev-1", true, List.of()));
+        when(tokenGeneratorPort.generateTokenPair("acc-new", "user", "dev-1"))
+                .thenReturn(new TokenPair("a", "r", 1));
+        when(tokenGeneratorPort.extractJti("r")).thenReturn("jti-n");
+        when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(1L);
+
+        OAuthLoginResult result = step.persistLogin(command);
+
+        assertThat(result.isNewAccount()).isTrue();
+        verify(refreshTokenRepository).save(any(RefreshToken.class));
     }
 }
