@@ -3,11 +3,16 @@ package com.example.auth.application;
 import com.example.auth.application.command.OAuthCallbackCommand;
 import com.example.auth.application.command.OAuthCallbackTxnCommand;
 import com.example.auth.application.exception.*;
+import com.example.auth.application.port.AccountServicePort;
+import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.OAuthAuthorizeResult;
 import com.example.auth.application.result.OAuthLoginResult;
+import com.example.auth.application.result.SocialSignupResult;
 import com.example.auth.domain.oauth.OAuthProvider;
 import com.example.auth.domain.session.SessionContext;
 import com.example.auth.infrastructure.oauth.*;
+import com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity;
+import com.example.auth.infrastructure.persistence.SocialIdentityJpaRepository;
 import com.example.common.id.UuidV7;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -30,6 +36,8 @@ public class OAuthLoginUseCase {
     private final OAuthClientFactory oAuthClientFactory;
     private final StringRedisTemplate redisTemplate;
     private final OAuthLoginTransactionalStep oAuthLoginTransactionalStep;
+    private final AccountServicePort accountServicePort;
+    private final SocialIdentityJpaRepository socialIdentityJpaRepository;
 
     /**
      * Generates an authorization URL for the given OAuth provider.
@@ -56,19 +64,29 @@ public class OAuthLoginUseCase {
      * Processes the OAuth callback.
      *
      * <p>Orchestration: verifies state, performs the external provider token+userinfo
-     * exchange (HTTP), then hands the already-fetched data to
+     * exchange (HTTP), then runs the pre-txn internal HTTP calls to account-service
+     * ({@code socialSignup} on new-identity path, {@code getAccountStatus} always),
+     * and only then hands the already-fetched data to
      * {@link OAuthLoginTransactionalStep#persistLogin} which owns the DB transaction.
      *
-     * <p>TASK-BE-069: External HTTP calls MUST NOT happen inside {@code @Transactional}
-     * — they block a Hikari connection for the duration of the provider round-trip and
-     * caused connection-pool exhaustion in CI integration tests. This method is
-     * intentionally NOT {@code @Transactional}.
+     * <p>TASK-BE-069 moved the external provider HTTP out of {@code @Transactional}.
+     * TASK-BE-072 additionally moves the account-service internal HTTP calls out of
+     * {@code @Transactional} — both external and internal HTTP previously held a
+     * Hikari connection open during network I/O, reproducing the connection-pinning
+     * pattern TASK-BE-069 intended to eliminate. This method is intentionally NOT
+     * {@code @Transactional}.
      *
-     * <p>Compensation: if the DB transaction fails after the provider HTTP succeeds,
-     * the user sees a login failure while the provider may have recorded an
-     * authorization. This matches prior behaviour (outbox write also rolls back so no
-     * downstream event is published). No compensating provider-side revoke is
-     * performed.
+     * <p>Compensation: if the DB transaction fails after HTTP (provider + account-service)
+     * succeeds, the user sees a login failure while the provider may have recorded an
+     * authorization and account-service may have created a new account (socialSignup is
+     * idempotent for the same email+provider, so retries are safe). The outbox rollback
+     * ensures no downstream auth events are published on txn failure. No compensating
+     * provider-side revoke is performed.
+     *
+     * <p>TOCTOU note: the identity existence check is now a non-txn DB read. The
+     * transactional step still upserts the identity, so a concurrent insert between
+     * the pre-read and the txn write cannot cause duplicate rows (unique key on
+     * {@code (provider, provider_user_id)} is enforced at the DB).
      */
     public OAuthLoginResult callback(OAuthCallbackCommand command) {
         OAuthProvider provider = parseProvider(command.provider());
@@ -99,9 +117,33 @@ public class OAuthLoginUseCase {
             throw new OAuthEmailRequiredException();
         }
 
+        // Non-txn DB read: does a local social identity already exist for this provider user?
+        Optional<SocialIdentityJpaEntity> existingIdentity =
+                socialIdentityJpaRepository.findByProviderAndProviderUserId(
+                        provider.name(), userInfo.providerUserId());
+
+        // Internal HTTP to account-service. OUTSIDE @Transactional (TASK-BE-072).
+        String accountId;
+        boolean isNewAccount;
+        if (existingIdentity.isPresent()) {
+            accountId = existingIdentity.get().getAccountId();
+            isNewAccount = false;
+        } else {
+            SocialSignupResult signupResult = accountServicePort.socialSignup(
+                    userInfo.email(), provider.name(), userInfo.providerUserId(), userInfo.name());
+            accountId = signupResult.accountId();
+            isNewAccount = signupResult.newAccount();
+        }
+
+        // Pre-fetched account status (TASK-BE-063 semantics: empty → account unavailable,
+        // status guard is skipped and the rest of the flow proceeds — social signup path
+        // would have created the account).
+        Optional<String> accountStatus = accountServicePort.getAccountStatus(accountId)
+                .map(AccountStatusLookupResult::accountStatus);
+
         // Hand off to the transactional bean — DB writes happen atomically here.
         return oAuthLoginTransactionalStep.persistLogin(
-                new OAuthCallbackTxnCommand(provider, userInfo, ctx));
+                new OAuthCallbackTxnCommand(provider, userInfo, ctx, accountId, isNewAccount, accountStatus));
     }
 
     private OAuthProvider parseProvider(String providerStr) {
