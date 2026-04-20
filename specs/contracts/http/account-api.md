@@ -38,6 +38,7 @@
 | 409 | `ACCOUNT_ALREADY_EXISTS` | 이메일 중복 |
 | 422 | `VALIDATION_ERROR` | 이메일 형식, 패스워드 복잡도 미달 |
 | 429 | `RATE_LIMITED` | 가입 시도 rate limit 초과 |
+| 503 | `AUTH_SERVICE_UNAVAILABLE` | Authentication service is temporarily unavailable |
 
 **Side Effects**:
 - `account.created` 이벤트 발행 (outbox)

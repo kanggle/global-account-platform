@@ -2,6 +2,7 @@ package com.example.account.presentation.advice;
 
 import com.example.account.application.exception.AccountAlreadyExistsException;
 import com.example.account.application.exception.AccountNotFoundException;
+import com.example.account.application.port.AuthServicePort;
 import com.example.account.domain.status.StateTransitionException;
 import com.example.web.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +76,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("VALIDATION_ERROR", e.getMessage()));
+    }
+
+    // TASK-BE-065: auth-service 5xx / timeout / circuit-open 시 signup 은 503 fail-closed
+    // (specs/contracts/http/internal/auth-internal.md §Failure Scenarios).
+    @ExceptionHandler(AuthServicePort.AuthServiceUnavailable.class)
+    public ResponseEntity<ErrorResponse> handleAuthServiceUnavailable(AuthServicePort.AuthServiceUnavailable e) {
+        log.error("auth-service unavailable during signup: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("AUTH_SERVICE_UNAVAILABLE",
+                        "Authentication service is temporarily unavailable"));
     }
 
     @ExceptionHandler(Exception.class)
