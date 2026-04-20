@@ -22,6 +22,11 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
+      # TASK-BE-070: extend reconnect backoff and request timeout so producer
+      # tests tolerate slow Testcontainers Kafka startup / transient broker drops.
+      properties:
+        reconnect.backoff.ms: 1000
+        request.timeout.ms: 60000
 
   jackson:
     default-property-inclusion: non_null

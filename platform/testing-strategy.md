@@ -81,6 +81,86 @@ For implementation details (annotations, imports, container images, setup code),
 - Use real containers via Testcontainers. Do not use H2 or in-memory substitutes.
 - Container image versions are specified in `.claude/skills/backend/testing-backend/SKILL.md`.
 
+## Container Lifecycle
+
+- Declare containers as `static` fields annotated with `@Container` on the test
+  class and let JUnit's `@Testcontainers` extension manage the lifecycle. One
+  container instance is shared across every `@Test` in the class.
+- If a shared base class (`AbstractIntegrationTest` or similar) exists, declare
+  `@Container` there so every subclass inherits the same instance. Do **not**
+  create a shared base purely to unify containers — migrate only when an
+  opportunity already exists.
+- Never hardcode container host ports. Rely on Testcontainers' randomly mapped
+  ports and wire them into Spring via `@DynamicPropertySource`.
+- `@DynamicPropertySource` suppliers are evaluated lazily when Spring builds
+  the `ApplicationContext`. The container must already be started by then; if
+  you need a value before context startup (e.g., WireMock base URL), start the
+  auxiliary server in a `static { }` block or inside the
+  `@DynamicPropertySource` method itself.
+
+## Wait Strategy and Startup Timeout
+
+The CI runner is frequently slower than a developer laptop. To avoid spurious
+`ContainerLaunchException: ...timed out` failures, every container used in an
+integration test must declare:
+
+- `.withStartupTimeout(Duration.ofMinutes(3))` on MySQL, Kafka, and any other
+  `GenericContainer` where default startup exceeds a minute on CI.
+- `.waitingFor(Wait.forListeningPort())` on `KafkaContainer`. `forListeningPort`
+  is preferred over `Wait.forLogMessage(...)` because the broker ready log line
+  varies between `confluentinc/cp-kafka` versions. If a test needs a specific
+  Kafka readiness signal (e.g., metadata propagation), combine
+  `Wait.forListeningPort()` with an application-level `Awaitility` poll inside
+  the test.
+
+MySQL's default `Wait.forLogMessage` strategy is sufficient — do not override
+it unless the test image changes.
+
+## Producer / Consumer Retry Tuning (Test Profile Only)
+
+Integration tests that publish to Kafka must run with the following producer
+overrides so that a transient broker drop (common under a heavily loaded CI
+runner) does not fail the test before Kafka recovers:
+
+```yaml
+spring:
+  kafka:
+    producer:
+      properties:
+        reconnect.backoff.ms: 1000
+        request.timeout.ms: 60000
+```
+
+Keep these in `src/test/resources/application-test.yml` (or equivalent). Do
+**not** copy them into the production profile — tighter defaults are correct
+for production.
+
+## Reuse Policy
+
+Testcontainers supports container reuse across JVM runs via
+`testcontainers.reuse.enable=true` in `~/.testcontainers.properties`.
+
+- **Local development**: enabling reuse is recommended for fast feedback
+  loops. Opt in per developer by editing `~/.testcontainers.properties` and
+  adding `.withReuse(true)` (or `.withLabel("reusable", "true")`) on
+  containers. This is a developer-local optimisation and does not need to be
+  checked into the repository.
+- **CI runners**: reuse must stay **disabled**. CI relies on a clean container
+  per test session to avoid cross-test leakage and to match production
+  startup behaviour. Do not add `.withReuse(true)` unconditionally in test
+  source.
+
+If you add reuse support behind a flag, scope it to a per-developer system
+property so CI remains unaffected.
+
+## Docker Availability Guard
+
+For tests that must run on machines without Docker, gate the class with
+`@EnabledIf("isDockerAvailable")` and check
+`DockerClientFactory.instance().isDockerAvailable()` (or equivalent). This
+lets `./gradlew test` stay green on developer machines that have no Docker
+while the same tests execute on CI.
+
 ---
 
 # Naming Conventions
