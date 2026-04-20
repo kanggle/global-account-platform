@@ -50,10 +50,20 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 @org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 §A (residual): WireMock 18082 포트 충돌은 dynamic port 로 해소했으나 "
-        + "(#16 이후 CI 실측) 4개 happy path 가 여전히 503 반환 — 원인은 auth-service 의 "
-        + "MySQL testcontainer 가 테스트 실행 중 연결 종료 (CommunicationsException / Connection refused). "
-        + "container 안정성 문제라 별도 task 에서 Testcontainers reuse / healthcheck 재검토 필요.")
+        "TASK-BE-062 §A (residual): WireMock dynamic port collision was resolved, "
+        + "but 4 happy-path tests still return 503 in CI because the MySQL testcontainer "
+        + "loses its JDBC connection mid-run (CommunicationsException / Connection refused). "
+        + "Code-level investigation narrowed the probable contributor to "
+        + "OAuthLoginUseCase#callback being @Transactional while performing two outbound "
+        + "HTTP calls (OAuth token exchange + account-service socialSignup/getAccountStatus) "
+        + "inside the same JDBC transaction — the connection is pinned for the duration "
+        + "of both network round-trips, and the test-profile Hikari connection-timeout "
+        + "(inherited 3s from application.yml) is narrow enough that CI load spikes can "
+        + "surface as container-level 'connection refused' rather than a pool-timeout. "
+        + "Fixing this requires either (a) splitting the HTTP calls out of the transaction "
+        + "boundary (production-behavioural change, deserves its own task) or (b) tuning "
+        + "the test-profile Hikari config plus container resource allocation. Residual "
+        + "tracked as follow-up; dynamic-port improvement stays in place.")
 class OAuthLoginIntegrationTest {
 
     static boolean isDockerAvailable() {
