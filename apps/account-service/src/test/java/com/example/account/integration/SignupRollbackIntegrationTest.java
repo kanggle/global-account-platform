@@ -1,8 +1,8 @@
 package com.example.account.integration;
 
 import com.example.account.domain.repository.AccountRepository;
-import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
+import com.example.account.infrastructure.persistence.ProfileJpaRepository;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import org.junit.jupiter.api.AfterAll;
@@ -102,7 +102,7 @@ class SignupRollbackIntegrationTest {
     private AccountRepository accountRepository;
 
     @Autowired
-    private ProfileRepository profileRepository;
+    private ProfileJpaRepository profileJpaRepository;
 
     // Signup writes only to the outbox table; stubbing Kafka avoids a ~50s producer
     // metadata lookup during context start (same rationale as AccountSignupIntegrationTest).
@@ -123,6 +123,9 @@ class SignupRollbackIntegrationTest {
     void signup_authService5xx_rollsBackAndReturns503() throws Exception {
         String email = "rollback-" + UUID.randomUUID() + "@example.com";
 
+        // Snapshot profile row count so we can prove this signup persisted no profile row
+        long profileCountBefore = profileJpaRepository.count();
+
         wireMock.stubFor(WireMock.post(urlPathEqualTo("/internal/auth/credentials"))
                 .willReturn(aResponse()
                         .withStatus(500)
@@ -142,12 +145,10 @@ class SignupRollbackIntegrationTest {
                 .andExpect(jsonPath("$.message").value("Authentication service is temporarily unavailable"))
                 .andExpect(jsonPath("$.timestamp").exists());
 
-        // @Transactional rollback: account + profile rows must not exist for this email
+        // @Transactional rollback proof:
+        // 1) no account row persisted for the submitted email
         assertThat(accountRepository.findByEmail(email)).isEmpty();
-        // Profile rows are keyed by accountId; since no account persisted, the lookup
-        // by email yields empty. We additionally check via a known-random accountId
-        // sweep is unnecessary — if account wasn't persisted, its profile couldn't be either
-        // (FK), and findByEmail emptiness is authoritative.
-        assertThat(profileRepository.findByAccountId("nonexistent-guard")).isEmpty();
+        // 2) overall profile row count is unchanged — this signup added no profile row
+        assertThat(profileJpaRepository.count()).isEqualTo(profileCountBefore);
     }
 }
