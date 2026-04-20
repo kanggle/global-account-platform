@@ -97,6 +97,13 @@ apps/gateway-service/src/main/java/com/example/gateway/
 - **퍼시스턴스**: 없음. Redis만 사용 (캐시·rate limit)
 - **이벤트**: 발행·소비 모두 없음
 
+### Admin Second-Layer Auth Delegation (Platform Invariant)
+
+- `/api/admin/**` 및 `/.well-known/admin/**` 서브트리는 gateway 입장에서 **public-paths** 로 취급된다. gateway 는 라우팅·rate-limit·request-id·CORS 만 수행하고 operator JWT 검증을 하지 않는다.
+- operator JWT 검증은 admin-service 의 `OperatorAuthenticationFilter` 에 위임되며, 이는 **플랫폼 불변식**이다. gateway 와 admin-service 가 동일 요청을 이중 검증하지 않는다.
+- 이 위임 관계가 해소되는 변경(예: `OperatorAuthenticationFilter` deprecated, gateway 가 operator JWT 검증을 이관받음)은 본 파일과 [specs/contracts/http/gateway-api.md §Admin Routes](../../contracts/http/gateway-api.md) 의 개정이 **선행되어야** 한다. 코드 선행 변경은 금지.
+- 상세 규약과 토큰 타입(`token_type="admin"` / `admin_bootstrap`)은 [specs/contracts/http/gateway-api.md §Admin Routes (second-layer auth)](../../contracts/http/gateway-api.md) 를 단일 원천으로 참조한다 (본 파일에서 중복 기술하지 않음).
+
 ## Testing Expectations
 
 | 레이어 | 목적 | 도구 |
