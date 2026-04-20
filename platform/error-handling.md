@@ -215,6 +215,12 @@ All services must return errors in the following JSON format:
 | SHIPPING_NOT_FOUND | 404 | Shipping record does not exist |
 | INVALID_STATUS_TRANSITION | 422 | Shipping status transition is not allowed |
 
+## Signup  `[domain: saas]`
+
+| Code | HTTP | Description |
+|---|---|---|
+| AUTH_SERVICE_UNAVAILABLE | 503 | Authentication service is temporarily unavailable (account-service signup flow — auth-service 5xx/timeout/circuit-open triggers fail-closed rollback) |
+
 ## Admin Operations  `[domain: saas]`
 
 | Code | HTTP | Description |
