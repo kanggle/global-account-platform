@@ -20,9 +20,12 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
+
+import java.time.Duration;
 
 import java.time.Instant;
 import java.util.Base64;
@@ -49,11 +52,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @ActiveProfiles("test")
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 §A (residual): WireMock 18082 포트 충돌은 dynamic port 로 해소했으나 "
-        + "(#16 이후 CI 실측) 4개 happy path 가 여전히 503 반환 — 원인은 auth-service 의 "
-        + "MySQL testcontainer 가 테스트 실행 중 연결 종료 (CommunicationsException / Connection refused). "
-        + "container 안정성 문제라 별도 task 에서 Testcontainers reuse / healthcheck 재검토 필요.")
+// TASK-BE-066: @Disabled removed after (a) narrowing the @Transactional boundary
+// in OAuthLoginUseCase so external HTTP no longer pins Hikari connections, and
+// (b) strengthening the Testcontainers wait strategies / startup timeouts below.
 class OAuthLoginIntegrationTest {
 
     static boolean isDockerAvailable() {
@@ -65,21 +66,35 @@ class OAuthLoginIntegrationTest {
         }
     }
 
+    // TASK-BE-066: containers are static (shared per class) and reused when the
+    // caller opts in via testcontainers.reuse.enable=true (~/.testcontainers.properties
+    // or env). On CI reuse is typically disabled, which is fine — the explicit
+    // wait strategies and startup timeouts below keep the containers deterministic.
     @Container
+    @SuppressWarnings("resource")
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("auth_db")
             .withUsername("test")
             .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
+            .withStartupTimeout(Duration.ofMinutes(3))
+            .withReuse(true);
 
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1))
+            .withStartupTimeout(Duration.ofMinutes(2))
+            .withReuse(true);
 
     @Container
+    @SuppressWarnings("resource")
     static KafkaContainer kafka = new KafkaContainer(
-            DockerImageName.parse("confluentinc/cp-kafka:7.6.0"));
+            DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
+            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*\\n", 1))
+            .withStartupTimeout(Duration.ofMinutes(3))
+            .withReuse(true);
 
     // TASK-BE-062 §A: WireMock bound to a dynamic port to avoid collision with
     // AuthIntegrationTest's 18082 stub (both tests share the same Gradle JVM).

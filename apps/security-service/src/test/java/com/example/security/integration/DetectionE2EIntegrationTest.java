@@ -20,10 +20,12 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -43,11 +45,9 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 (residual): detection pipeline end-to-end 검증이 필요한 통합 테스트. "
-        + "TASK-BE-062 에서 auth/account 계열 3건은 복원했으나 본 건은 detection 윈도우/집계 "
-        + "로직이 Docker Testcontainers 환경에서 실측돼야 AssertionError 근본 원인을 좁힐 수 있음. "
-        + "후속 task 에서 수리 권장.")
+// TASK-BE-066: @Disabled removed after strengthening the Kafka / MySQL
+// Testcontainers wait strategies, startup timeouts, and the KafkaTemplate
+// producer config (reconnect.backoff.ms, request.timeout.ms).
 class DetectionE2EIntegrationTest {
 
     static boolean isDockerAvailable() {
@@ -58,20 +58,33 @@ class DetectionE2EIntegrationTest {
         }
     }
 
+    // TASK-BE-066: containers are static (shared per class), with explicit
+    // wait strategies + startup timeouts. Reuse is opt-in via
+    // ~/.testcontainers.properties / env (testcontainers.reuse.enable=true).
     @Container
+    @SuppressWarnings("resource")
     static MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
             .withDatabaseName("security_db")
             .withUsername("test")
             .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
+            .withStartupTimeout(Duration.ofMinutes(3))
+            .withReuse(true);
 
     @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"));
+    @SuppressWarnings("resource")
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"))
+            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*\\n", 1))
+            .withStartupTimeout(Duration.ofMinutes(3))
+            .withReuse(true);
 
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
-            .withExposedPorts(6379);
+            .withExposedPorts(6379)
+            .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1))
+            .withStartupTimeout(Duration.ofMinutes(2))
+            .withReuse(true);
 
     static WireMockServer wireMockServer;
 
