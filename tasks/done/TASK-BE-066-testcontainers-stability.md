@@ -8,7 +8,17 @@ infra(testcontainers): CI 환경 Kafka/MySQL 안정성 재설계 — TASK-BE-062
 
 # Status
 
-ready
+superseded
+
+> **종결 (2026-04-20)**: 본 task 의 scope 가 과도함을 인지(OAuth txn 재설계 + Testcontainers infra +
+> 3건 re-enable + CI 5회 연속 green) → backend-engineer agent 가 1회 rate-limited 로 중단 후
+> WIP draft PR #28 close. 3개 소규모 task 로 분할:
+>
+> - **TASK-BE-069** — OAuthLoginUseCase#callback `@Transactional` 범위 축소 (application layer 만)
+> - **TASK-BE-070** — Testcontainers reuse + startup/healthcheck 튜닝 (test infra 만)
+> - **TASK-BE-071** — residual 3건 `@Disabled` 제거 + CI 3회 green 검증 (069+070 depends_on)
+>
+> 본 파일은 `tasks/done/` 으로 이동. 실제 진행은 069/070/071 에서 수행.
 
 # Owner
 
