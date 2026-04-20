@@ -1,32 +1,22 @@
 package com.example.auth.application;
 
 import com.example.auth.application.command.OAuthCallbackCommand;
-import com.example.auth.application.event.AuthEventPublisher;
+import com.example.auth.application.command.OAuthCallbackTxnCommand;
 import com.example.auth.application.exception.*;
-import com.example.auth.application.port.AccountServicePort;
-import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.OAuthAuthorizeResult;
 import com.example.auth.application.result.OAuthLoginResult;
-import com.example.auth.application.result.RegisterDeviceSessionResult;
-import com.example.auth.application.result.SocialSignupResult;
 import com.example.auth.domain.oauth.OAuthProvider;
-import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
-import com.example.auth.domain.token.RefreshToken;
-import com.example.auth.domain.token.TokenPair;
 import com.example.auth.infrastructure.oauth.*;
 import com.example.common.id.UuidV7;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -38,13 +28,8 @@ public class OAuthLoginUseCase {
 
     private final OAuthProperties oAuthProperties;
     private final OAuthClientFactory oAuthClientFactory;
-    private final AccountServicePort accountServicePort;
-    private final TokenGeneratorPort tokenGeneratorPort;
-    private final RefreshTokenRepository refreshTokenRepository;
-    private final AuthEventPublisher authEventPublisher;
-    private final RegisterOrUpdateDeviceSessionUseCase registerOrUpdateDeviceSessionUseCase;
     private final StringRedisTemplate redisTemplate;
-    private final com.example.auth.infrastructure.persistence.SocialIdentityJpaRepository socialIdentityJpaRepository;
+    private final OAuthLoginTransactionalStep oAuthLoginTransactionalStep;
 
     /**
      * Generates an authorization URL for the given OAuth provider.
@@ -68,23 +53,36 @@ public class OAuthLoginUseCase {
     }
 
     /**
-     * Processes the OAuth callback: verifies state, exchanges code for user info,
-     * finds or creates the account, issues JWT tokens, creates device session,
-     * and publishes events.
+     * Processes the OAuth callback.
+     *
+     * <p>Orchestration: verifies state, performs the external provider token+userinfo
+     * exchange (HTTP), then hands the already-fetched data to
+     * {@link OAuthLoginTransactionalStep#persistLogin} which owns the DB transaction.
+     *
+     * <p>TASK-BE-069: External HTTP calls MUST NOT happen inside {@code @Transactional}
+     * — they block a Hikari connection for the duration of the provider round-trip and
+     * caused connection-pool exhaustion in CI integration tests. This method is
+     * intentionally NOT {@code @Transactional}.
+     *
+     * <p>Compensation: if the DB transaction fails after the provider HTTP succeeds,
+     * the user sees a login failure while the provider may have recorded an
+     * authorization. This matches prior behaviour (outbox write also rolls back so no
+     * downstream event is published). No compensating provider-side revoke is
+     * performed.
      */
-    @Transactional
     public OAuthLoginResult callback(OAuthCallbackCommand command) {
         OAuthProvider provider = parseProvider(command.provider());
         SessionContext ctx = command.sessionContext();
 
-        // Verify state from Redis (GETDEL for atomic check-and-delete)
+        // Verify state from Redis (GETDEL for atomic check-and-delete).
+        // Done outside txn — state check is an auth prerequisite, not a DB write.
         String stateKey = STATE_KEY_PREFIX + command.state();
         String storedProvider = redisTemplate.opsForValue().getAndDelete(stateKey);
         if (storedProvider == null) {
             throw new InvalidOAuthStateException();
         }
 
-        // Exchange code for user info
+        // External HTTP: token exchange + userinfo. OUTSIDE @Transactional (TASK-BE-069).
         OAuthClient client = oAuthClientFactory.getClient(provider);
         OAuthUserInfo userInfo;
         try {
@@ -101,85 +99,9 @@ public class OAuthLoginUseCase {
             throw new OAuthEmailRequiredException();
         }
 
-        // Lookup social identity
-        boolean isNewAccount = false;
-        String accountId;
-        Optional<com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity> existingIdentity =
-                socialIdentityJpaRepository.findByProviderAndProviderUserId(
-                        provider.name(), userInfo.providerUserId());
-
-        if (existingIdentity.isPresent()) {
-            // Existing social identity — update lastUsedAt and providerEmail if changed
-            var identity = existingIdentity.get();
-            accountId = identity.getAccountId();
-            identity.updateLastUsedAt();
-            if (userInfo.email() != null && !userInfo.email().equals(identity.getProviderEmail())) {
-                identity.updateProviderEmail(userInfo.email());
-            }
-            socialIdentityJpaRepository.save(identity);
-        } else {
-            // No social identity found — call account-service for social signup
-            SocialSignupResult signupResult = accountServicePort.socialSignup(
-                    userInfo.email(), provider.name(), userInfo.providerUserId(), userInfo.name());
-            accountId = signupResult.accountId();
-            isNewAccount = signupResult.newAccount();
-
-            // Create social identity record
-            var newIdentity = com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity.create(
-                    accountId, provider.name(), userInfo.providerUserId(), userInfo.email());
-            socialIdentityJpaRepository.save(newIdentity);
-        }
-
-        // TASK-BE-063: credentials are owned locally by auth-service now, so the
-        // pre-token account-status check uses the status-only internal endpoint.
-        // A missing status is treated as the account being unavailable — skip the
-        // block and let the rest of the flow proceed (social signup path created it).
-        accountServicePort.getAccountStatus(accountId)
-                .ifPresent(statusResult -> checkAccountStatus(statusResult.accountStatus()));
-
-        // Register/update device session
-        RegisterDeviceSessionResult sessionResult =
-                registerOrUpdateDeviceSessionUseCase.execute(accountId, ctx);
-        String deviceId = sessionResult.deviceId();
-
-        // Issue JWT tokens
-        TokenPair tokenPair = tokenGeneratorPort.generateTokenPair(accountId, "user", deviceId);
-
-        // Persist refresh token
-        String refreshJti = tokenGeneratorPort.extractJti(tokenPair.refreshToken());
-        Instant now = Instant.now();
-        RefreshToken refreshTokenEntity = RefreshToken.create(
-                refreshJti, accountId, now,
-                now.plusSeconds(tokenGeneratorPort.refreshTokenTtlSeconds()),
-                null,
-                ctx.deviceFingerprint(),
-                deviceId
-        );
-        refreshTokenRepository.save(refreshTokenEntity);
-
-        // Publish login succeeded event with loginMethod
-        authEventPublisher.publishLoginSucceeded(accountId, refreshJti, ctx,
-                deviceId, sessionResult.newSession(), provider.loginMethod());
-
-        // Publish session created event if new session
-        if (sessionResult.newSession()) {
-            authEventPublisher.publishAuthSessionCreated(
-                    accountId, deviceId, refreshJti,
-                    LoginUseCase.fingerprintHash(ctx.deviceFingerprint()),
-                    ctx.userAgentFamily(),
-                    ctx.ipMasked(),
-                    ctx.resolvedGeoCountry(),
-                    now,
-                    sessionResult.evictedDeviceIds());
-        }
-
-        return new OAuthLoginResult(
-                tokenPair.accessToken(),
-                tokenPair.refreshToken(),
-                tokenPair.expiresIn(),
-                tokenGeneratorPort.refreshTokenTtlSeconds(),
-                isNewAccount
-        );
+        // Hand off to the transactional bean — DB writes happen atomically here.
+        return oAuthLoginTransactionalStep.persistLogin(
+                new OAuthCallbackTxnCommand(provider, userInfo, ctx));
     }
 
     private OAuthProvider parseProvider(String providerStr) {
@@ -210,15 +132,5 @@ public class OAuthLoginUseCase {
 
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private void checkAccountStatus(String status) {
-        switch (status) {
-            case "ACTIVE" -> { /* proceed */ }
-            case "LOCKED" -> throw new AccountLockedException();
-            case "DORMANT" -> throw new AccountStatusException("DORMANT", "ACCOUNT_DORMANT");
-            case "DELETED" -> throw new AccountStatusException("DELETED", "ACCOUNT_DELETED");
-            default -> throw new AccountStatusException(status, "ACCOUNT_STATUS_UNKNOWN");
-        }
     }
 }
