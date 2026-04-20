@@ -25,7 +25,7 @@ spring:
         - id: admin-service
           uri: ${ADMIN_SERVICE_URL:http://localhost:8085}
           predicates:
-            - Path=/api/admin/**
+            - Path=/api/admin/**,/.well-known/admin/**
           filters:
             - StripPrefix=0
 
@@ -79,6 +79,22 @@ gateway:
     - GET:/api/auth/oauth/authorize
     - POST:/api/auth/oauth/callback
     - GET:/actuator/health
+    # admin-service self-serve auth (no operator JWT at gateway layer).
+    # operator JWT verification is delegated to admin-service
+    # OperatorAuthenticationFilter. admin-api.md §Authentication Exceptions.
+    - POST:/api/admin/auth/login
+    - POST:/api/admin/auth/2fa/enroll
+    - POST:/api/admin/auth/2fa/verify
+    - POST:/api/admin/auth/refresh
+    - GET:/.well-known/admin/jwks.json
+    # admin operator-protected endpoints. gateway skips its account-JWT check
+    # because operator tokens are signed by admin-service (separate JWKS);
+    # admin-service's OperatorAuthenticationFilter is the single verification
+    # point for operator identity. See gateway-api.md §Admin Routes.
+    - POST:/api/admin/accounts/*/lock
+    - POST:/api/admin/accounts/*/unlock
+    - POST:/api/admin/sessions/*/revoke
+    - GET:/api/admin/audit
 
 cors:
   allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}

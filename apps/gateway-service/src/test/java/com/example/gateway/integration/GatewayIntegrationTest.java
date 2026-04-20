@@ -55,6 +55,7 @@ class GatewayIntegrationTest {
 
     static WireMockServer authServiceMock;
     static WireMockServer accountServiceMock;
+    static WireMockServer adminServiceMock;
     static KeyPair keyPair;
 
     @Autowired
@@ -78,6 +79,11 @@ class GatewayIntegrationTest {
         // Start WireMock for account-service
         accountServiceMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         accountServiceMock.start();
+
+        // Start WireMock for admin-service (second-layer auth — gateway must not
+        // short-circuit admin paths with its own TOKEN_INVALID).
+        adminServiceMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+        adminServiceMock.start();
 
         // Setup JWKS endpoint
         RSAPublicKey rsaKey = (RSAPublicKey) keyPair.getPublic();
@@ -126,12 +132,32 @@ class GatewayIntegrationTest {
                         .withStatus(201)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"id\":\"new-account\"}")));
+
+        // admin-service downstream — gateway must reach these without
+        // performing its own JWT verification (operator tokens have a
+        // separate JWKS owned by admin-service).
+        adminServiceMock.stubFor(post(urlEqualTo("/api/admin/auth/login"))
+                .willReturn(aResponse()
+                        .withStatus(401)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\":\"ENROLLMENT_REQUIRED\",\"bootstrapToken\":\"mock-bootstrap\"}")));
+        adminServiceMock.stubFor(get(urlEqualTo("/.well-known/admin/jwks.json"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"keys\":[]}")));
+        adminServiceMock.stubFor(get(urlEqualTo("/api/admin/audit"))
+                .willReturn(aResponse()
+                        .withStatus(401)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\":\"TOKEN_INVALID\",\"message\":\"Operator token missing\"}")));
     }
 
     @AfterAll
     static void afterAll() {
         if (authServiceMock != null) authServiceMock.stop();
         if (accountServiceMock != null) accountServiceMock.stop();
+        if (adminServiceMock != null) adminServiceMock.stop();
     }
 
     @DynamicPropertySource
@@ -146,6 +172,10 @@ class GatewayIntegrationTest {
         registry.add("spring.cloud.gateway.routes[1].uri", accountServiceMock::baseUrl);
         registry.add("spring.cloud.gateway.routes[1].id", () -> "account-service");
         registry.add("spring.cloud.gateway.routes[1].predicates[0]", () -> "Path=/api/accounts/**");
+        registry.add("spring.cloud.gateway.routes[2].uri", adminServiceMock::baseUrl);
+        registry.add("spring.cloud.gateway.routes[2].id", () -> "admin-service");
+        registry.add("spring.cloud.gateway.routes[2].predicates[0]",
+                () -> "Path=/api/admin/**,/.well-known/admin/**");
     }
 
     @BeforeEach
@@ -292,6 +322,49 @@ class GatewayIntegrationTest {
         webTestClient.get().uri("/actuator/health")
                 .exchange()
                 .expectStatus().isOk();
+    }
+
+    @Test
+    @DisplayName("admin 로그인은 JWT 없이도 admin-service 까지 프록시됨 (gateway 무인증)")
+    void adminLogin_passesThroughWithoutGatewayJwt() {
+        webTestClient.post().uri("/api/admin/auth/login")
+                .header("Content-Type", "application/json")
+                .bodyValue("{\"operatorId\":\"admin\",\"password\":\"devpassword123!\"}")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                // downstream(admin-service) 의 응답이어야 함. gateway 가 단락시키면 TOKEN_INVALID.
+                .jsonPath("$.code").isEqualTo("ENROLLMENT_REQUIRED")
+                .jsonPath("$.bootstrapToken").isEqualTo("mock-bootstrap");
+
+        adminServiceMock.verify(postRequestedFor(urlEqualTo("/api/admin/auth/login")));
+    }
+
+    @Test
+    @DisplayName("admin JWKS 는 공개 — gateway 가 바로 admin-service 로 프록시")
+    void adminJwks_isPublic() {
+        webTestClient.get().uri("/.well-known/admin/jwks.json")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.keys").isArray();
+
+        adminServiceMock.verify(getRequestedFor(urlEqualTo("/.well-known/admin/jwks.json")));
+    }
+
+    @Test
+    @DisplayName("operator-protected admin 경로도 gateway 입장에선 public — downstream 이 operator 검증")
+    void adminProtectedRoute_gatewaySkipsJwt_downstreamEnforces() {
+        webTestClient.get().uri("/api/admin/audit")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                // gateway 의 TOKEN_INVALID(account JWKS 기준)가 아니라,
+                // admin-service OperatorAuthenticationFilter 가 보낸 응답이 그대로 전달돼야 한다.
+                .jsonPath("$.code").isEqualTo("TOKEN_INVALID")
+                .jsonPath("$.message").isEqualTo("Operator token missing");
+
+        adminServiceMock.verify(getRequestedFor(urlEqualTo("/api/admin/audit")));
     }
 
     private String createValidToken(String accountId) {
