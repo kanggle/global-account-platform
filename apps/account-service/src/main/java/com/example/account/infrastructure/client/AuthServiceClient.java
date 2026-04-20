@@ -64,7 +64,7 @@ public class AuthServiceClient implements AuthServicePort {
                 .build());
 
         this.retry = Retry.of("authService", RetryConfig.custom()
-                .maxAttempts(3)
+                .maxAttempts(3) // 1 initial + 2 retries per auth-internal.md
                 .intervalFunction(io.github.resilience4j.core.IntervalFunction
                         .ofExponentialRandomBackoff(Duration.ofMillis(500)))
                 .ignoreExceptions(HttpClientErrorException.class)

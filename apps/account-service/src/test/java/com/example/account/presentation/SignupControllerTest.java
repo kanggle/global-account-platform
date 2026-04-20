@@ -1,6 +1,7 @@
 package com.example.account.presentation;
 
 import com.example.account.application.exception.AccountAlreadyExistsException;
+import com.example.account.application.port.AuthServicePort;
 import com.example.account.application.result.SignupResult;
 import com.example.account.application.service.SignupUseCase;
 import com.example.account.infrastructure.config.SecurityConfig;
@@ -108,5 +109,28 @@ class SignupControllerTest {
                         .content("{invalid json}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    // TASK-BE-065: AuthServiceUnavailable 이 5xx / timeout / CB-open 을 승격한 경우
+    // GlobalExceptionHandler 가 503 + AUTH_SERVICE_UNAVAILABLE 로 매핑해야 한다.
+    @Test
+    @DisplayName("auth-service 불가 시 503 AUTH_SERVICE_UNAVAILABLE 반환")
+    void signup_authServiceUnavailable_returns503() throws Exception {
+        given(signupUseCase.execute(any())).willThrow(
+                new AuthServicePort.AuthServiceUnavailable("auth-service is unavailable",
+                        new RuntimeException("connection refused")));
+
+        mockMvc.perform(post("/api/accounts/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "test@example.com",
+                                  "password": "Password1!"
+                                }
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("AUTH_SERVICE_UNAVAILABLE"))
+                .andExpect(jsonPath("$.message").value("Authentication service is temporarily unavailable"))
+                .andExpect(jsonPath("$.timestamp").exists());
     }
 }
