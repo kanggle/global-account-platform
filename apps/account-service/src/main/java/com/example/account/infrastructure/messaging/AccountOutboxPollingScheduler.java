@@ -5,6 +5,7 @@ import com.example.messaging.outbox.OutboxPollingScheduler;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @Profile("!standalone")
+@ConditionalOnProperty(name = "outbox.polling.enabled", havingValue = "true", matchIfMissing = true)
 public class AccountOutboxPollingScheduler extends OutboxPollingScheduler {
 
     private final MeterRegistry meterRegistry;
