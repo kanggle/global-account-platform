@@ -17,15 +17,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
@@ -52,11 +48,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 @org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 §A (residual): WireMock 18082 포트 충돌은 dynamic port 로 해소했으나 "
-        + "(#16 이후 CI 실측) 4개 happy path 가 여전히 503 반환 — 원인은 auth-service 의 "
-        + "MySQL testcontainer 가 테스트 실행 중 연결 종료 (CommunicationsException / Connection refused). "
-        + "container 안정성 문제라 별도 task 에서 Testcontainers reuse / healthcheck 재검토 필요.")
-class OAuthLoginIntegrationTest {
+        "TASK-BE-062 residual (PR #44 실측): shared AbstractIntegrationTest 로 이행 후에도 "
+        + "HikariPool-2/3 total=0 from scheduling-1 thread. OutboxPollingScheduler 가 "
+        + "이전 Spring context 의 orphaned pool 을 계속 참조 — TASK-BE-073 @PreDestroy guard 불완전. "
+        + "TASK-BE-077 로 승계.")
+class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {
@@ -67,27 +63,12 @@ class OAuthLoginIntegrationTest {
         }
     }
 
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("auth_db")
-            .withUsername("test")
-            .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
-            .withStartupTimeout(Duration.ofMinutes(3));
-
+    // MySQL + Kafka containers inherited from AbstractIntegrationTest (TASK-BE-076).
+    // Redis is service-specific so stays declared here.
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
-
-    // TASK-BE-075: switch to log-based wait so broker metadata is published
-    // before Producer/Consumer attempt their first connect. forListeningPort
-    // alone returned before advertised-listeners propagated on CI.
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(
-            DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
-            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
-            .withStartupTimeout(Duration.ofMinutes(3));
 
     // TASK-BE-062 §A: WireMock bound to a dynamic port to avoid collision with
     // AuthIntegrationTest's 18082 stub (both tests share the same Gradle JVM).
@@ -122,12 +103,9 @@ class OAuthLoginIntegrationTest {
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
+        // MySQL + Kafka properties inherited from AbstractIntegrationTest.sharedContainerProperties
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
         registry.add("auth.account-service.base-url", wireMock::baseUrl);
 
         // Redirect OAuth providers to WireMock

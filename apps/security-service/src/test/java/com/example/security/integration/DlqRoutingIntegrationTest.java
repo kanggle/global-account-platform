@@ -18,10 +18,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.MessageListenerContainer;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
@@ -43,10 +41,9 @@ import static org.awaitility.Awaitility.await;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 @org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 (residual): real-Kafka DLQ routing 검증이 필요한 통합 테스트. "
-        + "TASK-BE-062 에서 auth/account 계열 3건은 복원했으나 본 건은 Kafka ErrorHandlingDeserializer "
-        + "동작과 타이밍이 Docker Testcontainers 환경에서 실측돼야 함. 후속 task 에서 수리 권장.")
-class DlqRoutingIntegrationTest {
+        "TASK-BE-062 residual (PR #44 실측): OutboxPollingScheduler scheduling-1 thread 가 "
+        + "orphaned HikariPool 참조 계속 — TASK-BE-077 로 승계.")
+class DlqRoutingIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {
@@ -57,21 +54,8 @@ class DlqRoutingIntegrationTest {
         }
     }
 
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
-            .withDatabaseName("security_db")
-            .withUsername("test")
-            .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
-            .withStartupTimeout(Duration.ofMinutes(3));
-
-    // TASK-BE-075: switch to log-based wait so broker metadata is published
-    // before Producer/Consumer attempt their first connect.
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"))
-            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
-            .withStartupTimeout(Duration.ofMinutes(3));
-
+    // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076).
+    // Redis remains service-specific.
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -79,10 +63,6 @@ class DlqRoutingIntegrationTest {
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.data.redis.password", () -> "");
@@ -98,13 +78,13 @@ class DlqRoutingIntegrationTest {
     @BeforeEach
     void setUp() {
         Map<String, Object> stringProps = new HashMap<>();
-        stringProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+        stringProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
         stringProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         stringProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         stringTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(stringProps));
 
         Map<String, Object> byteProps = new HashMap<>();
-        byteProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+        byteProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
         byteProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         byteProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         byteTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(byteProps));
@@ -188,7 +168,7 @@ class DlqRoutingIntegrationTest {
 
     private Map<String, Object> baseConsumerProps() {
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "dlq-test-consumer-" + UUID.randomUUID());
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         return props;

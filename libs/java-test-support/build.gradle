@@ -1,0 +1,23 @@
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management'
+}
+
+dependencies {
+    // Spring test (AbstractIntegrationTest uses @DynamicPropertySource /
+    // DynamicPropertyRegistry from spring-test). `api` so consumer modules
+    // do not need to redeclare spring-test to extend the shared base class.
+    api 'org.springframework:spring-test'
+
+    // Testcontainers: MySQL + Kafka are managed by AbstractIntegrationTest
+    // itself, so the classes must be on the main classpath here.
+    api 'org.testcontainers:testcontainers'
+    api 'org.testcontainers:mysql'
+    api 'org.testcontainers:kafka'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
