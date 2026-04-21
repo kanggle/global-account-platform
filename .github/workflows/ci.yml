@@ -51,6 +51,8 @@ jobs:
           path: |
             apps/*/build/reports/tests/
             libs/*/build/reports/tests/
+            apps/*/build/test-results/
+            libs/*/build/test-results/
           retention-days: 7
 
   # ---------------------------------------------------------------------------
