@@ -17,15 +17,12 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -45,12 +42,7 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 (residual): detection pipeline end-to-end 검증이 필요한 통합 테스트. "
-        + "TASK-BE-062 에서 auth/account 계열 3건은 복원했으나 본 건은 detection 윈도우/집계 "
-        + "로직이 Docker Testcontainers 환경에서 실측돼야 AssertionError 근본 원인을 좁힐 수 있음. "
-        + "후속 task 에서 수리 권장.")
-class DetectionE2EIntegrationTest {
+class DetectionE2EIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {
@@ -60,21 +52,8 @@ class DetectionE2EIntegrationTest {
         }
     }
 
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
-            .withDatabaseName("security_db")
-            .withUsername("test")
-            .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
-            .withStartupTimeout(Duration.ofMinutes(3));
-
-    // TASK-BE-075: switch to log-based wait so broker metadata is published
-    // before Producer/Consumer attempt their first connect.
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"))
-            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
-            .withStartupTimeout(Duration.ofMinutes(3));
-
+    // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076).
+    // Redis remains service-specific.
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
@@ -82,15 +61,13 @@ class DetectionE2EIntegrationTest {
 
     static WireMockServer wireMockServer;
 
-    @DynamicPropertySource
-    static void overrideProperties(DynamicPropertyRegistry registry) {
+    static {
         wireMockServer = new WireMockServer(wireMockConfig().dynamicPort());
         wireMockServer.start();
+    }
 
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+    @DynamicPropertySource
+    static void overrideProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.data.redis.password", () -> "");
@@ -126,7 +103,7 @@ class DetectionE2EIntegrationTest {
     void setUp() {
         wireMockServer.resetAll();
         Map<String, Object> producerProps = new HashMap<>();
-        producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+        producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
         producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         kafkaTemplate = new KafkaTemplate<>(new DefaultKafkaProducerFactory<>(producerProps));

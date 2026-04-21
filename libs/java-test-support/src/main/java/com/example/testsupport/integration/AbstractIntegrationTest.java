@@ -49,7 +49,7 @@ import org.testcontainers.utility.DockerImageName;
  * <h2>Image versions</h2>
  *
  * <p>Pinned to the images already in use across the repository:
- * {@code mysql:8.0} and {@code confluentinc/cp-kafka:7.5.0}. Image bumps
+ * {@code mysql:8.0} and {@code confluentinc/cp-kafka:7.6.0}. Image bumps
  * should happen here first and propagate automatically to all subclasses.
  *
  * @see <a href="file:../../../../../../../../../platform/testing-strategy.md">platform/testing-strategy.md</a>
@@ -70,7 +70,7 @@ public abstract class AbstractIntegrationTest {
                 .withCommand("mysqld", "--log-bin-trust-function-creators=1")
                 .withStartupTimeout(Duration.ofMinutes(3));
 
-        KAFKA = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"))
+        KAFKA = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
                 // TASK-BE-075: port-listening alone returned before
                 // advertised-listeners propagated. Wait for the broker
                 // startup log line.
