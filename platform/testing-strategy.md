@@ -83,13 +83,29 @@ For implementation details (annotations, imports, container images, setup code),
 
 ## Container Lifecycle
 
-- Declare containers as `static` fields annotated with `@Container` on the test
-  class and let JUnit's `@Testcontainers` extension manage the lifecycle. One
-  container instance is shared across every `@Test` in the class.
-- If a shared base class (`AbstractIntegrationTest` or similar) exists, declare
-  `@Container` there so every subclass inherits the same instance. Do **not**
-  create a shared base purely to unify containers — migrate only when an
-  opportunity already exists.
+- Infrastructure containers that every integration test needs (MySQL, Kafka)
+  must extend `libs/java-test-support/.../AbstractIntegrationTest` rather than
+  declaring their own `@Container` fields. The base class starts MySQL and
+  Kafka **once per JVM** in a `static { }` block and registers their
+  properties via `@DynamicPropertySource` — the containers outlive every
+  `ApplicationContext` so Spring's test `ContextCache` rotations (new
+  `HikariPool-N`) cannot invalidate the JDBC URL mid-run.
+  - Rationale: TASK-BE-074/076 CI diagnosis — per-class `@Container` lifecycle
+    let `ContextCache` recreate contexts whose `@DynamicPropertySource`
+    lambdas pointed at already-stopped containers, producing
+    `HikariPool-2 ... total=0 / CommunicationsException / Node 1 disconnected`
+    9 tests ran into.
+- Service-specific containers (Redis, WireMock, Elasticsearch, additional
+  Kafka topics) are declared on the **subclass** with their own `@Container`
+  + `@DynamicPropertySource` supplier. Spring merges every
+  `@DynamicPropertySource` up the class hierarchy, so the base's MySQL/Kafka
+  registrations stay active.
+- Image versions live in `AbstractIntegrationTest` (`mysql:8.0`,
+  `confluentinc/cp-kafka:7.6.0`). Bump there first; all subclasses pick it up
+  automatically.
+- JUnit's `@Testcontainers` extension is kept on subclasses so their
+  subclass-declared `@Container` fields are managed. The shared base does
+  not need it (its fields are managed by a static initializer block).
 - Never hardcode container host ports. Rely on Testcontainers' randomly mapped
   ports and wire them into Spring via `@DynamicPropertySource`.
 - `@DynamicPropertySource` suppliers are evaluated lazily when Spring builds
