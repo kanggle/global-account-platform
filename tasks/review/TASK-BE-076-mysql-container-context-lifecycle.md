@@ -8,7 +8,24 @@ infra(test): MySQL Testcontainers + Spring context cache 수명 정렬 — Hikar
 
 # Status
 
-ready
+partial
+
+> **종결 (2026-04-21)**: Option 1 (shared `AbstractIntegrationTest`) 을 적용했으나 CI
+> 실측 결과 9건 실패 재현. XML artifact 분석으로 구체적 원인 재확정:
+>
+> - 새 context 의 HikariPool-4 는 shared MySQL container 에 정상 접속 (`localhost:32785/test`)
+> - 문제는 `scheduling-1` thread 가 **HikariPool-2 / HikariPool-3 (이전 context 의 orphaned pool)** 에
+>   계속 요청을 보내 `total=0` timeout + `CommunicationsException`
+> - TASK-BE-073 의 `@PreDestroy` + `AtomicBoolean running` guard 가 작동하지만 **불완전**:
+>   `@Scheduled` thread 가 이미 실행 중인 tick 을 중단하지 못하거나, Spring 의 scheduler
+>   thread pool 이 context 생명주기를 outlive 하는 것으로 추정
+>
+> Block A (`AbstractIntegrationTest`) 와 Block D (testing-strategy.md convention) 는
+> 유지 — infra baseline 으로 유효. Block B (3 테스트 migration) 도 base 전환 자체는
+> 유효하지만 `@Disabled` 복원.
+>
+> 근본원인 fix 는 **TASK-BE-077** 로 승계 — OutboxPollingScheduler 의 scheduler thread
+> 수명 재설계 (context-scoped executor 또는 test profile scheduler disable).
 
 # Owner
 
