@@ -80,10 +80,13 @@ class OAuthLoginIntegrationTest {
     static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
 
+    // TASK-BE-075: switch to log-based wait so broker metadata is published
+    // before Producer/Consumer attempt their first connect. forListeningPort
+    // alone returned before advertised-listeners propagated on CI.
     @Container
     static KafkaContainer kafka = new KafkaContainer(
             DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
-            .waitingFor(Wait.forListeningPort())
+            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
             .withStartupTimeout(Duration.ofMinutes(3));
 
     // TASK-BE-062 §A: WireMock bound to a dynamic port to avoid collision with

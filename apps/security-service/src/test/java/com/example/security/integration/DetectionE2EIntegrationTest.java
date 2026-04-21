@@ -68,9 +68,11 @@ class DetectionE2EIntegrationTest {
             .withCommand("mysqld", "--log-bin-trust-function-creators=1")
             .withStartupTimeout(Duration.ofMinutes(3));
 
+    // TASK-BE-075: switch to log-based wait so broker metadata is published
+    // before Producer/Consumer attempt their first connect.
     @Container
     static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.5.0"))
-            .waitingFor(Wait.forListeningPort())
+            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
             .withStartupTimeout(Duration.ofMinutes(3));
 
     @Container
