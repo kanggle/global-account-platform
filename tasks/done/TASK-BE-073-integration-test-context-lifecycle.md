@@ -8,7 +8,15 @@ infra(test): integration test context/infra 재진단 — 069+070+072 머지 후
 
 # Status
 
-ready
+superseded
+
+> **종결 (2026-04-21)**: P0 (`OutboxPollingScheduler @PreDestroy + running guard`)
+> 는 별도 PR 로 머지 예정 — shutdown noise 해소는 benign improvement. 그러나
+> P2 (3 테스트 @Disabled 제거) CI 실측 결과 9건 동일 실패 재현 (OAuth 5 /
+> DetectionE2E 1 / DlqRouting 3). RCA 가 부정확 — 실제 원인은 scheduler
+> shutdown 이 아니라 **test body 내부 assertion 실패** (`stubXxx` 호출부 또는
+> MockMvc andExpect 연쇄). 심층 진단은 TASK-BE-074 로 승계. 3 테스트 `@Disabled`
+> 유지.
 
 # Owner
 
