@@ -106,34 +106,91 @@ integration test must declare:
 
 - `.withStartupTimeout(Duration.ofMinutes(3))` on MySQL, Kafka, and any other
   `GenericContainer` where default startup exceeds a minute on CI.
-- `.waitingFor(Wait.forListeningPort())` on `KafkaContainer`. `forListeningPort`
-  is preferred over `Wait.forLogMessage(...)` because the broker ready log line
-  varies between `confluentinc/cp-kafka` versions. If a test needs a specific
-  Kafka readiness signal (e.g., metadata propagation), combine
-  `Wait.forListeningPort()` with an application-level `Awaitility` poll inside
-  the test.
+- `.waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))`
+  on `KafkaContainer`. Port-listening alone (`Wait.forListeningPort()`) does
+  not guarantee broker metadata has been published; CI runs observed
+  Producer/Consumer first-connect races where the broker port was open but
+  advertised-listeners had not propagated, surfacing as `Node 1 disconnected,
+  Connection could not be established` (TASK-BE-075 diagnosis from TASK-BE-074
+  CI artifacts). The log pattern matches both `confluentinc/cp-kafka:7.5.x`
+  and `7.6.x`. If a future image changes this line, fall back to
+  `Wait.forListeningPort()` combined with an application-level `Awaitility`
+  poll for metadata readiness — do not silently wait for a log pattern that
+  never matches.
 
 MySQL's default `Wait.forLogMessage` strategy is sufficient — do not override
 it unless the test image changes.
 
 ## Producer / Consumer Retry Tuning (Test Profile Only)
 
-Integration tests that publish to Kafka must run with the following producer
-overrides so that a transient broker drop (common under a heavily loaded CI
-runner) does not fail the test before Kafka recovers:
+Integration tests that publish to or consume from Kafka must run with the
+following producer **and** consumer overrides so that a transient broker drop
+(common under a heavily loaded CI runner, or random port assignment between
+container restarts) does not fail the test before Kafka recovers:
 
 ```yaml
 spring:
   kafka:
+    consumer:
+      properties:
+        reconnect.backoff.ms: 500
+        reconnect.backoff.max.ms: 10000
+        request.timeout.ms: 60000
     producer:
       properties:
-        reconnect.backoff.ms: 1000
+        reconnect.backoff.ms: 500
+        reconnect.backoff.max.ms: 10000
         request.timeout.ms: 60000
 ```
 
 Keep these in `src/test/resources/application-test.yml` (or equivalent). Do
 **not** copy them into the production profile — tighter defaults are correct
 for production.
+
+Rationale for the tighter `reconnect.backoff.ms=500` vs the earlier 1000ms
+default (TASK-BE-075): CI sees random port assignment between Testcontainers
+restarts, so aggressive reconnect is the difference between a test passing on
+the second metadata refresh and failing on a stale cached endpoint. The
+`reconnect.backoff.max.ms=10000` cap prevents the client from drifting into
+60s+ backoff once recovery succeeds.
+
+## MySQL Hikari Validation (Test Profile Only)
+
+Integration tests that share a JVM across multiple `@SpringBootTest` classes
+must configure Hikari to validate every connection borrow and recycle idle
+connections aggressively:
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      validation-timeout: 3000
+      connection-test-query: SELECT 1
+      max-lifetime: 60000
+      keepalive-time: 30000
+      leak-detection-threshold: 10000
+```
+
+Rationale (TASK-BE-075, root cause confirmed from TASK-BE-074 CI artifacts):
+when a prior test class' MySQL Testcontainer is stopped and a new one is
+started for the next class, Hikari may hand out a connection cached against
+the stopped container. This surfaces as a `Communications link failure` inside
+`OutboxPollingScheduler.pollAndPublish`, which fails the transaction and
+produces HTTP 503 responses from otherwise healthy controllers.
+
+- `validation-timeout: 3000` — cap the validation call at 3s so a dead
+  connection is discarded quickly.
+- `connection-test-query: SELECT 1` — provide a minimal query as a backup to
+  the JDBC `isValid()` check (some MySQL driver versions return stale `true`).
+- `max-lifetime: 60000` — force recycling during the short test lifetime.
+- `keepalive-time: 30000` — proactively validate idle connections.
+- `leak-detection-threshold: 10000` — surface accidental connection leaks
+  before they starve the pool.
+
+Invariant: `max-lifetime` must be strictly greater than `keepalive-time`
+(60000 > 30000). Hikari refuses to start otherwise. Do **not** copy these
+tight values into the production profile — the pool there should favour
+long-lived connections and trust the DB to enforce server-side timeouts.
 
 ## Reuse Policy
 

@@ -8,7 +8,22 @@ infra(test): Testcontainers 인프라 hardening — MySQL Hikari 연결 검증 +
 
 # Status
 
-ready
+partial
+
+> **종결 (2026-04-21)**: Block A (Hikari validation), Block B (Kafka wait + reconnect),
+> Block D (testing-strategy.md docs) 3건은 legitimate infra improvement 로 머지 유지.
+> Block C (9 `@Disabled` 제거) 는 CI 실측에서 9건 전부 동일 실패 재현 — revert.
+>
+> **XML artifact 실측 근본원인** (TASK-BE-074 categorization 보다 구체):
+> - OAuthLogin 5건: HikariPool-**2** 가 `total=0` 상태, MySQL 서버 자체에
+>   `Communications link failure` ("The driver has not received any packets from the server")
+> - Hikari validation 옵션 문제 아님 — **MySQL container 가 테스트 진행 중 unavailable** 상태
+> - HikariPool-2 존재 = Spring test context cache 가 context 재생성하면서 새 pool 을
+>   만드는데 해당 context 의 `@DynamicPropertySource` 가 가리키는 container 수명/URL
+>   가 일치하지 않는 것이 가장 유력한 가설
+>
+> 근본원인 fix 는 **TASK-BE-076** 에서 처리 (Spring context cache + @Container static
+> 수명 정렬 또는 shared base class 도입).
 
 # Owner
 

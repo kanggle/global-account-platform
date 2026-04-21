@@ -2,6 +2,20 @@ spring:
   application:
     name: security-service-test
 
+  # TASK-BE-075: Hikari validation options for Testcontainers MySQL.
+  # Rationale: CI observed stale pool connections reused across context
+  # boundaries, surfacing as Communications link failure inside
+  # OutboxPollingScheduler. These options force validation and aggressive
+  # recycling during the short test lifetime.
+  # Invariants: max-lifetime > keepalive-time (Hikari requirement).
+  datasource:
+    hikari:
+      validation-timeout: 3000
+      connection-test-query: SELECT 1
+      max-lifetime: 60000
+      keepalive-time: 30000
+      leak-detection-threshold: 10000
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -23,13 +37,22 @@ spring:
       enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # TASK-BE-075: reconnect backoff tuning for Testcontainers Kafka.
+      # CI sees random port assignment between container restarts; aggressive
+      # reconnect helps the Consumer recover from transient broker drops.
+      properties:
+        reconnect.backoff.ms: 500
+        reconnect.backoff.max.ms: 10000
+        request.timeout.ms: 60000
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       # TASK-BE-070: extend reconnect backoff and request timeout so producer
       # tests tolerate slow Testcontainers Kafka startup / transient broker drops.
+      # TASK-BE-075: add reconnect.backoff.max.ms + tighten reconnect.backoff.ms.
       properties:
-        reconnect.backoff.ms: 1000
+        reconnect.backoff.ms: 500
+        reconnect.backoff.max.ms: 10000
         request.timeout.ms: 60000
 
 outbox:
