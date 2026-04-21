@@ -2,6 +2,20 @@ spring:
   application:
     name: auth-service
 
+  # TASK-BE-075: Hikari validation options for Testcontainers MySQL.
+  # Rationale: CI observed stale pool connections reused across context
+  # boundaries, surfacing as Communications link failure inside
+  # OutboxPollingScheduler. These options force validation and aggressive
+  # recycling during the short test lifetime.
+  # Invariants: max-lifetime > keepalive-time (Hikari requirement).
+  datasource:
+    hikari:
+      validation-timeout: 3000
+      connection-test-query: SELECT 1
+      max-lifetime: 60000
+      keepalive-time: 30000
+      leak-detection-threshold: 10000
+
   jpa:
     hibernate:
       ddl-auto: validate
