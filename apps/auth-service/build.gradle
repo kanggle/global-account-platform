@@ -46,7 +46,9 @@ dependencies {
     // RestClient (Spring 6.1+)
 
     // Test
-    testImplementation project(':libs:java-test-support')
+    // TASK-BE-078: AbstractIntegrationTest lives in testFixtures source set so
+    // Testcontainers classes stay out of the production classpath.
+    testImplementation testFixtures(project(':libs:java-test-support'))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.testcontainers:junit-jupiter'
