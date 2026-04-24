@@ -16,7 +16,7 @@ test.describe('operator critical path', () => {
 
   test('login → search → lock → audit', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('이메일').fill(process.env.E2E_OP_EMAIL ?? 'admin@example.com');
+    await page.getByLabel('운영자 ID').fill(process.env.E2E_OP_EMAIL ?? 'admin@example.com');
     await page.getByLabel('비밀번호').fill(process.env.E2E_OP_PASSWORD ?? 'password123');
     await page.getByRole('button', { name: /로그인/ }).click();
 
