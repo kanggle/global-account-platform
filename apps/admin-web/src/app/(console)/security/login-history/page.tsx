@@ -9,7 +9,7 @@ export default function LoginHistoryPage() {
       <p className="text-sm text-muted-foreground">
         소스를 login_history로 필터링하여 조회하세요.
       </p>
-      <AuditTable />
+      <AuditTable defaultSource="login_history" />
     </section>
   );
 }

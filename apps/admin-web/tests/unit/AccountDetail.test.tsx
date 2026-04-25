@@ -21,6 +21,10 @@ const detailFixture = {
   ],
 };
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 vi.mock('@/features/accounts/hooks/useAccountDetail', () => ({
   useAccountDetail: () => ({ data: detailFixture, isLoading: false, isError: false }),
 }));
@@ -45,8 +49,8 @@ describe('AccountDetail', () => {
     expect(screen.getAllByText(/2026-01-01 \d{2}:\d{2}:\d{2}/).length).toBeGreaterThan(0);
   });
 
-  it('hides lock/unlock controls for AUDITOR role', async () => {
-    render(wrap(<AccountDetail accountId="acc-1" roles={['AUDITOR']} />));
+  it('hides lock/unlock controls for SUPPORT_READONLY role', async () => {
+    render(wrap(<AccountDetail accountId="acc-1" roles={['SUPPORT_READONLY']} />));
     await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: '잠금' })).not.toBeInTheDocument();
   });

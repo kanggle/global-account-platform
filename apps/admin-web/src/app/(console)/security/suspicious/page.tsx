@@ -6,7 +6,7 @@ export default function SuspiciousPage() {
   return (
     <section className="flex flex-col gap-4">
       <h1 className="text-xl font-semibold">의심 이벤트</h1>
-      <AuditTable />
+      <AuditTable defaultSource="suspicious" />
     </section>
   );
 }

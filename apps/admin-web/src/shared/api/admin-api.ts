@@ -8,7 +8,7 @@ import { z } from 'zod';
 export const AccountStatusSchema = z.enum(['ACTIVE', 'LOCKED', 'DORMANT', 'DELETED']);
 export type AccountStatus = z.infer<typeof AccountStatusSchema>;
 
-export const OperatorRoleSchema = z.enum(['SUPER_ADMIN', 'ACCOUNT_ADMIN', 'AUDITOR']);
+export const OperatorRoleSchema = z.enum(['SUPER_ADMIN', 'SUPPORT_READONLY', 'SUPPORT_LOCK', 'SECURITY_ANALYST']);
 export type OperatorRole = z.infer<typeof OperatorRoleSchema>;
 
 // ---- Lock / Unlock ----
@@ -99,6 +99,15 @@ export const AccountSummarySchema = z.object({
 });
 export type AccountSummary = z.infer<typeof AccountSummarySchema>;
 
+export const AccountPageSchema = z.object({
+  content: z.array(AccountSummarySchema),
+  totalElements: z.number().int().nonnegative().default(0),
+  page: z.number().int().nonnegative().default(0),
+  size: z.number().int().nonnegative().default(20),
+  totalPages: z.number().int().nonnegative().default(0),
+});
+export type AccountPage = z.infer<typeof AccountPageSchema>;
+
 export const AccountDetailSchema = AccountSummarySchema.extend({
   profile: z
     .object({
@@ -155,6 +164,115 @@ export const TotpVerifyResponseSchema = z.object({
   verified: z.literal(true),
 });
 export type TotpVerifyResponse = z.infer<typeof TotpVerifyResponseSchema>;
+
+// ---- GDPR Delete ----
+export const GdprDeleteRequestSchema = z.object({
+  reason: z.string().min(1),
+  ticketId: z.string().optional(),
+});
+export type GdprDeleteRequest = z.infer<typeof GdprDeleteRequestSchema>;
+
+export const GdprDeleteResponseSchema = z.object({
+  accountId: z.string(),
+  status: z.literal('DELETED'),
+  maskedAt: z.string(),
+  auditId: z.string(),
+});
+export type GdprDeleteResponse = z.infer<typeof GdprDeleteResponseSchema>;
+
+// ---- Data Export (GDPR portability) ----
+export const DataExportResponseSchema = z.object({
+  accountId: z.string(),
+  email: z.string(),
+  status: z.string(),
+  createdAt: z.string(),
+  profile: z.object({
+    displayName: z.string().nullable(),
+    phoneNumber: z.string().nullable(),
+    birthDate: z.string().nullable(),
+    locale: z.string().nullable(),
+    timezone: z.string().nullable(),
+  }),
+  exportedAt: z.string(),
+});
+export type DataExportResponse = z.infer<typeof DataExportResponseSchema>;
+
+// ---- Operator management ----
+export const OperatorStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
+export type OperatorStatus = z.infer<typeof OperatorStatusSchema>;
+
+export const OperatorSchema = z.object({
+  operatorId: z.string(),
+  email: z.string(),
+  displayName: z.string(),
+  status: OperatorStatusSchema,
+  roles: z.array(OperatorRoleSchema),
+  totpEnrolled: z.boolean(),
+  lastLoginAt: z.string().optional().nullable(),
+  createdAt: z.string(),
+});
+export type Operator = z.infer<typeof OperatorSchema>;
+
+export const OperatorListResponseSchema = z.object({
+  content: z.array(OperatorSchema),
+  totalElements: z.number().int().nonnegative().default(0),
+  page: z.number().int().nonnegative().default(0),
+  size: z.number().int().nonnegative().default(20),
+  totalPages: z.number().int().nonnegative().default(0),
+});
+export type OperatorListResponse = z.infer<typeof OperatorListResponseSchema>;
+
+export const CreateOperatorRequestSchema = z.object({
+  email: z.string().email(),
+  displayName: z.string().min(1).max(64),
+  password: z.string().min(10),
+  roles: z.array(OperatorRoleSchema),
+});
+export type CreateOperatorRequest = z.infer<typeof CreateOperatorRequestSchema>;
+
+export const CreateOperatorResponseSchema = z.object({
+  operatorId: z.string(),
+  email: z.string(),
+  displayName: z.string(),
+  status: OperatorStatusSchema,
+  roles: z.array(OperatorRoleSchema),
+  totpEnrolled: z.boolean(),
+  createdAt: z.string(),
+  auditId: z.string(),
+});
+export type CreateOperatorResponse = z.infer<typeof CreateOperatorResponseSchema>;
+
+export const PatchRolesRequestSchema = z.object({
+  roles: z.array(OperatorRoleSchema),
+});
+export type PatchRolesRequest = z.infer<typeof PatchRolesRequestSchema>;
+
+export const PatchRolesResponseSchema = z.object({
+  operatorId: z.string(),
+  roles: z.array(OperatorRoleSchema),
+  auditId: z.string(),
+});
+export type PatchRolesResponse = z.infer<typeof PatchRolesResponseSchema>;
+
+export const PatchStatusRequestSchema = z.object({
+  status: OperatorStatusSchema,
+});
+export type PatchStatusRequest = z.infer<typeof PatchStatusRequestSchema>;
+
+export const PatchStatusResponseSchema = z.object({
+  operatorId: z.string(),
+  previousStatus: OperatorStatusSchema,
+  currentStatus: OperatorStatusSchema,
+  auditId: z.string(),
+});
+export type PatchStatusResponse = z.infer<typeof PatchStatusResponseSchema>;
+
+// ---- Password change ----
+export const ChangePasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(128),
+});
+export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequestSchema>;
 
 // ---- Error envelope ----
 export const ApiErrorBodySchema = z.object({
