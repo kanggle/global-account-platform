@@ -30,7 +30,8 @@ import java.util.Optional;
 public class OAuthLoginUseCase {
 
     private static final String STATE_KEY_PREFIX = "oauth:state:";
-    private static final Duration STATE_TTL = Duration.ofMinutes(5);
+    // TTL aligned with specs/features/oauth-social-login.md: 10 minutes (TASK-BE-087).
+    private static final Duration STATE_TTL = Duration.ofMinutes(10);
 
     private final OAuthProperties oAuthProperties;
     private final OAuthClientFactory oAuthClientFactory;
@@ -41,7 +42,7 @@ public class OAuthLoginUseCase {
 
     /**
      * Generates an authorization URL for the given OAuth provider.
-     * Stores a random state in Redis with a 5-minute TTL for CSRF protection.
+     * Stores a random state in Redis with a 10-minute TTL for CSRF protection.
      */
     public OAuthAuthorizeResult authorize(String providerStr, String redirectUri) {
         OAuthProvider provider = parseProvider(providerStr);
