@@ -58,17 +58,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @ActiveProfiles("test")
 @DisplayName("AccountAnonymizationScheduler 통합 테스트 — PII 익명화 배치 + outbox 발행")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTest {
 
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
+    // TASK-BE-101: Docker availability is now enforced by DockerAvailableCondition
+    // applied at the AbstractIntegrationTest level (@ExtendWith). Removing the
+    // class-local @EnabledIf("isDockerAvailable") guard is mandatory because
+    // resolving that condition required class init, which in turn ran
+    // AbstractIntegrationTest's static block — and that crashed with
+    // ExceptionInInitializerError on Docker-less developer machines, surfacing
+    // as a FAILED test instead of SKIPPED. The new ExecutionCondition runs
+    // before any class init, so subclasses are skipped cleanly.
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {

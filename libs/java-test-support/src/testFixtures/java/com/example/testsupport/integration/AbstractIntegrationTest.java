@@ -2,8 +2,10 @@ package com.example.testsupport.integration;
 
 import java.time.Duration;
 
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.KafkaContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
@@ -52,37 +54,79 @@ import org.testcontainers.utility.DockerImageName;
  * {@code mysql:8.0} and {@code confluentinc/cp-kafka:7.6.0}. Image bumps
  * should happen here first and propagate automatically to all subclasses.
  *
+ * <h2>Docker availability (TASK-BE-101)</h2>
+ *
+ * <p>The class is annotated with
+ * {@link ExtendWith @ExtendWith(DockerAvailableCondition.class)} so JUnit
+ * skips every subclass cleanly when the host has no Docker daemon. The
+ * {@code static { }} block additionally checks {@link DockerClientFactory}
+ * before starting any container — without this guard, the static
+ * initializer crashes with {@code IllegalStateException} ->
+ * {@code ExceptionInInitializerError} the moment JUnit tries to load a
+ * subclass to evaluate any annotation on it. The {@link ExecutionCondition}
+ * runs before class init, but defensive null-safe initialization keeps
+ * subclasses that might be loaded for other reasons (e.g. reflection in
+ * test discovery) from blowing up.
+ *
  * @see <a href="file:../../../../../../../../../platform/testing-strategy.md">platform/testing-strategy.md</a>
  */
+@ExtendWith(DockerAvailableCondition.class)
 public abstract class AbstractIntegrationTest {
 
     protected static final MySQLContainer<?> MYSQL;
     protected static final KafkaContainer KAFKA;
 
     static {
-        MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
-                .withDatabaseName("test")
-                .withUsername("test")
-                .withPassword("test")
-                // Services use Flyway migrations that create triggers /
-                // stored functions (e.g. outbox). MySQL 8 rejects those
-                // under binlog unless this flag is set.
-                .withCommand("mysqld", "--log-bin-trust-function-creators=1")
-                .withStartupTimeout(Duration.ofMinutes(3));
+        if (isDockerAvailable()) {
+            MYSQL = new MySQLContainer<>(DockerImageName.parse("mysql:8.0"))
+                    .withDatabaseName("test")
+                    .withUsername("test")
+                    .withPassword("test")
+                    // Services use Flyway migrations that create triggers /
+                    // stored functions (e.g. outbox). MySQL 8 rejects those
+                    // under binlog unless this flag is set.
+                    .withCommand("mysqld", "--log-bin-trust-function-creators=1")
+                    .withStartupTimeout(Duration.ofMinutes(3));
 
-        KAFKA = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
-                // TASK-BE-075: port-listening alone returned before
-                // advertised-listeners propagated. Wait for the broker
-                // startup log line.
-                .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
-                .withStartupTimeout(Duration.ofMinutes(3));
+            KAFKA = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
+                    // TASK-BE-075: port-listening alone returned before
+                    // advertised-listeners propagated. Wait for the broker
+                    // startup log line.
+                    .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
+                    .withStartupTimeout(Duration.ofMinutes(3));
 
-        MYSQL.start();
-        KAFKA.start();
+            MYSQL.start();
+            KAFKA.start();
+        } else {
+            // TASK-BE-101: Docker is not available on this host. Leave the
+            // shared containers null and rely on
+            // {@link DockerAvailableCondition} to mark every subclass as
+            // SKIPPED. The null-safe @DynamicPropertySource below ensures
+            // Spring context construction does not NPE if class init still
+            // happens for some unrelated reason.
+            MYSQL = null;
+            KAFKA = null;
+        }
+    }
+
+    private static boolean isDockerAvailable() {
+        try {
+            return DockerClientFactory.instance().isDockerAvailable();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @DynamicPropertySource
     static void sharedContainerProperties(DynamicPropertyRegistry registry) {
+        // TASK-BE-101: when Docker is unavailable the shared containers are
+        // never started, so do not register their accessors — calling them
+        // would NPE. The DockerAvailableCondition aborts the test before any
+        // method executes; this guard is purely defensive against partial
+        // class init.
+        if (MYSQL == null || KAFKA == null) {
+            return;
+        }
         registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
         registry.add("spring.datasource.username", MYSQL::getUsername);
         registry.add("spring.datasource.password", MYSQL::getPassword);

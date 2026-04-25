@@ -15,6 +15,10 @@ dependencies {
     testFixturesApi 'org.testcontainers:testcontainers'
     testFixturesApi 'org.testcontainers:mysql'
     testFixturesApi 'org.testcontainers:kafka'
+    // TASK-BE-101: DockerAvailableCondition implements JUnit 5
+    // ExecutionCondition; expose the API so consuming services pick up the
+    // extension transitively when they wire AbstractIntegrationTest.
+    testFixturesApi 'org.junit.jupiter:junit-jupiter-api'
 }
 
 dependencyManagement {
