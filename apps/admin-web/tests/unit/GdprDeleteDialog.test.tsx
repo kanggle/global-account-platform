@@ -56,13 +56,22 @@ describe('GdprDeleteDialog', () => {
     expect(mutateAsyncMock).not.toHaveBeenCalled();
   });
 
+  it('shows validation error when reason is whitespace-only on submit', async () => {
+    const user = userEvent.setup();
+    render(wrap(<GdprDeleteDialog open onOpenChange={() => {}} accountId="acc-1" />));
+
+    await user.type(screen.getByLabelText('사유 (필수)'), '   ');
+    await user.click(screen.getByRole('button', { name: '영구 삭제' }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(mutateAsyncMock).not.toHaveBeenCalled();
+  });
+
   it('calls mutateAsync with accountId, reason, and empty ticketId when ticketId is omitted', async () => {
     mutateAsyncMock.mockResolvedValue({
       accountId: 'acc-1',
-      previousStatus: 'ACTIVE',
-      currentStatus: 'DELETED',
-      operatorId: 'op-1',
-      deletedAt: '2026-04-12T10:00:00Z',
+      status: 'DELETED',
+      maskedAt: '2026-04-18T10:00:00Z',
       auditId: 'a-1',
     });
 
@@ -84,10 +93,8 @@ describe('GdprDeleteDialog', () => {
   it('calls mutateAsync with provided ticketId when entered', async () => {
     mutateAsyncMock.mockResolvedValue({
       accountId: 'acc-1',
-      previousStatus: 'ACTIVE',
-      currentStatus: 'DELETED',
-      operatorId: 'op-1',
-      deletedAt: '2026-04-12T10:00:00Z',
+      status: 'DELETED',
+      maskedAt: '2026-04-18T10:00:00Z',
       auditId: 'a-1',
     });
 
@@ -110,10 +117,8 @@ describe('GdprDeleteDialog', () => {
   it('on success: shows success toast and navigates to /accounts', async () => {
     mutateAsyncMock.mockResolvedValue({
       accountId: 'acc-1',
-      previousStatus: 'ACTIVE',
-      currentStatus: 'DELETED',
-      operatorId: 'op-1',
-      deletedAt: '2026-04-12T10:00:00Z',
+      status: 'DELETED',
+      maskedAt: '2026-04-18T10:00:00Z',
       auditId: 'a-1',
     });
 

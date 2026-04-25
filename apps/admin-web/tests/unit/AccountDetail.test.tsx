@@ -34,6 +34,10 @@ vi.mock('@/features/accounts/hooks/useAccountDetail', () => ({
   useAccountDetail: () => ({ data: detailFixtureRef.current, isLoading: false, isError: false }),
 }));
 
+vi.mock('@/features/accounts/hooks/useExportAccount', () => ({
+  useExportAccount: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}));
+
 import { AccountDetail } from '@/features/accounts/components/AccountDetail';
 
 function wrap(ui: React.ReactNode) {
