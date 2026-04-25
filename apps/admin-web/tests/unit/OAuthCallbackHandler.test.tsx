@@ -112,6 +112,40 @@ describe('OAuthCallbackHandler', () => {
     );
   });
 
+  it('redirects to /login?error=ACCOUNT_DORMANT on 403 ACCOUNT_DORMANT', async () => {
+    searchString = 'provider=google&code=abc&state=xyz';
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 'ACCOUNT_DORMANT', message: 'dormant' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<OAuthCallbackHandler />);
+
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/login?error=ACCOUNT_DORMANT'),
+    );
+  });
+
+  it('redirects to /login?error=ACCOUNT_DELETED on 403 ACCOUNT_DELETED', async () => {
+    searchString = 'provider=kakao&code=abc&state=xyz';
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 'ACCOUNT_DELETED', message: 'deleted' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<OAuthCallbackHandler />);
+
+    await waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/login?error=ACCOUNT_DELETED'),
+    );
+  });
+
   it('redirects to /login?error=INVALID_STATE when query params are missing', async () => {
     searchString = 'provider=google';
     const fetchMock = vi.fn();

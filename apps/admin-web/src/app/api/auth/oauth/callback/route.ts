@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     jar.set('accessToken', data.accessToken, { ...cookieOpts, maxAge: data.expiresIn });
     jar.set('refreshToken', data.refreshToken, {
       ...cookieOpts,
-      maxAge: data.refreshExpiresIn ?? 60 * 60 * 24 * 14,
+      maxAge: data.refreshExpiresIn ?? 604800,
     });
 
     logger.info('oauth_callback_success', {
