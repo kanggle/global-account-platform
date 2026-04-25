@@ -54,11 +54,13 @@ public class AccountJpaEntity {
         entity.createdAt = account.getCreatedAt();
         entity.updatedAt = account.getUpdatedAt();
         entity.deletedAt = account.getDeletedAt();
+        entity.lastLoginSucceededAt = account.getLastLoginSucceededAt();
         entity.version = account.getVersion();
         return entity;
     }
 
     public Account toDomain() {
-        return Account.reconstitute(id, email, emailHash, status, createdAt, updatedAt, deletedAt, version);
+        return Account.reconstitute(id, email, emailHash, status, createdAt, updatedAt,
+                deletedAt, lastLoginSucceededAt, version);
     }
 }

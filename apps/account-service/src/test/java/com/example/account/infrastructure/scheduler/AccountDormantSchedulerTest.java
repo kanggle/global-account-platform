@@ -7,11 +7,13 @@ import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
 import com.example.account.infrastructure.persistence.AccountJpaEntity;
 import com.example.account.infrastructure.persistence.AccountJpaRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -36,17 +38,25 @@ class AccountDormantSchedulerTest {
     @Mock
     private AccountStatusUseCase accountStatusUseCase;
 
-    @InjectMocks
+    private MeterRegistry meterRegistry;
+
     private AccountDormantScheduler scheduler;
+
+    @BeforeEach
+    void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        scheduler = new AccountDormantScheduler(
+                accountJpaRepository, accountStatusUseCase, meterRegistry);
+    }
 
     @Test
     @DisplayName("365일 초과 미접속 ACTIVE 계정을 DORMANT로 전환한다")
-    void activateDormantAccounts_transitionsEligibleAccounts() {
+    void runDormantBatch_transitionsEligibleAccounts() {
         AccountJpaEntity entity = buildEntity("acc-1");
         given(accountJpaRepository.findActiveDormantCandidates(any(Instant.class)))
                 .willReturn(List.of(entity));
 
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         ArgumentCaptor<ChangeStatusCommand> captor = ArgumentCaptor.forClass(ChangeStatusCommand.class);
         verify(accountStatusUseCase).changeStatus(captor.capture());
@@ -56,11 +66,17 @@ class AccountDormantSchedulerTest {
         assertThat(cmd.reason()).isEqualTo(StatusChangeReason.DORMANT_365D);
         assertThat(cmd.actorType()).isEqualTo("system");
         assertThat(cmd.actorId()).isNull();
+
+        // Metrics: processed=1, failed counter not registered (lazy)
+        assertThat(meterRegistry.counter("scheduler.dormant.processed").count()).isEqualTo(1.0);
+        assertThat(meterRegistry.find("scheduler.dormant.failed").counter()).isNull();
+        // Duration timer always recorded
+        assertThat(meterRegistry.timer("scheduler.dormant.duration_ms").count()).isEqualTo(1L);
     }
 
     @Test
     @DisplayName("개별 계정 전환 실패 시 해당 계정 skip, 나머지 계속 처리된다")
-    void activateDormantAccounts_skipsFailedAccountAndContinues() {
+    void runDormantBatch_skipsFailedAccountAndContinues() {
         AccountJpaEntity fail = buildEntity("acc-fail");
         AccountJpaEntity ok   = buildEntity("acc-ok");
         given(accountJpaRepository.findActiveDormantCandidates(any(Instant.class)))
@@ -68,20 +84,28 @@ class AccountDormantSchedulerTest {
         willThrow(new RuntimeException("DB error"))
                 .given(accountStatusUseCase).changeStatus(commandFor("acc-fail"));
 
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         verify(accountStatusUseCase, times(2)).changeStatus(any());
+        // Metrics: 1 processed, 1 failed
+        assertThat(meterRegistry.counter("scheduler.dormant.processed").count()).isEqualTo(1.0);
+        assertThat(meterRegistry.counter("scheduler.dormant.failed").count()).isEqualTo(1.0);
     }
 
     @Test
     @DisplayName("대상 계정이 없으면 changeStatus를 호출하지 않는다")
-    void activateDormantAccounts_noCandidates_doesNothing() {
+    void runDormantBatch_noCandidates_doesNothing() {
         given(accountJpaRepository.findActiveDormantCandidates(any(Instant.class)))
                 .willReturn(List.of());
 
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         verify(accountStatusUseCase, never()).changeStatus(any());
+        // Counters not registered (no increments)
+        assertThat(meterRegistry.find("scheduler.dormant.processed").counter()).isNull();
+        assertThat(meterRegistry.find("scheduler.dormant.failed").counter()).isNull();
+        // Duration timer still recorded
+        assertThat(meterRegistry.timer("scheduler.dormant.duration_ms").count()).isEqualTo(1L);
     }
 
     private AccountJpaEntity buildEntity(String id) {
@@ -90,7 +114,9 @@ class AccountDormantSchedulerTest {
                 AccountStatus.ACTIVE,
                 Instant.now().minusSeconds(400L * 86400),
                 Instant.now(),
-                null, 0);
+                null,
+                Instant.now().minusSeconds(400L * 86400),
+                0);
         return AccountJpaEntity.fromDomain(account);
     }
 

@@ -24,6 +24,7 @@ public class Account {
     private Instant createdAt;
     private Instant updatedAt;
     private Instant deletedAt;
+    private Instant lastLoginSucceededAt;
     private int version;
 
     public static Account create(String email) {
@@ -45,7 +46,9 @@ public class Account {
     public static Account reconstitute(String id, String email, String emailHash,
                                         AccountStatus status,
                                         Instant createdAt, Instant updatedAt,
-                                        Instant deletedAt, int version) {
+                                        Instant deletedAt,
+                                        Instant lastLoginSucceededAt,
+                                        int version) {
         Account account = new Account();
         account.id = id;
         account.email = email;
@@ -54,6 +57,7 @@ public class Account {
         account.createdAt = createdAt;
         account.updatedAt = updatedAt;
         account.deletedAt = deletedAt;
+        account.lastLoginSucceededAt = lastLoginSucceededAt;
         account.version = version;
         return account;
     }

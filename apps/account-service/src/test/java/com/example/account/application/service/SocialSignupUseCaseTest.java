@@ -53,7 +53,7 @@ class SocialSignupUseCaseTest {
 
         Account savedAccount = Account.reconstitute(
                 "acc-new", "new@example.com", "hash-new", AccountStatus.ACTIVE,
-                Instant.now(), Instant.now(), null, 0);
+                Instant.now(), Instant.now(), null, null, 0);
         given(accountRepository.save(any(Account.class))).willReturn(savedAccount);
 
         // when
@@ -81,7 +81,7 @@ class SocialSignupUseCaseTest {
 
         Account existingAccount = Account.reconstitute(
                 "acc-existing", "existing@example.com", "hash-existing", AccountStatus.ACTIVE,
-                Instant.now(), Instant.now(), null, 0);
+                Instant.now(), Instant.now(), null, null, 0);
         given(accountRepository.findByEmail("existing@example.com"))
                 .willReturn(Optional.of(existingAccount));
 
@@ -108,7 +108,7 @@ class SocialSignupUseCaseTest {
 
         Account lockedAccount = Account.reconstitute(
                 "acc-locked", "locked@example.com", "hash-locked", AccountStatus.LOCKED,
-                Instant.now(), Instant.now(), null, 0);
+                Instant.now(), Instant.now(), null, null, 0);
         given(accountRepository.findByEmail("locked@example.com"))
                 .willReturn(Optional.of(lockedAccount));
 
@@ -131,7 +131,7 @@ class SocialSignupUseCaseTest {
                 .willReturn(Optional.empty())  // first check: not found
                 .willReturn(Optional.of(Account.reconstitute(  // after race: found
                         "acc-raced", "race@example.com", "hash-raced", AccountStatus.ACTIVE,
-                        Instant.now(), Instant.now(), null, 0)));
+                        Instant.now(), Instant.now(), null, null, 0)));
 
         given(accountRepository.save(any(Account.class)))
                 .willThrow(new DataIntegrityViolationException("Duplicate key"));
@@ -153,7 +153,7 @@ class SocialSignupUseCaseTest {
 
         Account existingAccount = Account.reconstitute(
                 "acc-norm", "test@example.com", "hash-norm", AccountStatus.ACTIVE,
-                Instant.now(), Instant.now(), null, 0);
+                Instant.now(), Instant.now(), null, null, 0);
         given(accountRepository.findByEmail("test@example.com"))
                 .willReturn(Optional.of(existingAccount));
 

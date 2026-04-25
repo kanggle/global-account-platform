@@ -112,7 +112,7 @@ class AccountDormantSchedulerIntegrationTest {
 
     @Test
     @DisplayName("365일 초과 ACTIVE 계정이 DORMANT로 전환되고 account.status.changed 이벤트가 outbox에 적재된다")
-    void activateDormantAccounts_eligibleActive_transitionsToDormantAndEnqueuesEvent() {
+    void runDormantBatch_eligibleActive_transitionsToDormantAndEnqueuesEvent() {
         String email = "dormant-eligible-" + UUID.randomUUID() + "@example.com";
         Account account = createActiveAccount(email);
         // Push last_login_succeeded_at + created_at 366 days into the past so the COALESCE
@@ -120,7 +120,7 @@ class AccountDormantSchedulerIntegrationTest {
         Instant longAgo = Instant.now().minus(366, ChronoUnit.DAYS);
         setAccountTimestamps(account.getId(), longAgo, longAgo);
 
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.DORMANT);
@@ -151,14 +151,14 @@ class AccountDormantSchedulerIntegrationTest {
 
     @Test
     @DisplayName("364일 미접속 ACTIVE 계정은 휴면 임계 미달이므로 전환되지 않는다")
-    void activateDormantAccounts_belowThreshold_doesNotTransition() {
+    void runDormantBatch_belowThreshold_doesNotTransition() {
         String email = "dormant-fresh-" + UUID.randomUUID() + "@example.com";
         Account account = createActiveAccount(email);
         // 364 days — under the 365-day threshold.
         Instant withinWindow = Instant.now().minus(364, ChronoUnit.DAYS);
         setAccountTimestamps(account.getId(), withinWindow, withinWindow);
 
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.ACTIVE);
@@ -175,7 +175,7 @@ class AccountDormantSchedulerIntegrationTest {
 
     @Test
     @DisplayName("LOCKED 상태 계정은 365일 초과여도 휴면 전환 대상에서 자연 제외된다 (전이 금지 + 쿼리 status=ACTIVE 필터)")
-    void activateDormantAccounts_lockedAccount_isExcluded() {
+    void runDormantBatch_lockedAccount_isExcluded() {
         String email = "dormant-locked-" + UUID.randomUUID() + "@example.com";
         Account account = createActiveAccount(email);
         Instant longAgo = Instant.now().minus(400, ChronoUnit.DAYS);
@@ -189,7 +189,7 @@ class AccountDormantSchedulerIntegrationTest {
         long historyCountBefore = historyRepository.findByAccountIdOrderByOccurredAtDesc(account.getId()).size();
         long statusEventsBefore = countStatusChangedEvents(account.getId());
 
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
         // Stays LOCKED — the dormant query filters status='ACTIVE' so this row is never picked up,
@@ -206,14 +206,14 @@ class AccountDormantSchedulerIntegrationTest {
 
     @Test
     @DisplayName("이미 DORMANT인 계정은 배치에서 다시 처리되지 않는다 (status='ACTIVE' 필터에 의해 제외)")
-    void activateDormantAccounts_alreadyDormant_isNotReprocessed() {
+    void runDormantBatch_alreadyDormant_isNotReprocessed() {
         String email = "dormant-already-" + UUID.randomUUID() + "@example.com";
         Account account = createActiveAccount(email);
         Instant longAgo = Instant.now().minus(400, ChronoUnit.DAYS);
         setAccountTimestamps(account.getId(), longAgo, longAgo);
 
         // First batch run: ACTIVE → DORMANT.
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
         Account afterFirstRun = accountRepository.findById(account.getId()).orElseThrow();
         assertThat(afterFirstRun.getStatus()).isEqualTo(AccountStatus.DORMANT);
 
@@ -221,7 +221,7 @@ class AccountDormantSchedulerIntegrationTest {
         long statusEventsAfterFirst = countStatusChangedEvents(account.getId());
 
         // Second batch run: should be a no-op for this account because it is no longer ACTIVE.
-        scheduler.activateDormantAccounts();
+        scheduler.runDormantBatch();
 
         Account afterSecondRun = accountRepository.findById(account.getId()).orElseThrow();
         assertThat(afterSecondRun.getStatus()).isEqualTo(AccountStatus.DORMANT);
