@@ -38,6 +38,9 @@ public class AccountJpaEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "last_login_succeeded_at")
+    private Instant lastLoginSucceededAt;
+
     @Version
     @Column(nullable = false)
     private int version;

@@ -4,7 +4,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, String> {
@@ -15,4 +18,14 @@ public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, St
 
     @Query("SELECT a FROM AccountJpaEntity a")
     Page<AccountJpaEntity> findAllAccounts(Pageable pageable);
+
+    /**
+     * Returns ACTIVE accounts whose last successful login (or creation date when never logged in)
+     * occurred before the given threshold. Used by AccountDormantScheduler to drive the
+     * 365-day ACTIVE → DORMANT transition (retention.md §1.3, §1.4).
+     */
+    @Query("SELECT a FROM AccountJpaEntity a " +
+            "WHERE a.status = com.example.account.domain.status.AccountStatus.ACTIVE " +
+            "  AND COALESCE(a.lastLoginSucceededAt, a.createdAt) < :threshold")
+    List<AccountJpaEntity> findActiveDormantCandidates(@Param("threshold") Instant threshold);
 }
