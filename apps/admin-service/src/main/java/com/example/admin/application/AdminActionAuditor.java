@@ -59,6 +59,10 @@ public class AdminActionAuditor {
         // TASK-BE-054 — GDPR/PIPA data rights
         map.put(ActionCode.GDPR_DELETE, "ACCOUNT");
         map.put(ActionCode.DATA_EXPORT, "ACCOUNT");
+        // TASK-BE-083 — operator management mutations
+        map.put(ActionCode.OPERATOR_CREATE, "OPERATOR");
+        map.put(ActionCode.OPERATOR_ROLE_CHANGE, "OPERATOR");
+        map.put(ActionCode.OPERATOR_STATUS_CHANGE, "OPERATOR");
         ACTION_TARGET_TYPE = Map.copyOf(map);
     }
 
@@ -356,6 +360,8 @@ public class AdminActionAuditor {
             case OPERATOR_LOGOUT -> PERMISSION_LOGOUT;
             case GDPR_DELETE -> Permission.ACCOUNT_LOCK;
             case DATA_EXPORT -> Permission.AUDIT_READ;
+            // TASK-BE-083 — all operator management mutations gate on the same permission key.
+            case OPERATOR_CREATE, OPERATOR_ROLE_CHANGE, OPERATOR_STATUS_CHANGE -> Permission.OPERATOR_MANAGE;
         };
     }
 

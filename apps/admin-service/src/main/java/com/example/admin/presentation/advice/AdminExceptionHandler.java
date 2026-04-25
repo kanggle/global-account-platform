@@ -1,6 +1,8 @@
 package com.example.admin.presentation.advice;
 
 import com.example.admin.application.exception.AuditFailureException;
+import com.example.admin.application.exception.CurrentPasswordMismatchException;
+import com.example.admin.application.exception.PasswordPolicyViolationException;
 import com.example.admin.application.exception.BatchSizeExceededException;
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.EnrollmentRequiredException;
@@ -11,7 +13,12 @@ import com.example.admin.application.exception.InvalidLoginRequestException;
 import com.example.admin.application.exception.InvalidRecoveryCodeException;
 import com.example.admin.application.exception.InvalidRefreshTokenException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
+import com.example.admin.application.exception.OperatorEmailConflictException;
+import com.example.admin.application.exception.OperatorNotFoundException;
 import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
+import com.example.admin.application.exception.RoleNotFoundException;
+import com.example.admin.application.exception.SelfSuspendForbiddenException;
+import com.example.admin.application.exception.StateTransitionInvalidException;
 import com.example.admin.application.exception.TokenRevokedException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
@@ -160,6 +167,49 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIdempotencyConflict(IdempotencyKeyConflictException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("IDEMPOTENCY_KEY_CONFLICT", e.getMessage()));
+    }
+
+    // TASK-BE-083 — operator management errors.
+    @ExceptionHandler(OperatorEmailConflictException.class)
+    public ResponseEntity<ErrorResponse> handleOperatorEmailConflict(OperatorEmailConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("OPERATOR_EMAIL_CONFLICT", e.getMessage()));
+    }
+
+    @ExceptionHandler(OperatorNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOperatorNotFound(OperatorNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("OPERATOR_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(RoleNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRoleNotFound(RoleNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("ROLE_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(SelfSuspendForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleSelfSuspend(SelfSuspendForbiddenException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("SELF_SUSPEND_FORBIDDEN", e.getMessage()));
+    }
+
+    @ExceptionHandler(StateTransitionInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleStateTransition(StateTransitionInvalidException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("STATE_TRANSITION_INVALID", e.getMessage()));
+    }
+
+    @ExceptionHandler(CurrentPasswordMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleCurrentPasswordMismatch(CurrentPasswordMismatchException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CURRENT_PASSWORD_MISMATCH", e.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordPolicyViolationException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordPolicy(PasswordPolicyViolationException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("PASSWORD_POLICY_VIOLATION", e.getMessage()));
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
