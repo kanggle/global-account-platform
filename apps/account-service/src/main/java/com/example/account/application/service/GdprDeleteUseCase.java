@@ -90,9 +90,11 @@ public class GdprDeleteUseCase {
                 account.getId(), previousStatus.name(), AccountStatus.DELETED.name(),
                 StatusChangeReason.REGULATED_DELETION.name(), "operator", operatorId, now);
 
+        // GDPR/PIPA Right to Erasure path is *immediate* (no grace period), so
+        // gracePeriodEndsAt collapses onto the deletion instant — see retention.md §2.2.
         eventPublisher.publishAccountDeletedAnonymized(
                 account.getId(), StatusChangeReason.REGULATED_DELETION.name(),
-                "operator", operatorId, now);
+                "operator", operatorId, now, now);
 
         return new GdprDeleteResult(account.getId(), AccountStatus.DELETED.name(), emailHash, maskedAt);
     }

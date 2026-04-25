@@ -2,12 +2,15 @@ package com.example.account.infrastructure.scheduler;
 
 import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.domain.account.Account;
+import com.example.account.domain.history.AccountStatusHistoryEntry;
+import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
 import com.example.account.infrastructure.anonymizer.PiiAnonymizer;
 import com.example.account.infrastructure.persistence.AccountJpaEntity;
 import com.example.account.infrastructure.persistence.AccountJpaRepository;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Daily PII anonymization batch (retention.md §2).
@@ -48,6 +52,7 @@ public class AccountAnonymizationScheduler {
 
     private static final String METRIC_PROCESSED = "scheduler.anonymize.processed";
     private static final String METRIC_FAILED = "scheduler.anonymize.failed";
+    private static final String METRIC_DURATION = "scheduler.anonymize.duration_ms";
 
     private final AccountJpaRepository accountJpaRepository;
     private final AnonymizationTransaction anonymizationTransaction;
@@ -58,34 +63,39 @@ public class AccountAnonymizationScheduler {
      */
     @Scheduled(cron = "0 0 3 * * *", zone = "UTC")
     public void runAnonymizationBatch() {
-        Instant threshold = Instant.now().minus(GRACE_PERIOD);
-        List<AccountJpaEntity> candidates = accountJpaRepository.findAnonymizationCandidates(threshold);
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            Instant threshold = Instant.now().minus(GRACE_PERIOD);
+            List<AccountJpaEntity> candidates = accountJpaRepository.findAnonymizationCandidates(threshold);
 
-        if (candidates.isEmpty()) {
-            log.debug("Anonymization batch: no candidates older than {}", threshold);
-            return;
-        }
-
-        log.info("Anonymization batch starting: candidates={}, threshold={}",
-                candidates.size(), threshold);
-
-        int processed = 0;
-        int failed = 0;
-        for (AccountJpaEntity entity : candidates) {
-            String accountId = entity.getId();
-            try {
-                anonymizationTransaction.anonymizeOne(accountId);
-                meterRegistry.counter(METRIC_PROCESSED).increment();
-                processed++;
-            } catch (Exception e) {
-                meterRegistry.counter(METRIC_FAILED).increment();
-                failed++;
-                log.warn("Anonymization failed for accountId={}; skipping. cause={}",
-                        accountId, e.toString());
+            if (candidates.isEmpty()) {
+                log.debug("Anonymization batch: no candidates older than {}", threshold);
+                return;
             }
-        }
 
-        log.info("Anonymization batch complete: processed={}, failed={}", processed, failed);
+            log.info("Anonymization batch starting: candidates={}, threshold={}",
+                    candidates.size(), threshold);
+
+            int processed = 0;
+            int failed = 0;
+            for (AccountJpaEntity entity : candidates) {
+                String accountId = entity.getId();
+                try {
+                    anonymizationTransaction.anonymizeOne(accountId);
+                    meterRegistry.counter(METRIC_PROCESSED).increment();
+                    processed++;
+                } catch (Exception e) {
+                    meterRegistry.counter(METRIC_FAILED).increment();
+                    failed++;
+                    log.warn("Anonymization failed for accountId={}; skipping. cause={}",
+                            accountId, e.toString());
+                }
+            }
+
+            log.info("Anonymization batch complete: processed={}, failed={}", processed, failed);
+        } finally {
+            sample.stop(meterRegistry.timer(METRIC_DURATION));
+        }
     }
 
     /**
@@ -99,10 +109,17 @@ public class AccountAnonymizationScheduler {
         private final AccountJpaRepository accountJpaRepository;
         private final PiiAnonymizer piiAnonymizer;
         private final AccountEventPublisher eventPublisher;
+        private final AccountStatusHistoryRepository statusHistoryRepository;
 
         /**
          * Re-load the account inside this transaction (so optimistic locking + status
          * re-check can catch concurrent grace-period recovery) and run anonymization.
+         *
+         * <p>Resolves the original deletion {@code reasonCode} by querying
+         * {@code account_status_history} for the most recent transition row that ended in
+         * {@code DELETED} (n+1 query; batch size is bounded by retention.md §2 candidate count
+         * which is operationally small). Falls back to {@code USER_REQUEST} with a WARN log
+         * when no DELETED transition row is found (data inconsistency safeguard).
          */
         @Transactional(propagation = Propagation.REQUIRES_NEW)
         public void anonymizeOne(String accountId) {
@@ -118,14 +135,44 @@ public class AccountAnonymizationScheduler {
 
             piiAnonymizer.anonymize(account);
 
+            // Resolve the original deletion reason from account_status_history.
+            // Re-publishing with the original reason preserves audit fidelity per
+            // retention.md §2.7 ("재발행 payload는 ... 원래 DELETED 전이 시 발행한 값 그대로").
+            String reasonCode = resolveOriginalDeletionReason(accountId);
+
+            // gracePeriodEndsAt = original deletedAt + 30d (retention.md §2.7,
+            // "원래 유예 종료 시각"). This is the contract-defined semantic for the
+            // account-events.md account.deleted payload, NOT the anonymization timestamp.
+            Instant deletedAt = account.getDeletedAt();
+            Instant gracePeriodEndsAt = deletedAt.plus(GRACE_PERIOD);
+
             // Re-publish account.deleted with anonymized=true (retention.md §2.7,
             // account-events.md §account.deleted).
             eventPublisher.publishAccountDeletedAnonymized(
                     account.getId(),
-                    StatusChangeReason.USER_REQUEST.name(),
+                    reasonCode,
                     "system",
                     null,
-                    Instant.now());
+                    deletedAt,
+                    gracePeriodEndsAt);
+        }
+
+        private String resolveOriginalDeletionReason(String accountId) {
+            Optional<AccountStatusHistoryEntry> lastDeleted = statusHistoryRepository
+                    .findByAccountIdOrderByOccurredAtDesc(accountId)
+                    .stream()
+                    .filter(entry -> entry.getToStatus() == AccountStatus.DELETED)
+                    .findFirst();
+
+            if (lastDeleted.isPresent()) {
+                return lastDeleted.get().getReasonCode().name();
+            }
+
+            log.warn(
+                    "No DELETED transition history found for accountId={}; "
+                            + "falling back to reasonCode={} for anonymized event re-publish.",
+                    accountId, StatusChangeReason.USER_REQUEST.name());
+            return StatusChangeReason.USER_REQUEST.name();
         }
     }
 }

@@ -97,14 +97,25 @@ public class AccountEventPublisher {
         outboxWriter.save("Account", accountId, "account.deleted", toJson(payload));
     }
 
+    /**
+     * Re-publish {@code account.deleted} with {@code anonymized=true} after grace-period
+     * PII masking (retention.md §2.7).
+     *
+     * <p>Per <a href="../../../../../../../../specs/contracts/events/account-events.md">account-events.md</a>
+     * the payload schema requires {@code gracePeriodEndsAt} (the original grace-period end,
+     * i.e. {@code deletedAt + 30d}) — not the anonymization timestamp. The {@code deletedAt}
+     * field carries the original DELETED transition time and must be preserved on re-publish.
+     */
     public void publishAccountDeletedAnonymized(String accountId, String reasonCode,
                                                     String actorType, String actorId,
-                                                    Instant deletedAt) {
+                                                    Instant deletedAt,
+                                                    Instant gracePeriodEndsAt) {
         Map<String, Object> payload = new java.util.HashMap<>(Map.of(
                 "accountId", accountId,
                 "reasonCode", reasonCode,
                 "actorType", actorType,
                 "deletedAt", deletedAt.toString(),
+                "gracePeriodEndsAt", gracePeriodEndsAt.toString(),
                 "anonymized", true
         ));
         if (actorId != null) {

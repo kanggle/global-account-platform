@@ -2,10 +2,13 @@ package com.example.account.infrastructure.scheduler;
 
 import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.domain.account.Account;
+import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
+import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.status.StatusChangeReason;
 import com.example.account.infrastructure.anonymizer.PiiAnonymizer;
 import com.example.account.infrastructure.persistence.AccountJpaEntity;
 import com.example.account.infrastructure.persistence.AccountJpaRepository;
@@ -23,6 +26,7 @@ import org.mockito.quality.Strictness;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,14 +39,18 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * Unit tests for {@link AccountAnonymizationScheduler} (TASK-BE-093).
+ * Unit tests for {@link AccountAnonymizationScheduler} (TASK-BE-093, TASK-BE-097).
  *
  * <p>Covers:
  * <ol>
  *   <li>Normal anonymization — eligible candidate is masked, masked_at stamped, event re-published.</li>
+ *   <li>{@code reasonCode} resolution — the most recent DELETED history row's reason is propagated.</li>
+ *   <li>{@code reasonCode} fallback — when no DELETED history row exists, USER_REQUEST is used.</li>
+ *   <li>{@code gracePeriodEndsAt} = {@code deletedAt + 30d} per retention.md §2.7.</li>
  *   <li>No candidates — no anonymizer calls, no events.</li>
  *   <li>Concurrent grace-period recovery (re-loaded account is no longer DELETED) — skipped, batch continues.</li>
  *   <li>Per-account failure (anonymizer throws) — skipped with WARN log; the rest of the batch proceeds.</li>
+ *   <li>Duration timer ({@code scheduler.anonymize.duration_ms}) is recorded.</li>
  * </ol>
  *
  * <p>The scheduler delegates the per-account transaction to its inner
@@ -66,6 +74,9 @@ class AccountAnonymizationSchedulerTest {
     @Mock
     private AccountEventPublisher eventPublisher;
 
+    @Mock
+    private AccountStatusHistoryRepository statusHistoryRepository;
+
     private MeterRegistry meterRegistry;
 
     private PiiAnonymizer piiAnonymizer;
@@ -79,7 +90,7 @@ class AccountAnonymizationSchedulerTest {
         meterRegistry = new SimpleMeterRegistry();
         piiAnonymizer = new PiiAnonymizer(accountRepository, profileRepository);
         anonymizationTransaction = new AccountAnonymizationScheduler.AnonymizationTransaction(
-                accountJpaRepository, piiAnonymizer, eventPublisher);
+                accountJpaRepository, piiAnonymizer, eventPublisher, statusHistoryRepository);
         scheduler = new AccountAnonymizationScheduler(
                 accountJpaRepository, anonymizationTransaction, meterRegistry);
     }
@@ -119,8 +130,19 @@ class AccountAnonymizationSchedulerTest {
                 null);
     }
 
+    private AccountStatusHistoryEntry deletedHistoryEntry(String accountId,
+                                                          StatusChangeReason reason,
+                                                          String actorType,
+                                                          String actorId,
+                                                          Instant occurredAt) {
+        return AccountStatusHistoryEntry.reconstitute(
+                1L, accountId,
+                AccountStatus.ACTIVE, AccountStatus.DELETED,
+                reason, actorType, actorId, null, occurredAt);
+    }
+
     @Test
-    @DisplayName("정상 익명화 — 후보 계정의 PII를 마스킹하고 masked_at 설정 + account.deleted(anonymized=true) 발행")
+    @DisplayName("정상 익명화 — PII 마스킹 + masked_at 설정 + reasonCode/gracePeriodEndsAt 포함하여 account.deleted(anonymized=true) 발행")
     void runAnonymizationBatch_normalCandidate_anonymizesAndPublishesEvent() {
         String accountId = "acc-1";
         String originalEmail = "old@example.com";
@@ -134,6 +156,11 @@ class AccountAnonymizationSchedulerTest {
                 .willReturn(Optional.of(managedSnapshot));
         given(profileRepository.findByAccountId(accountId))
                 .willReturn(Optional.of(profile));
+        // History resolved: original deletion was a regular USER_REQUEST.
+        given(statusHistoryRepository.findByAccountIdOrderByOccurredAtDesc(accountId))
+                .willReturn(List.of(deletedHistoryEntry(
+                        accountId, StatusChangeReason.USER_REQUEST,
+                        "user", accountId, DELETED_AT_OLD)));
 
         scheduler.runAnonymizationBatch();
 
@@ -150,20 +177,86 @@ class AccountAnonymizationSchedulerTest {
         assertThat(savedAccount.getEmail()).endsWith("@deleted.local");
         assertThat(savedAccount.getEmail()).hasSize("anon_".length() + 12 + "@deleted.local".length());
 
-        // Profile masked + masked_at stamped (Profile.maskPii() effects)
-        assertThat(profile.getDisplayName()).isNull();
+        // Profile masked + masked_at stamped per retention.md §2.5:
+        //   display_name → fixed string "탈퇴한 사용자"; other PII fields → NULL.
+        assertThat(profile.getDisplayName()).isEqualTo("탈퇴한 사용자");
         assertThat(profile.getPhoneNumber()).isNull();
         assertThat(profile.getBirthDate()).isNull();
         assertThat(profile.getMaskedAt()).isNotNull();
         verify(profileRepository).save(profile);
 
-        // Event re-published with anonymized=true (account-events.md)
+        // Event re-published with the resolved reasonCode + gracePeriodEndsAt = deletedAt + 30d
+        // (retention.md §2.7, account-events.md §account.deleted).
+        Instant expectedGraceEnd = DELETED_AT_OLD.plus(30, ChronoUnit.DAYS);
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(accountId), any(), eq("system"), eq(null), any(Instant.class));
+                eq(accountId),
+                eq(StatusChangeReason.USER_REQUEST.name()),
+                eq("system"),
+                eq(null),
+                eq(DELETED_AT_OLD),
+                eq(expectedGraceEnd));
 
         // Metrics: processed=1, failed not registered (counters lazily registered on first increment)
         assertThat(meterRegistry.counter("scheduler.anonymize.processed").count()).isEqualTo(1.0);
         assertThat(meterRegistry.find("scheduler.anonymize.failed").counter()).isNull();
+        // Duration timer recorded for the batch (TASK-BE-097 Warning item)
+        assertThat(meterRegistry.timer("scheduler.anonymize.duration_ms").count()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("reasonCode 복원 — history 마지막 DELETED 전이의 reason(ADMIN_DELETE)이 이벤트 payload에 그대로 전달")
+    void runAnonymizationBatch_resolvesReasonCodeFromHistory_adminDelete() {
+        String accountId = "acc-admin";
+        AccountJpaEntity candidate = entityFromAccount(deletedAccount(accountId, "admin@example.com"));
+        AccountJpaEntity managed = entityFromAccount(deletedAccount(accountId, "admin@example.com"));
+        Profile profile = profileWithPii(accountId);
+
+        given(accountJpaRepository.findAnonymizationCandidates(any(Instant.class)))
+                .willReturn(List.of(candidate));
+        given(accountJpaRepository.findById(accountId)).willReturn(Optional.of(managed));
+        given(profileRepository.findByAccountId(accountId)).willReturn(Optional.of(profile));
+        // Most recent transition is to DELETED with ADMIN_DELETE reason.
+        given(statusHistoryRepository.findByAccountIdOrderByOccurredAtDesc(accountId))
+                .willReturn(List.of(deletedHistoryEntry(
+                        accountId, StatusChangeReason.ADMIN_DELETE,
+                        "operator", "op-1", DELETED_AT_OLD)));
+
+        scheduler.runAnonymizationBatch();
+
+        verify(eventPublisher).publishAccountDeletedAnonymized(
+                eq(accountId),
+                eq(StatusChangeReason.ADMIN_DELETE.name()),
+                eq("system"),
+                eq(null),
+                eq(DELETED_AT_OLD),
+                eq(DELETED_AT_OLD.plus(30, ChronoUnit.DAYS)));
+    }
+
+    @Test
+    @DisplayName("reasonCode fallback — DELETED 전이 history row가 없으면 USER_REQUEST + WARN 로그")
+    void runAnonymizationBatch_missingHistory_fallsBackToUserRequest() {
+        String accountId = "acc-no-history";
+        AccountJpaEntity candidate = entityFromAccount(deletedAccount(accountId, "noh@example.com"));
+        AccountJpaEntity managed = entityFromAccount(deletedAccount(accountId, "noh@example.com"));
+        Profile profile = profileWithPii(accountId);
+
+        given(accountJpaRepository.findAnonymizationCandidates(any(Instant.class)))
+                .willReturn(List.of(candidate));
+        given(accountJpaRepository.findById(accountId)).willReturn(Optional.of(managed));
+        given(profileRepository.findByAccountId(accountId)).willReturn(Optional.of(profile));
+        // No history rows — fallback path.
+        given(statusHistoryRepository.findByAccountIdOrderByOccurredAtDesc(accountId))
+                .willReturn(List.of());
+
+        scheduler.runAnonymizationBatch();
+
+        verify(eventPublisher).publishAccountDeletedAnonymized(
+                eq(accountId),
+                eq(StatusChangeReason.USER_REQUEST.name()),
+                eq("system"),
+                eq(null),
+                eq(DELETED_AT_OLD),
+                eq(DELETED_AT_OLD.plus(30, ChronoUnit.DAYS)));
     }
 
     @Test
@@ -177,11 +270,13 @@ class AccountAnonymizationSchedulerTest {
         verify(accountRepository, never()).save(any(Account.class));
         verify(profileRepository, never()).save(any(Profile.class));
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
-                any(), any(), any(), any(), any(Instant.class));
+                any(), any(), any(), any(), any(Instant.class), any(Instant.class));
 
         // No counter registered because no increments occurred
         assertThat(meterRegistry.find("scheduler.anonymize.processed").counter()).isNull();
         assertThat(meterRegistry.find("scheduler.anonymize.failed").counter()).isNull();
+        // Duration timer is still recorded for the batch run itself.
+        assertThat(meterRegistry.timer("scheduler.anonymize.duration_ms").count()).isEqualTo(1L);
     }
 
     @Test
@@ -211,6 +306,10 @@ class AccountAnonymizationSchedulerTest {
                 .willReturn(Optional.of(stillDeletedFresh));
         given(profileRepository.findByAccountId(stillDeletedId))
                 .willReturn(Optional.of(stillDeletedProfile));
+        given(statusHistoryRepository.findByAccountIdOrderByOccurredAtDesc(stillDeletedId))
+                .willReturn(List.of(deletedHistoryEntry(
+                        stillDeletedId, StatusChangeReason.USER_REQUEST,
+                        "user", stillDeletedId, DELETED_AT_OLD)));
 
         scheduler.runAnonymizationBatch();
 
@@ -221,10 +320,12 @@ class AccountAnonymizationSchedulerTest {
 
         verify(profileRepository).save(stillDeletedProfile);
         verify(eventPublisher, times(1)).publishAccountDeletedAnonymized(
-                eq(stillDeletedId), any(), eq("system"), eq(null), any(Instant.class));
+                eq(stillDeletedId), any(), eq("system"), eq(null),
+                any(Instant.class), any(Instant.class));
         // Recovered account: no event published
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
-                eq(recoveredId), any(), any(), any(), any(Instant.class));
+                eq(recoveredId), any(), any(), any(),
+                any(Instant.class), any(Instant.class));
 
         // Metrics: 1 processed, 1 failed (skipped)
         assertThat(meterRegistry.counter("scheduler.anonymize.processed").count()).isEqualTo(1.0);
@@ -252,6 +353,10 @@ class AccountAnonymizationSchedulerTest {
                 .willReturn(Optional.of(okFresh));
         given(profileRepository.findByAccountId(okId))
                 .willReturn(Optional.of(okProfile));
+        given(statusHistoryRepository.findByAccountIdOrderByOccurredAtDesc(okId))
+                .willReturn(List.of(deletedHistoryEntry(
+                        okId, StatusChangeReason.USER_REQUEST,
+                        "user", okId, DELETED_AT_OLD)));
 
         // Make the failing account throw at the accountRepository.save step.
         // The anonymizer always reaches accountRepository.save first (before profile lookup),
@@ -276,9 +381,11 @@ class AccountAnonymizationSchedulerTest {
 
         // Event published only for the okId.
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(okId), any(), eq("system"), eq(null), any(Instant.class));
+                eq(okId), any(), eq("system"), eq(null),
+                any(Instant.class), any(Instant.class));
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
-                eq(failingId), any(), any(), any(), any(Instant.class));
+                eq(failingId), any(), any(), any(),
+                any(Instant.class), any(Instant.class));
 
         // Metrics: 1 processed, 1 failed
         assertThat(meterRegistry.counter("scheduler.anonymize.processed").count()).isEqualTo(1.0);
