@@ -167,11 +167,12 @@ List<AccountJpaEntity> findAnonymizationCandidates(Instant threshold);
 | `profiles` | `display_name` | `'탈퇴한 사용자'` (고정 문자열) | confidential → 마스킹 |
 | `profiles` | `phone_number` | `NULL` | confidential → 제거 |
 | `profiles` | `birth_date` | `NULL` | confidential → 제거 |
+| `profiles` | `profile_image_url` | `NULL` | confidential → 제거 |
 | `profiles` | `preferences` | `NULL` | internal → 제거 (식별 가능 설정 제거) |
 | `accounts` | 그 외 (`status`, `created_at`, `deleted_at`, `version`) | **보존** | 감사 추적 유지 |
 | `account_status_history` | 모든 row | **보존** (append-only, [audit-heavy.md](../../../rules/traits/audit-heavy.md) A3) | — |
 
-**`profile_image_url`** 등 추가 PII 필드를 향후 도입할 경우, 본 표와 [data-model.md](./data-model.md)를 같은 PR에서 동시에 갱신해야 한다.
+> **`profiles.profile_image_url` 컬럼 도입 노트**: 본 컬럼은 [data-model.md](./data-model.md)의 `profiles` 테이블에 아직 정의되지 않았다. 프로필 이미지 기능을 도입하는 PR에서 `data-model.md`의 `profiles` 표에 `profile_image_url VARCHAR(500) NULL, confidential` 행을 추가하고, 본 표의 `profile_image_url → NULL` 처리 정책을 그대로 활성화한다. 본 retention 정책은 향후 컬럼 추가 시 누락을 방지하기 위해 마스킹 대상에 선제적으로 명시한다 (TASK-BE-091 AC `profile_image_url → anonymized 형태` 요건 충족). 다른 추가 PII 필드를 도입할 때도 본 표와 [data-model.md](./data-model.md)를 같은 PR에서 동시에 갱신해야 한다.
 
 원복 불가능성 보장: SHA-256 hex의 일방향성 + `display_name` 고정 문자열 + 나머지 필드 NULL 처리. `email_hash`는 의도적으로 보존하지만 단방향 해시이므로 PII로 환원되지 않는다.
 
@@ -182,8 +183,9 @@ List<AccountJpaEntity> findAnonymizationCandidates(Instant threshold);
 1. `accounts.email` → `anon_{SHA256(email)[:12]}@deleted.local`
 2. `accounts.email_hash` 보존 (이미 GDPR 경로 외에는 비어있을 수 있으므로, NULL일 경우 동일하게 SHA-256 full hex로 채움)
 3. `profiles.display_name`, `phone_number`, `birth_date`, `preferences` 마스킹
-4. `profiles.masked_at = now()` 설정
-5. `accounts.updated_at = now()` 갱신 (`version` 증분)
+4. `profiles.profile_image_url` → `NULL` (컬럼이 도입된 이후 활성화. 컬럼 부재 단계에서는 이 단계를 무시하되, 컬럼 추가 PR에서 본 단계가 자동 활성화되도록 안전하게 작성한다 — 예: 컬럼 존재 여부 가드)
+5. `profiles.masked_at = now()` 설정
+6. `accounts.updated_at = now()` 갱신 (`version` 증분)
 
 `PiiAnonymizer.anonymize(account, profile)` 인프라 클래스가 위 단계를 담당하며, [architecture.md](./architecture.md) `infrastructure/anonymizer/` 위치에 둔다.
 
@@ -194,7 +196,19 @@ List<AccountJpaEntity> findAnonymizationCandidates(Instant threshold);
 | `account.deleted` (anonymized=false) | 본 배치에서 **발행하지 않음** | DELETED 전이 시 이미 발행됨 |
 | `account.deleted` (anonymized=true) | 본 배치에서 **재발행** | [account-events.md](../../contracts/events/account-events.md) "유예 종료 후 PII 익명화 완료 시 동일 토픽에 `anonymized: true`로 재발행" |
 
-재발행 payload는 `account.deleted` 스키마와 동일하되 `anonymized=true`, `deletedAt`은 원래 deleted_at 시각, `gracePeriodEndsAt`은 익명화 시각으로 채운다.
+재발행 payload는 `account.deleted` 스키마와 동일하되 다음 필드를 채운다 ([account-events.md](../../contracts/events/account-events.md) 계약과 일치):
+
+| 필드 | 값 | 비고 |
+|---|---|---|
+| `accountId` | 대상 계정 ID | 변경 없음 |
+| `reasonCode`, `actorType`, `actorId` | 원래 DELETED 전이 시 발행한 값 그대로 | 재발행이므로 원래 사유·주체 보존 |
+| `deletedAt` | 원래 `accounts.deleted_at` 시각 | 변경 없음. 익명화 시각이 아님 |
+| `gracePeriodEndsAt` | **원래 유예 종료 시각** (`deleted_at + 30d`) | [account-events.md](../../contracts/events/account-events.md) `account.deleted` 스키마 정의(유예 종료 시각)와 동일 의미. **익명화 완료 시각이 아님** |
+| `anonymized` | `true` | 본 재발행에서만 `true` |
+
+> **이전 문서 표기 정정**: 본 절은 과거에 `gracePeriodEndsAt`을 "익명화 시각"으로 채운다고 기술했으나, 이는 [account-events.md](../../contracts/events/account-events.md)의 필드 의미(유예 종료 시각)와 충돌하여 다운스트림 consumer 해석 오류를 유발한다. 본 개정에서 해당 표기를 제거하고 계약 정의와 일치시킨다.
+>
+> **익명화 완료 시각이 필요한 다운스트림 처리**: consumer는 `anonymized=true` 이벤트의 `occurredAt`(envelope) 또는 별도 처리 시각으로 자체 마스킹 시점을 확보한다. 만약 `account.deleted` payload에 `anonymizedAt` 필드를 신설할 필요가 발생하면 [account-events.md](../../contracts/events/account-events.md) 계약 변경을 선행하는 별도 태스크로 다룬다 (Contract Rule).
 
 다운스트림 consumer는 `anonymized=true` 이벤트를 수신하면 자체 보관 PII (예: security-service의 로그인 이력 actor email)도 마스킹한다.
 
