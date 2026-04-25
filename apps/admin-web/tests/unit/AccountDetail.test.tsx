@@ -21,12 +21,17 @@ const detailFixture = {
   ],
 };
 
+type DetailFixture = Omit<typeof detailFixture, 'status'> & { status: 'ACTIVE' | 'LOCKED' | 'DORMANT' | 'DELETED' };
+const detailFixtureRef: { current: DetailFixture } = {
+  current: detailFixture,
+};
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
 vi.mock('@/features/accounts/hooks/useAccountDetail', () => ({
-  useAccountDetail: () => ({ data: detailFixture, isLoading: false, isError: false }),
+  useAccountDetail: () => ({ data: detailFixtureRef.current, isLoading: false, isError: false }),
 }));
 
 import { AccountDetail } from '@/features/accounts/components/AccountDetail';
@@ -42,6 +47,7 @@ function wrap(ui: React.ReactNode) {
 
 describe('AccountDetail', () => {
   it('renders ISO timestamps via formatDateTime (not raw)', async () => {
+    detailFixtureRef.current = detailFixture;
     render(wrap(<AccountDetail accountId="acc-1" roles={['SUPER_ADMIN']} />));
     await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
     // Raw ISO strings should not appear; formatted ones should.
@@ -50,15 +56,55 @@ describe('AccountDetail', () => {
   });
 
   it('hides lock/unlock controls for SUPPORT_READONLY role', async () => {
+    detailFixtureRef.current = detailFixture;
     render(wrap(<AccountDetail accountId="acc-1" roles={['SUPPORT_READONLY']} />));
     await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: '잠금' })).not.toBeInTheDocument();
   });
 
   it('has no axe violations', async () => {
+    detailFixtureRef.current = detailFixture;
     const { container } = render(wrap(<AccountDetail accountId="acc-1" roles={['SUPER_ADMIN']} />));
     await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
     const violations = await runAxe(container);
     expect(violations).toEqual([]);
+  });
+});
+
+describe('AccountDetail GDPR delete button', () => {
+  it('shows GDPR 삭제 button for SUPER_ADMIN role', async () => {
+    detailFixtureRef.current = detailFixture;
+    render(wrap(<AccountDetail accountId="acc-1" roles={['SUPER_ADMIN']} />));
+    await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'GDPR 삭제' })).toBeInTheDocument();
+  });
+
+  it('shows GDPR 삭제 button for SUPPORT_LOCK role', async () => {
+    detailFixtureRef.current = detailFixture;
+    render(wrap(<AccountDetail accountId="acc-1" roles={['SUPPORT_LOCK']} />));
+    await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'GDPR 삭제' })).toBeInTheDocument();
+  });
+
+  it('hides GDPR 삭제 button for SUPPORT_READONLY role', async () => {
+    detailFixtureRef.current = detailFixture;
+    render(wrap(<AccountDetail accountId="acc-1" roles={['SUPPORT_READONLY']} />));
+    await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'GDPR 삭제' })).not.toBeInTheDocument();
+  });
+
+  it('hides GDPR 삭제 button for SECURITY_ANALYST role', async () => {
+    detailFixtureRef.current = detailFixture;
+    render(wrap(<AccountDetail accountId="acc-1" roles={['SECURITY_ANALYST']} />));
+    await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'GDPR 삭제' })).not.toBeInTheDocument();
+  });
+
+  it('disables GDPR 삭제 button when account status is DELETED (SUPER_ADMIN role)', async () => {
+    detailFixtureRef.current = { ...detailFixture, status: 'DELETED' };
+    render(wrap(<AccountDetail accountId="acc-1" roles={['SUPER_ADMIN']} />));
+    await waitFor(() => expect(screen.getByText('user@example.com')).toBeInTheDocument());
+    const button = screen.getByRole('button', { name: 'GDPR 삭제' });
+    expect(button).toBeDisabled();
   });
 });
