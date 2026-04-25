@@ -26,6 +26,27 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: false
 
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      # TASK-BE-103: account-service consumes auth.login.succeeded to update
+      # accounts.last_login_succeeded_at. The group ID is independent from
+      # security-service's "security-service" group so both services receive
+      # every event.
+      group-id: account-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        "[enable.idempotence]": true
+        "[max.in.flight.requests.per.connection]": 1
+
   jackson:
     default-property-inclusion: non_null
     serialization:

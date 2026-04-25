@@ -73,6 +73,23 @@ public class Account {
     }
 
     /**
+     * Record a successful login at the given instant.
+     *
+     * <p>Uses max semantics — the field is only advanced if the new instant is
+     * strictly more recent than the value already stored. This guards against
+     * out-of-order delivery of {@code auth.login.succeeded} Kafka events
+     * (replay, partition rebalance, redelivery) where an older event might
+     * arrive after a newer one. See TASK-BE-103 / specs/contracts/events/auth-events.md.
+     *
+     * @param occurredAt the timestamp of the successful login (UTC); never null
+     */
+    public void recordLoginSuccess(Instant occurredAt) {
+        if (this.lastLoginSucceededAt == null || occurredAt.isAfter(this.lastLoginSucceededAt)) {
+            this.lastLoginSucceededAt = occurredAt;
+        }
+    }
+
+    /**
      * Transition account status via the state machine.
      * Returns the validated transition for recording in history.
      */
