@@ -91,6 +91,8 @@ gateway:
     # because operator tokens are signed by admin-service (separate JWKS);
     # admin-service's OperatorAuthenticationFilter is the single verification
     # point for operator identity. See gateway-api.md §Admin Routes.
+    - GET:/api/admin/accounts
+    - GET:/api/admin/accounts/**
     - POST:/api/admin/accounts/*/lock
     - POST:/api/admin/accounts/*/unlock
     - POST:/api/admin/sessions/*/revoke
