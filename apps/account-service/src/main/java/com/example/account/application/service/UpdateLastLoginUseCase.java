@@ -40,10 +40,25 @@ public class UpdateLastLoginUseCase {
     private final AccountRepository accountRepository;
     private final ProcessedEventJpaRepository processedEventRepository;
 
-    @Transactional
+    @Transactional(noRollbackFor = DataIntegrityViolationException.class)
     public void execute(String eventId, String accountId, Instant occurredAt) {
         if (processedEventRepository.existsByEventId(eventId)) {
             log.info("Duplicate auth.login.succeeded event skipped: eventId={}", eventId);
+            return;
+        }
+
+        try {
+            processedEventRepository.saveAndFlush(
+                    ProcessedEventJpaEntity.create(eventId, EVENT_TYPE));
+        } catch (DataIntegrityViolationException e) {
+            // Concurrent redelivery: another consumer thread won the dedup-row
+            // insert race. saveAndFlush() forces the INSERT SQL to execute
+            // immediately so the constraint violation is raised inside this
+            // try/catch (instead of at commit-time deferred flush). The
+            // noRollbackFor on @Transactional keeps the transaction commit-able
+            // after this catch — we exit cleanly without touching the account
+            // because the concurrent winner already performed the update.
+            log.info("ProcessedEvent insert lost a redelivery race: eventId={}", eventId);
             return;
         }
 
@@ -60,15 +75,5 @@ public class UpdateLastLoginUseCase {
         Account account = maybeAccount.get();
         account.recordLoginSuccess(occurredAt);
         accountRepository.save(account);
-
-        try {
-            processedEventRepository.save(ProcessedEventJpaEntity.create(eventId, EVENT_TYPE));
-        } catch (DataIntegrityViolationException e) {
-            // Concurrent redelivery: another consumer thread won the dedup-row
-            // insert race. The Account row update we performed is idempotent
-            // (max-semantics in recordLoginSuccess), so swallow the constraint
-            // violation rather than fail the partition.
-            log.info("ProcessedEvent insert lost a redelivery race: eventId={}", eventId);
-        }
     }
 }
