@@ -229,7 +229,7 @@ All services must return errors in the following JSON format:
 | IDEMPOTENCY_KEY_CONFLICT | 409 | Same `Idempotency-Key` replayed with a different payload on an admin command |
 | AUDIT_FAILURE | 500 | Audit row persistence failed; the admin command is aborted to preserve audit integrity |
 | ACCOUNT_NOT_FOUND | 404 | Target account does not exist (admin path only; distinct from public/account-api usage context) |
-| STATE_TRANSITION_INVALID | 422 | Requested state transition is not allowed from the current account state (admin path) |
+| STATE_TRANSITION_INVALID | 409 | Requested state transition is not allowed from the current account state (e.g., already DELETED, not LOCKED). Aligned with `specs/contracts/http/internal/admin-to-account.md` lock/unlock/delete/gdpr-delete endpoints which all surface this as a state-transition conflict. The admin-service operator-row same-state PATCH path (`PATCH /api/admin/operators/{id}/status`) is a separate context that may surface 400 — see admin contracts. |
 | INVALID_BOOTSTRAP_TOKEN | 401 | Bootstrap token (2FA enroll/verify sub-tree) is missing, malformed, expired, wrong `token_type`, or has been replayed (`jti` already consumed) |
 | INVALID_2FA_CODE | 401 | Submitted TOTP code does not verify against the operator's enrolled secret (±1 window, 30s step) |
 | INVALID_CREDENTIALS | 401 | Operator lookup miss or Argon2id password verification failure on `POST /api/admin/auth/login` (returned without distinguishing the two so miss vs wrong-password cannot be inferred from the response) |
