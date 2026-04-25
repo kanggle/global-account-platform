@@ -1,7 +1,7 @@
 ---
 id: TASK-BE-093
 title: "feat: AccountAnonymizationScheduler — 30일 유예 만료 계정 PII 자동 익명화 배치"
-status: ready
+status: review
 area: backend
 service: account-service
 ---

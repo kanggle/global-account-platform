@@ -28,4 +28,20 @@ public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, St
             "WHERE a.status = com.example.account.domain.status.AccountStatus.ACTIVE " +
             "  AND COALESCE(a.lastLoginSucceededAt, a.createdAt) < :threshold")
     List<AccountJpaEntity> findActiveDormantCandidates(@Param("threshold") Instant threshold);
+
+    /**
+     * Find DELETED accounts whose grace period (30 days, see retention.md §2)
+     * has expired and whose profile has not yet been anonymized.
+     *
+     * @param threshold cut-off instant; rows with {@code deleted_at < threshold} are eligible.
+     *                  Caller passes {@code Instant.now().minus(30, DAYS)}.
+     */
+    @Query("""
+            SELECT a FROM AccountJpaEntity a
+            LEFT JOIN ProfileJpaEntity p ON p.accountId = a.id
+            WHERE a.status = com.example.account.domain.status.AccountStatus.DELETED
+              AND a.deletedAt < :threshold
+              AND (p.maskedAt IS NULL OR p.accountId IS NULL)
+            """)
+    List<AccountJpaEntity> findAnonymizationCandidates(@Param("threshold") Instant threshold);
 }
