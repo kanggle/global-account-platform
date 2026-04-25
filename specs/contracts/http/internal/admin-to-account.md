@@ -8,6 +8,65 @@ admin-service가 운영자 명령으로 account-service에 계정 상태 변경(
 
 ---
 
+## GET /internal/accounts
+
+전체 계정 목록 페이지네이션 조회. admin-service가 `account.read` 권한 보유 운영자의 요청을 대리하여 호출한다.
+
+**Query Parameters**:
+
+| 파라미터 | 타입 | 설명 |
+|---|---|---|
+| `page` | int (default 0) | 페이지 번호 |
+| `size` | int (default 20, max 100) | 페이지 크기 |
+
+**Response 200**:
+```json
+{
+  "content": [
+    {
+      "id": "string",
+      "email": "string",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "totalElements": 150,
+  "page": 0,
+  "size": 20,
+  "totalPages": 8
+}
+```
+
+**Errors**: 400 `VALIDATION_ERROR` (size > 100)
+
+---
+
+## GET /internal/accounts?email=
+
+이메일로 단건 계정 조회 (기존 동작).
+
+**Query Parameters**: `email` (string, required)
+
+**Response 200**:
+```json
+{
+  "content": [
+    {
+      "id": "string",
+      "email": "string",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "page": 0,
+  "size": 20,
+  "totalPages": 1
+}
+```
+
+---
+
 ## POST /internal/accounts/{accountId}/lock
 
 운영자에 의한 계정 잠금.

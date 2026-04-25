@@ -11,6 +11,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -35,17 +36,21 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     private static final int ORDER = -100;
     private static final String ACCOUNT_ID_HEADER = "X-Account-ID";
     private static final String DEVICE_ID_HEADER = "X-Device-Id";
+    private static final String ACCESS_INVALIDATE_KEY_PREFIX = "access:invalidate-before:";
 
     private final TokenValidator tokenValidator;
     private final RouteConfig routeConfig;
     private final ObjectMapper objectMapper;
+    private final ReactiveStringRedisTemplate redisTemplate;
 
     public JwtAuthenticationFilter(TokenValidator tokenValidator,
                                    RouteConfig routeConfig,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper,
+                                   ReactiveStringRedisTemplate redisTemplate) {
         this.tokenValidator = tokenValidator;
         this.routeConfig = routeConfig;
         this.objectMapper = objectMapper;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -80,16 +85,45 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                                 "Access token is missing, expired, or has an invalid signature");
                     }
 
-                    String deviceId = extractDeviceId(claims);
+                    // 5. Check if account's access tokens were force-invalidated after token issuance
+                    long iatEpochMilli = extractIatEpochMilli(claims);
+                    return redisTemplate.opsForValue()
+                            .get(ACCESS_INVALIDATE_KEY_PREFIX + accountId)
+                            .defaultIfEmpty("")
+                            .flatMap(storedValue -> {
+                                if (!storedValue.isEmpty()) {
+                                    try {
+                                        long invalidatedAtMilli = Long.parseLong(storedValue);
+                                        if (iatEpochMilli <= invalidatedAtMilli) {
+                                            return writeUnauthorized(exchange,
+                                                    "Access token is missing, expired, or has an invalid signature");
+                                        }
+                                    } catch (NumberFormatException ignored) {
+                                        // corrupt key — fail open, let token through
+                                    }
+                                }
 
-                    ServerHttpRequest.Builder enrichedBuilder = stripped.mutate()
-                            .header(ACCOUNT_ID_HEADER, accountId);
-                    if (deviceId != null && !deviceId.isBlank()) {
-                        enrichedBuilder.header(DEVICE_ID_HEADER, deviceId);
-                    }
-                    ServerHttpRequest enriched = enrichedBuilder.build();
-
-                    return chain.filter(strippedExchange.mutate().request(enriched).build());
+                                String deviceId = extractDeviceId(claims);
+                                ServerHttpRequest.Builder enrichedBuilder = stripped.mutate()
+                                        .header(ACCOUNT_ID_HEADER, accountId);
+                                if (deviceId != null && !deviceId.isBlank()) {
+                                    enrichedBuilder.header(DEVICE_ID_HEADER, deviceId);
+                                }
+                                return chain.filter(strippedExchange.mutate()
+                                        .request(enrichedBuilder.build()).build());
+                            })
+                            .onErrorResume(e -> {
+                                // Redis unavailable — fail open to avoid outage
+                                log.warn("Redis unavailable for access invalidation check: {}", e.getMessage());
+                                String deviceId = extractDeviceId(claims);
+                                ServerHttpRequest.Builder enrichedBuilder = stripped.mutate()
+                                        .header(ACCOUNT_ID_HEADER, accountId);
+                                if (deviceId != null && !deviceId.isBlank()) {
+                                    enrichedBuilder.header(DEVICE_ID_HEADER, deviceId);
+                                }
+                                return chain.filter(strippedExchange.mutate()
+                                        .request(enrichedBuilder.build()).build());
+                            });
                 })
                 .onErrorResume(JwtVerificationException.class, e -> {
                     log.debug("JWT verification failed: {}", e.getMessage());
@@ -127,6 +161,15 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     private String extractDeviceId(Map<String, Object> claims) {
         Object deviceId = claims.get("device_id");
         return deviceId != null ? deviceId.toString() : null;
+    }
+
+    /** JWT iat is epoch seconds; convert to millis for Redis comparison. */
+    private long extractIatEpochMilli(Map<String, Object> claims) {
+        Object iat = claims.get("iat");
+        if (iat instanceof Number n) {
+            return n.longValue() * 1000L;
+        }
+        return 0L;
     }
 
     private Mono<Void> writeUnauthorized(ServerWebExchange exchange, String message) {

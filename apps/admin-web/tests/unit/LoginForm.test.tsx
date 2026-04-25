@@ -35,7 +35,7 @@ describe('LoginForm', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<LoginForm />);
-    await user.type(screen.getByLabelText('이메일'), 'admin@example.com');
+    await user.type(screen.getByLabelText('운영자 ID'), 'admin@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password123');
     await user.click(screen.getByRole('button', { name: /로그인/ }));
 
@@ -60,7 +60,7 @@ describe('LoginForm', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     render(<LoginForm />);
-    await user.type(screen.getByLabelText('이메일'), 'admin@example.com');
+    await user.type(screen.getByLabelText('운영자 ID'), 'admin@example.com');
     await user.type(screen.getByLabelText('비밀번호'), 'password123');
     await user.click(screen.getByRole('button', { name: /로그인/ }));
 

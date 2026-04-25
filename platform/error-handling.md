@@ -239,6 +239,8 @@ All services must return errors in the following JSON format:
 | INVALID_REFRESH_TOKEN | 401 | Operator refresh JWT failed signature/exp/issuer/`token_type=admin_refresh` validation, the jti is not registered in `admin_operator_refresh_tokens`, or the operator id does not match the registered row (TASK-BE-040) |
 | REFRESH_TOKEN_REUSE_DETECTED | 401 | An already-revoked refresh jti was presented again — the operator's entire refresh-token chain is bulk-revoked with reason `REUSE_DETECTED` (TASK-BE-040) |
 | TOKEN_REVOKED | 401 | The operator access JWT's jti is on the Redis logout blacklist (`admin:jti:blacklist:{jti}`), or the blacklist lookup itself failed — fail-closed per audit-heavy A10 (TASK-BE-040) |
+| CURRENT_PASSWORD_MISMATCH | 400 | 현재 비밀번호가 일치하지 않습니다 (`PATCH /api/admin/operators/me/password` — 운영자 본인 비밀번호 변경 시 현재 비밀번호 Argon2id `verify` 실패) |
+| PASSWORD_POLICY_VIOLATION | 400 | 새 비밀번호가 정책을 위반합니다 (`PATCH /api/admin/operators/me/password` — 길이 8–128자, 대·소·숫·특 4종 중 3종 이상 미충족) |
 
 ---
 

@@ -15,7 +15,10 @@ import { TotpEnrollment } from './TotpEnrollment';
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const initialErrorCode = params?.get('error') ?? null;
+  const [submitError, setSubmitError] = useState<string | null>(
+    initialErrorCode ? messageForCode(initialErrorCode) : null,
+  );
   const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<LoginInput | null>(null);
   const [needsTotp, setNeedsTotp] = useState(false);

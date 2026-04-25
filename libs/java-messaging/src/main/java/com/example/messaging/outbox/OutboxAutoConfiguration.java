@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 @AutoConfiguration
-@Import(OutboxJpaConfig.class)
+@Import({OutboxJpaConfig.class, OutboxSchedulerConfig.class})
 public class OutboxAutoConfiguration {
 
     @Bean

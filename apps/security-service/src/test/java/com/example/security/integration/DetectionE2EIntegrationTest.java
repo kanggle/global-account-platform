@@ -42,9 +42,6 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 residual (PR #44 실측): OutboxPollingScheduler scheduling-1 thread 가 "
-        + "orphaned HikariPool 참조 계속 — TASK-BE-077 로 승계.")
 class DetectionE2EIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {

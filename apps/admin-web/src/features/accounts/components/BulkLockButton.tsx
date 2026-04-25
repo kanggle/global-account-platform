@@ -9,7 +9,7 @@ export function BulkLockButton() {
 
   return (
     <>
-      <Button variant="destructive" onClick={() => setOpen(true)}>
+      <Button variant="default" onClick={() => setOpen(true)}>
         일괄 잠금
       </Button>
       <BulkLockDialog open={open} onOpenChange={setOpen} />

@@ -6,7 +6,7 @@ export const AccountSearchSchema = z.object({
 export type AccountSearchInput = z.infer<typeof AccountSearchSchema>;
 
 export const ReasonSchema = z.object({
-  reason: z.string().min(3, { message: '사유는 3자 이상이어야 합니다.' }),
+  reason: z.string().trim().min(3, { message: '사유는 3자 이상이어야 합니다.' }),
   ticketId: z.string().optional(),
 });
 export type ReasonInput = z.infer<typeof ReasonSchema>;

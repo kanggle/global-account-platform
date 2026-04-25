@@ -17,5 +17,11 @@ public enum ActionCode {
     OPERATOR_LOGOUT,
     // TASK-BE-054: GDPR/PIPA data rights.
     GDPR_DELETE,
-    DATA_EXPORT
+    DATA_EXPORT,
+    // TASK-BE-083: operator management (SUPER_ADMIN creates operators, changes roles/status).
+    // target_type=OPERATOR, target_id=external operator_id (UUID v7),
+    // permission_used=operator.manage.
+    OPERATOR_CREATE,
+    OPERATOR_ROLE_CHANGE,
+    OPERATOR_STATUS_CHANGE
 }

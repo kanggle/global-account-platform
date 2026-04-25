@@ -161,7 +161,7 @@ export function BulkLockDialog({ open, onOpenChange }: BulkLockDialogProps) {
             <Button type="button" variant="outline" onClick={() => handleClose(false)}>
               취소
             </Button>
-            <Button type="submit" variant="destructive" disabled={bulkLock.isPending}>
+            <Button type="submit" variant="default" disabled={bulkLock.isPending}>
               {bulkLock.isPending ? '처리 중...' : '일괄 잠금'}
             </Button>
           </DialogFooter>
