@@ -1,5 +1,5 @@
 ---
-id: TASK-FE-022
+id: TASK-FE-023
 title: "fix: TASK-FE-020 — GdprDeleteDialog 테스트 mock 반환값 수정 + 공백 reason Edge Case 추가 + useExportAccount mock 추가"
 status: ready
 area: frontend
