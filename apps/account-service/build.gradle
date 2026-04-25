@@ -36,10 +36,14 @@ dependencies {
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
     // Test
+    // TASK-BE-098: AbstractIntegrationTest lives in testFixtures source set so
+    // Testcontainers classes stay out of the production classpath (TASK-BE-078 pattern).
+    testImplementation testFixtures(project(':libs:java-test-support'))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:kafka'
     testImplementation 'com.jayway.jsonpath:json-path'
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
 }

@@ -11,17 +11,17 @@ import com.example.account.domain.status.StatusChangeReason;
 import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
 import com.example.messaging.outbox.OutboxJpaEntity;
 import com.example.messaging.outbox.OutboxJpaRepository;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Timestamp;
@@ -34,7 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration test for {@link AccountAnonymizationScheduler} (TASK-BE-094).
+ * Integration test for {@link AccountAnonymizationScheduler} (TASK-BE-094, fix in TASK-BE-098).
  *
  * <p>Verifies the end-to-end anonymization batch flow against a real MySQL Testcontainer:
  * <ol>
@@ -49,12 +49,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Outbox is queried directly because the spec mandates outbox as the source of truth
  * for event publication. Kafka template + outbox poller are mocked to avoid producer
  * metadata lookup at context startup (matches AccountSignupIntegrationTest pattern).
+ *
+ * <p>TASK-BE-098: extends {@link AbstractIntegrationTest} so MySQL/Kafka containers are
+ * shared per-JVM (platform/testing-strategy.md "Container Lifecycle"). The internal API
+ * token property is registered via a subclass {@code @DynamicPropertySource}.
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 @DisplayName("AccountAnonymizationScheduler 통합 테스트 — PII 익명화 배치 + outbox 발행")
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-class AccountAnonymizationSchedulerIntegrationTest {
+class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {
@@ -65,21 +70,8 @@ class AccountAnonymizationSchedulerIntegrationTest {
         }
     }
 
-    @SuppressWarnings("resource")
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("account_db")
-            .withUsername("account_user")
-            .withPassword("account_pass")
-            .withCommand("mysqld",
-                    "--default-authentication-plugin=mysql_native_password",
-                    "--log-bin-trust-function-creators=1");
-
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("internal.api.token", () -> "test-internal-token");
     }
@@ -129,11 +121,14 @@ class AccountAnonymizationSchedulerIntegrationTest {
         assertThat(reloaded.getEmail()).hasSize("anon_".length() + 12 + "@deleted.local".length());
         assertThat(reloaded.getEmailHash()).hasSize(64).matches("[0-9a-f]{64}");
 
-        // Profile masked + masked_at stamped.
+        // Profile masked + masked_at stamped (retention.md §2.5):
+        //   display_name → '탈퇴한 사용자' 고정 문자열
+        //   phone_number, birth_date, preferences → NULL
         Profile profile = profileRepository.findByAccountId(account.getId()).orElseThrow();
-        assertThat(profile.getDisplayName()).isNull();
+        assertThat(profile.getDisplayName()).isEqualTo("탈퇴한 사용자");
         assertThat(profile.getPhoneNumber()).isNull();
         assertThat(profile.getBirthDate()).isNull();
+        assertThat(profile.getPreferences()).isNull();
         assertThat(profile.getMaskedAt()).isNotNull();
 
         // Outbox: a new account.deleted row with anonymized=true was appended by this batch.
@@ -148,6 +143,11 @@ class AccountAnonymizationSchedulerIntegrationTest {
                         "Expected an account.deleted outbox row with anonymized=true"));
         assertThat(anonymizedEvent.getAggregateType()).isEqualTo("Account");
         assertThat(anonymizedEvent.getPayload()).contains("\"actorType\":\"system\"");
+        // TASK-BE-097: payload must carry gracePeriodEndsAt (account-events.md schema)
+        // and reasonCode resolved from the original DELETED transition (USER_REQUEST in the
+        // helper) — not the previously hardcoded value.
+        assertThat(anonymizedEvent.getPayload()).contains("\"gracePeriodEndsAt\"");
+        assertThat(anonymizedEvent.getPayload()).contains("\"reasonCode\":\"USER_REQUEST\"");
     }
 
     @Test

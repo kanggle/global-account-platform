@@ -10,17 +10,17 @@ import com.example.account.infrastructure.messaging.AccountOutboxPollingSchedule
 import com.example.account.infrastructure.persistence.AccountStatusHistoryJpaRepository;
 import com.example.messaging.outbox.OutboxJpaEntity;
 import com.example.messaging.outbox.OutboxJpaRepository;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Timestamp;
@@ -32,7 +32,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Integration test for {@link AccountDormantScheduler} (TASK-BE-094).
+ * Integration test for {@link AccountDormantScheduler} (TASK-BE-094, fix in TASK-BE-098).
  *
  * <p>Verifies the end-to-end batch flow against a real MySQL Testcontainer:
  * <ol>
@@ -47,12 +47,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * for event publication; Kafka delivery is verified separately by the outbox relay test.
  * The Kafka template and outbox poller are mocked to avoid producer metadata lookup
  * during context startup (matches AccountSignupIntegrationTest pattern).
+ *
+ * <p>TASK-BE-098: extends {@link AbstractIntegrationTest} so MySQL/Kafka containers are
+ * shared per-JVM (platform/testing-strategy.md "Container Lifecycle"). The internal API
+ * token property is registered via a subclass {@code @DynamicPropertySource}.
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 @DisplayName("AccountDormantScheduler 통합 테스트 — 휴면 전환 배치 + outbox 발행")
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-class AccountDormantSchedulerIntegrationTest {
+class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {
@@ -63,21 +68,8 @@ class AccountDormantSchedulerIntegrationTest {
         }
     }
 
-    @SuppressWarnings("resource")
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("account_db")
-            .withUsername("account_user")
-            .withPassword("account_pass")
-            .withCommand("mysqld",
-                    "--default-authentication-plugin=mysql_native_password",
-                    "--log-bin-trust-function-creators=1");
-
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("internal.api.token", () -> "test-internal-token");
     }
