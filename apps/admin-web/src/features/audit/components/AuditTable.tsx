@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAudit } from '../hooks/useAudit';
+import type { AuditFilters } from '../hooks/useAudit';
 import { Table, THead, TBody, TR, TH, TD } from '@/shared/ui/table';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
