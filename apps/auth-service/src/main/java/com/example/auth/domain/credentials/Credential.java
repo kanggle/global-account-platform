@@ -60,6 +60,33 @@ public class Credential {
         return email.trim().toLowerCase();
     }
 
+    /**
+     * Return a new {@code Credential} with the given hash applied. The id,
+     * accountId, email, createdAt are preserved; updatedAt advances to {@code now}
+     * and version is incremented by 1 (optimistic-lock contract).
+     *
+     * <p>Callers must have already validated the new password against
+     * {@link PasswordPolicy} before computing {@code newHash}.</p>
+     *
+     * @param newHash the new credential hash (algorithm + value)
+     * @param now     the timestamp to record as updatedAt
+     * @return a new Credential instance with the hash replaced
+     */
+    public Credential changePassword(CredentialHash newHash, Instant now) {
+        Objects.requireNonNull(newHash, "newHash must not be null");
+        Objects.requireNonNull(now, "now must not be null");
+        return new Credential(
+                this.id,
+                this.accountId,
+                this.email,
+                newHash.hash(),
+                newHash.algorithm(),
+                this.createdAt,
+                now,
+                this.version + 1
+        );
+    }
+
     public Long getId() {
         return id;
     }
