@@ -253,6 +253,7 @@ List<AccountJpaEntity> findAnonymizationCandidates(Instant threshold);
 | `profiles.display_name` | confidential | 계정 활성 기간 + 유예 30일 | 고정 문자열 `'탈퇴한 사용자'`로 마스킹 | GDPR Art.17, PIPA §21 |
 | `profiles.phone_number` | confidential | 계정 활성 기간 + 유예 30일 | NULL | GDPR Art.17, PIPA §21 |
 | `profiles.birth_date` | confidential | 계정 활성 기간 + 유예 30일 | NULL | GDPR Art.17, PIPA §21 |
+| `profiles.profile_image_url` *(향후 컬럼 도입 시 적용)* | confidential | 계정 활성 기간 + 유예 30일 | NULL (익명화) | GDPR Art.17, PIPA §21 |
 | `profiles.preferences` | internal | 계정 활성 기간 + 유예 30일 | NULL | regulated R6 (불필요 데이터 미보유) |
 | `account_status_history` | internal | **5년** (감사 보존) | 보존 — append-only, PII 미포함 (`actor_id`는 운영자 ID 또는 system) | [audit-heavy.md](../../../rules/traits/audit-heavy.md) A3, PIPA §21② |
 | `outbox_events` | internal | 발행 후 7일 (publishedAt 기준) | 별도 정리 배치(범위 외) | regulated R6 |
