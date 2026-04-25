@@ -115,11 +115,16 @@ public class AccountAnonymizationScheduler {
          * Re-load the account inside this transaction (so optimistic locking + status
          * re-check can catch concurrent grace-period recovery) and run anonymization.
          *
-         * <p>Resolves the original deletion {@code reasonCode} by querying
-         * {@code account_status_history} for the most recent transition row that ended in
-         * {@code DELETED} (n+1 query; batch size is bounded by retention.md §2 candidate count
-         * which is operationally small). Falls back to {@code USER_REQUEST} with a WARN log
-         * when no DELETED transition row is found (data inconsistency safeguard).
+         * <p>Resolves the original deletion context ({@code reasonCode}, {@code actorType},
+         * {@code actorId}) by querying {@code account_status_history} for the most recent
+         * transition row that ended in {@code DELETED} (n+1 query; batch size is bounded by
+         * retention.md §2 candidate count which is operationally small). Falls back to
+         * {@code (USER_REQUEST, "system", null)} with a WARN log when no DELETED transition
+         * row is found (data inconsistency safeguard).
+         *
+         * <p>Per retention.md §2.7, the re-published {@code account.deleted(anonymized=true)}
+         * payload must carry the {@code reasonCode}, {@code actorType}, {@code actorId} that
+         * were emitted on the original DELETED transition — not synthesized batch values.
          */
         @Transactional(propagation = Propagation.REQUIRES_NEW)
         public void anonymizeOne(String accountId) {
@@ -135,10 +140,10 @@ public class AccountAnonymizationScheduler {
 
             piiAnonymizer.anonymize(account);
 
-            // Resolve the original deletion reason from account_status_history.
-            // Re-publishing with the original reason preserves audit fidelity per
+            // Resolve the original deletion context from account_status_history.
+            // Re-publishing with the original reason/actor preserves audit fidelity per
             // retention.md §2.7 ("재발행 payload는 ... 원래 DELETED 전이 시 발행한 값 그대로").
-            String reasonCode = resolveOriginalDeletionReason(accountId);
+            DeletionContext ctx = resolveOriginalDeletionContext(accountId);
 
             // gracePeriodEndsAt = original deletedAt + 30d (retention.md §2.7,
             // "원래 유예 종료 시각"). This is the contract-defined semantic for the
@@ -150,14 +155,14 @@ public class AccountAnonymizationScheduler {
             // account-events.md §account.deleted).
             eventPublisher.publishAccountDeletedAnonymized(
                     account.getId(),
-                    reasonCode,
-                    "system",
-                    null,
+                    ctx.reasonCode(),
+                    ctx.actorType(),
+                    ctx.actorId(),
                     deletedAt,
                     gracePeriodEndsAt);
         }
 
-        private String resolveOriginalDeletionReason(String accountId) {
+        private DeletionContext resolveOriginalDeletionContext(String accountId) {
             Optional<AccountStatusHistoryEntry> lastDeleted = statusHistoryRepository
                     .findByAccountIdOrderByOccurredAtDesc(accountId)
                     .stream()
@@ -165,14 +170,31 @@ public class AccountAnonymizationScheduler {
                     .findFirst();
 
             if (lastDeleted.isPresent()) {
-                return lastDeleted.get().getReasonCode().name();
+                AccountStatusHistoryEntry entry = lastDeleted.get();
+                return new DeletionContext(
+                        entry.getReasonCode().name(),
+                        entry.getActorType(),
+                        entry.getActorId());
             }
 
             log.warn(
                     "No DELETED transition history found for accountId={}; "
-                            + "falling back to reasonCode={} for anonymized event re-publish.",
+                            + "falling back to reasonCode={}, actorType=system, actorId=null "
+                            + "for anonymized event re-publish.",
                     accountId, StatusChangeReason.USER_REQUEST.name());
-            return StatusChangeReason.USER_REQUEST.name();
+            return new DeletionContext(
+                    StatusChangeReason.USER_REQUEST.name(),
+                    "system",
+                    null);
+        }
+
+        /**
+         * Resolved context of the original DELETED transition, used to re-emit
+         * {@code account.deleted(anonymized=true)} with the same {@code reasonCode},
+         * {@code actorType}, and {@code actorId} the original event carried
+         * (retention.md §2.7).
+         */
+        private record DeletionContext(String reasonCode, String actorType, String actorId) {
         }
     }
 }

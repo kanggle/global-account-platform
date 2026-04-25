@@ -185,14 +185,15 @@ class AccountAnonymizationSchedulerTest {
         assertThat(profile.getMaskedAt()).isNotNull();
         verify(profileRepository).save(profile);
 
-        // Event re-published with the resolved reasonCode + gracePeriodEndsAt = deletedAt + 30d
+        // Event re-published with the resolved reasonCode/actorType/actorId from the
+        // DELETED history row + gracePeriodEndsAt = deletedAt + 30d
         // (retention.md §2.7, account-events.md §account.deleted).
         Instant expectedGraceEnd = DELETED_AT_OLD.plus(30, ChronoUnit.DAYS);
         verify(eventPublisher).publishAccountDeletedAnonymized(
                 eq(accountId),
                 eq(StatusChangeReason.USER_REQUEST.name()),
-                eq("system"),
-                eq(null),
+                eq("user"),
+                eq(accountId),
                 eq(DELETED_AT_OLD),
                 eq(expectedGraceEnd));
 
@@ -204,8 +205,8 @@ class AccountAnonymizationSchedulerTest {
     }
 
     @Test
-    @DisplayName("reasonCode 복원 — history 마지막 DELETED 전이의 reason(ADMIN_DELETE)이 이벤트 payload에 그대로 전달")
-    void runAnonymizationBatch_resolvesReasonCodeFromHistory_adminDelete() {
+    @DisplayName("deletion context 복원 — history 마지막 DELETED 전이의 reason/actorType/actorId(ADMIN_DELETE,operator,op-1)가 이벤트 payload에 그대로 전달")
+    void runAnonymizationBatch_resolvesDeletionContextFromHistory_adminDelete() {
         String accountId = "acc-admin";
         AccountJpaEntity candidate = entityFromAccount(deletedAccount(accountId, "admin@example.com"));
         AccountJpaEntity managed = entityFromAccount(deletedAccount(accountId, "admin@example.com"));
@@ -215,7 +216,7 @@ class AccountAnonymizationSchedulerTest {
                 .willReturn(List.of(candidate));
         given(accountJpaRepository.findById(accountId)).willReturn(Optional.of(managed));
         given(profileRepository.findByAccountId(accountId)).willReturn(Optional.of(profile));
-        // Most recent transition is to DELETED with ADMIN_DELETE reason.
+        // Most recent transition is to DELETED with ADMIN_DELETE reason performed by an operator.
         given(statusHistoryRepository.findByAccountIdOrderByOccurredAtDesc(accountId))
                 .willReturn(List.of(deletedHistoryEntry(
                         accountId, StatusChangeReason.ADMIN_DELETE,
@@ -226,15 +227,15 @@ class AccountAnonymizationSchedulerTest {
         verify(eventPublisher).publishAccountDeletedAnonymized(
                 eq(accountId),
                 eq(StatusChangeReason.ADMIN_DELETE.name()),
-                eq("system"),
-                eq(null),
+                eq("operator"),
+                eq("op-1"),
                 eq(DELETED_AT_OLD),
                 eq(DELETED_AT_OLD.plus(30, ChronoUnit.DAYS)));
     }
 
     @Test
-    @DisplayName("reasonCode fallback — DELETED 전이 history row가 없으면 USER_REQUEST + WARN 로그")
-    void runAnonymizationBatch_missingHistory_fallsBackToUserRequest() {
+    @DisplayName("deletion context fallback — DELETED 전이 history row가 없으면 USER_REQUEST + actorType=system + actorId=null + WARN 로그")
+    void runAnonymizationBatch_missingHistory_fallsBackToSystemContext() {
         String accountId = "acc-no-history";
         AccountJpaEntity candidate = entityFromAccount(deletedAccount(accountId, "noh@example.com"));
         AccountJpaEntity managed = entityFromAccount(deletedAccount(accountId, "noh@example.com"));
@@ -319,8 +320,9 @@ class AccountAnonymizationSchedulerTest {
         assertThat(accountCaptor.getValue().getId()).isEqualTo(stillDeletedId);
 
         verify(profileRepository).save(stillDeletedProfile);
+        // History supplied actorType="user", actorId=stillDeletedId for the surviving account.
         verify(eventPublisher, times(1)).publishAccountDeletedAnonymized(
-                eq(stillDeletedId), any(), eq("system"), eq(null),
+                eq(stillDeletedId), any(), eq("user"), eq(stillDeletedId),
                 any(Instant.class), any(Instant.class));
         // Recovered account: no event published
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
@@ -379,9 +381,9 @@ class AccountAnonymizationSchedulerTest {
         // Profile save only for the okId (failing path threw before profile lookup).
         verify(profileRepository).save(okProfile);
 
-        // Event published only for the okId.
+        // Event published only for the okId — context restored from history (user/okId).
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(okId), any(), eq("system"), eq(null),
+                eq(okId), any(), eq("user"), eq(okId),
                 any(Instant.class), any(Instant.class));
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
                 eq(failingId), any(), any(), any(),
