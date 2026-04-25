@@ -26,6 +26,11 @@ const MESSAGES_KO: Record<string, string> = {
   ACCOUNT_NOT_FOUND: '계정을 찾을 수 없습니다.',
   ENROLLMENT_REQUIRED: '2FA 등록이 필요합니다.',
   DOWNSTREAM_ERROR: '하위 서비스 호출에 실패했습니다.',
+  INVALID_STATE: '세션이 만료되었습니다. 다시 시도해주세요.',
+  INVALID_CODE: '소셜 로그인 인가 코드가 유효하지 않습니다.',
+  EMAIL_REQUIRED: '소셜 계정에서 이메일 정보를 가져올 수 없습니다.',
+  PROVIDER_ERROR: '소셜 로그인 서비스에 일시적인 문제가 발생했습니다.',
+  UNSUPPORTED_PROVIDER: '지원하지 않는 소셜 로그인 제공자입니다.',
 };
 
 export function messageForCode(code: string, fallback?: string): string {
