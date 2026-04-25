@@ -20,6 +20,25 @@ public class AuthExceptionHandler {
                 .body(ErrorResponse.of("CREDENTIALS_INVALID", "Invalid email or password"));
     }
 
+    /**
+     * Password-change flow uses a separate 400 mapping per
+     * {@code specs/contracts/http/auth-api.md} ({@code PATCH /api/auth/password}).
+     * Spring picks the most specific {@code @ExceptionHandler}, so this method
+     * wins over {@link #handleCredentialsInvalid} when the use case throws
+     * {@link CurrentPasswordMismatchException}.
+     */
+    @ExceptionHandler(CurrentPasswordMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleCurrentPasswordMismatch(CurrentPasswordMismatchException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CREDENTIALS_INVALID", "Current password does not match"));
+    }
+
+    @ExceptionHandler(PasswordPolicyViolationException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordPolicyViolation(PasswordPolicyViolationException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("PASSWORD_POLICY_VIOLATION", e.getMessage()));
+    }
+
     @ExceptionHandler(CredentialAlreadyExistsException.class)
     public ResponseEntity<ErrorResponse> handleCredentialAlreadyExists(CredentialAlreadyExistsException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
