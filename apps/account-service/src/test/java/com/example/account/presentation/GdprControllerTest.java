@@ -122,6 +122,7 @@ class GdprControllerTest {
                 .andExpect(jsonPath("$.accountId").value(ACCOUNT_ID))
                 .andExpect(jsonPath("$.email").value("user@example.com"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.createdAt").value("2026-01-01T00:00:00Z"))
                 .andExpect(jsonPath("$.profile.displayName").value("John Doe"))
                 .andExpect(jsonPath("$.profile.phoneNumber").value("+82-10-1234-5678"))
                 .andExpect(jsonPath("$.profile.birthDate").value("1990-01-15"))
