@@ -152,7 +152,7 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("payload.accountId 미존재 → WARN 로그 후 정상 종료, processed_events 미적재 (poison-pill 방지)")
+    @DisplayName("payload.accountId 미존재 → 계정 미갱신, dedup 행 기록으로 재전달 방지 (poison-pill 보호)")
     void consume_unknownAccount_skipsWithoutSideEffects() {
         String eventId = UUID.randomUUID().toString();
         Instant occurredAt = Instant.parse("2026-04-26T12:00:00Z");
@@ -161,12 +161,18 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
 
         kafkaTemplate.send(new ProducerRecord<>("auth.login.succeeded", unknownAccountId, envelope));
 
-        // Allow the consumer time to process and log; assert no dedup row was
-        // written because the use-case bailed before save().
+        // Dedup-first ordering (TASK-BE-104): the use-case writes the
+        // processed_events row BEFORE looking up the account. As a result, the
+        // dedup row IS persisted even when the account is missing — this is
+        // intentional and IMPROVES poison-pill protection by short-circuiting
+        // any redelivery on the existsByEventId fast-path. The account update
+        // itself is correctly skipped (account row was never created).
         await().pollDelay(3, TimeUnit.SECONDS)
                 .atMost(15, TimeUnit.SECONDS)
-                .untilAsserted(() ->
-                        assertThat(processedEventRepository.existsByEventId(eventId)).isFalse());
+                .untilAsserted(() -> {
+                    assertThat(processedEventRepository.existsByEventId(eventId)).isTrue();
+                    assertThat(accountRepository.findById(unknownAccountId)).isEmpty();
+                });
     }
 
     private String buildLoginSucceededEnvelope(String eventId, String accountId, Instant timestamp) {
