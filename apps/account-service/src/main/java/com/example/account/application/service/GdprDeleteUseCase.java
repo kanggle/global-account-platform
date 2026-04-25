@@ -11,6 +11,7 @@ import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.AccountStatusMachine;
+import com.example.account.domain.status.StateTransitionException;
 import com.example.account.domain.status.StatusChangeReason;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,18 @@ public class GdprDeleteUseCase {
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         AccountStatus previousStatus = account.getStatus();
+
+        // Spec: contracts/http/internal/admin-to-account.md POST /gdpr-delete returns
+        // STATE_TRANSITION_INVALID for already-DELETED accounts. The shared
+        // AccountStatusMachine treats same-state transitions idempotently for lock
+        // operations, so guard explicitly here for the GDPR erasure path which is
+        // not idempotent — masking a re-masked email would corrupt email_hash.
+        if (previousStatus == AccountStatus.DELETED) {
+            throw new StateTransitionException(
+                    AccountStatus.DELETED,
+                    AccountStatus.DELETED,
+                    StatusChangeReason.REGULATED_DELETION);
+        }
 
         // Transition to DELETED via state machine
         account.changeStatus(statusMachine, AccountStatus.DELETED, StatusChangeReason.REGULATED_DELETION);
