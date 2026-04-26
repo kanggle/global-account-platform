@@ -1,7 +1,5 @@
 package com.example.auth.domain.credentials;
 
-import com.example.auth.application.exception.PasswordPolicyViolationException;
-
 /**
  * Domain service that validates plaintext passwords against the project's
  * password policy (specs/features/password-management.md).

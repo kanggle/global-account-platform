@@ -1,10 +1,10 @@
 package com.example.auth.application;
 
 import com.example.auth.application.command.ConfirmPasswordResetCommand;
-import com.example.auth.application.exception.PasswordPolicyViolationException;
 import com.example.auth.application.exception.PasswordResetTokenInvalidException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.domain.credentials.Credential;
+import com.example.auth.domain.credentials.PasswordPolicyViolationException;
 import com.example.auth.domain.repository.BulkInvalidationStore;
 import com.example.auth.domain.repository.CredentialRepository;
 import com.example.auth.domain.repository.PasswordResetTokenStore;

@@ -1,6 +1,5 @@
 package com.example.auth.domain.credentials;
 
-import com.example.auth.application.exception.PasswordPolicyViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

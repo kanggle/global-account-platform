@@ -1,4 +1,4 @@
-package com.example.auth.application.exception;
+package com.example.auth.domain.credentials;
 
 /**
  * Thrown when a password fails to satisfy {@code PasswordPolicy} rules

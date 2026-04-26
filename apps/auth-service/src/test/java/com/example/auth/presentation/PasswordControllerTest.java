@@ -3,7 +3,7 @@ package com.example.auth.presentation;
 import com.example.auth.application.ChangePasswordUseCase;
 import com.example.auth.application.command.ChangePasswordCommand;
 import com.example.auth.application.exception.CurrentPasswordMismatchException;
-import com.example.auth.application.exception.PasswordPolicyViolationException;
+import com.example.auth.domain.credentials.PasswordPolicyViolationException;
 import com.example.auth.infrastructure.config.SecurityConfig;
 import com.example.auth.presentation.exception.AuthExceptionHandler;
 import org.junit.jupiter.api.DisplayName;

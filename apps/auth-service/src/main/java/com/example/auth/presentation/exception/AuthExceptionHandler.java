@@ -1,6 +1,7 @@
 package com.example.auth.presentation.exception;
 
 import com.example.auth.application.exception.*;
+import com.example.auth.domain.credentials.PasswordPolicyViolationException;
 import com.example.web.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
