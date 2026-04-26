@@ -65,9 +65,23 @@ public class AccountStatusUseCase {
 
         accountRepository.save(account);
 
-        // Record history
-        AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
+        recordStatusHistory(account.getId(), transition, command);
+
+        Instant now = Instant.now();
+        publishStatusChangeEvents(account, previousStatus, command, now);
+
+        return new StatusChangeResult(
                 account.getId(),
+                previousStatus.name(),
+                account.getStatus().name(),
+                now
+        );
+    }
+
+    private void recordStatusHistory(String accountId, StatusTransition transition,
+                                      ChangeStatusCommand command) {
+        AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
+                accountId,
                 transition.from(),
                 transition.to(),
                 transition.reason(),
@@ -76,40 +90,34 @@ public class AccountStatusUseCase {
                 command.details()
         );
         historyRepository.save(historyEntry);
+    }
 
-        Instant now = Instant.now();
-
-        // Publish events based on transition
-        if (previousStatus != command.targetStatus()) {
-            eventPublisher.publishStatusChanged(
-                    account.getId(),
-                    previousStatus.name(),
-                    command.targetStatus().name(),
-                    command.reason().name(),
-                    command.actorType(),
-                    command.actorId(),
-                    now
-            );
-
-            // Publish specialized events
-            if (command.targetStatus() == AccountStatus.LOCKED) {
-                eventPublisher.publishAccountLocked(
-                        account.getId(), command.reason().name(),
-                        command.actorType(), command.actorId(), now);
-            } else if (command.targetStatus() == AccountStatus.ACTIVE
-                    && previousStatus == AccountStatus.LOCKED) {
-                eventPublisher.publishAccountUnlocked(
-                        account.getId(), command.reason().name(),
-                        command.actorType(), command.actorId(), now);
-            }
+    private void publishStatusChangeEvents(Account account, AccountStatus previousStatus,
+                                            ChangeStatusCommand command, Instant now) {
+        if (previousStatus == command.targetStatus()) {
+            return;
         }
 
-        return new StatusChangeResult(
+        eventPublisher.publishStatusChanged(
                 account.getId(),
                 previousStatus.name(),
-                account.getStatus().name(),
+                command.targetStatus().name(),
+                command.reason().name(),
+                command.actorType(),
+                command.actorId(),
                 now
         );
+
+        if (command.targetStatus() == AccountStatus.LOCKED) {
+            eventPublisher.publishAccountLocked(
+                    account.getId(), command.reason().name(),
+                    command.actorType(), command.actorId(), now);
+        } else if (command.targetStatus() == AccountStatus.ACTIVE
+                && previousStatus == AccountStatus.LOCKED) {
+            eventPublisher.publishAccountUnlocked(
+                    account.getId(), command.reason().name(),
+                    command.actorType(), command.actorId(), now);
+        }
     }
 
     @Transactional
