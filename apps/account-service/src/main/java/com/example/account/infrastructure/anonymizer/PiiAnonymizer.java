@@ -1,5 +1,6 @@
 package com.example.account.infrastructure.anonymizer;
 
+import com.example.account.application.util.DigestUtils;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
@@ -7,9 +8,6 @@ import com.example.account.domain.repository.ProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Optional;
 
 /**
@@ -52,7 +50,7 @@ public class PiiAnonymizer {
      */
     public void anonymize(Account account) {
         String originalEmail = account.getEmail();
-        String fullHash = sha256Hex(originalEmail);
+        String fullHash = DigestUtils.sha256Hex(originalEmail);
         String maskedEmail = ANON_EMAIL_PREFIX + fullHash.substring(0, ANON_EMAIL_HASH_LENGTH) + ANON_EMAIL_DOMAIN;
 
         account.maskEmail(fullHash, maskedEmail);
@@ -65,17 +63,4 @@ public class PiiAnonymizer {
         });
     }
 
-    private static String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm not available", e);
-        }
-    }
 }
