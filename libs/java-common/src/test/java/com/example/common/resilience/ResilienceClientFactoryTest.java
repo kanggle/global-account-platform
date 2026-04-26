@@ -46,6 +46,11 @@ class ResilienceClientFactoryTest {
         assertThat(cfg.getSlidingWindowSize()).isEqualTo(10);
         assertThat(cfg.getMinimumNumberOfCalls()).isEqualTo(5);
         assertThat(cfg.getPermittedNumberOfCallsInHalfOpenState()).isEqualTo(3);
+        // Resilience4j 2.x exposes wait-in-open as an IntervalFunction (not a direct Duration).
+        // For a constant 10s wait configured via waitDurationInOpenState(Duration.ofSeconds(10)),
+        // the function returns 10_000ms regardless of attempt index.
+        assertThat(cfg.getWaitIntervalFunctionInOpenState().apply(1))
+                .isEqualTo(Duration.ofSeconds(10).toMillis());
     }
 
     // -------- buildCircuitBreaker --------

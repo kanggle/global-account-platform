@@ -5,6 +5,7 @@ import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.AccountStatusMachine;
 import com.example.account.domain.status.StatusChangeReason;
 import com.example.account.domain.status.StatusTransition;
+import com.example.common.id.UuidV7;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -12,7 +13,6 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Aggregate root for account domain.
@@ -180,8 +180,11 @@ public class Account {
 
     public AccountDomainEvent buildLockedEvent(String reasonCode, String actorType,
                                                 String actorId, Instant lockedAt) {
+        // TASK-BE-118: account.locked.eventId must be UUID v7 per
+        // specs/contracts/events/account-events.md so security-service can use it
+        // as a time-ordered idempotency key (account_lock_history.event_id).
         Map<String, Object> payload = new HashMap<>(Map.of(
-                "eventId", UUID.randomUUID().toString(),
+                "eventId", UuidV7.randomString(),
                 "accountId", id,
                 "reasonCode", reasonCode,
                 "actorType", actorType,

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -69,7 +70,7 @@ class AccountDomainEventTest {
     }
 
     @Test
-    @DisplayName("buildLockedEvent — eventId(UUID), reasonCode, lockedAt 포함, actorId null이면 제외")
+    @DisplayName("buildLockedEvent — eventId(UUID v7), reasonCode, lockedAt 포함, actorId null이면 제외")
     void buildLockedEvent_containsEventIdAndExcludesNullActorId() {
         Account account = newActiveAccount();
         Instant lockedAt = Instant.now();
@@ -79,6 +80,12 @@ class AccountDomainEventTest {
         assertThat(event.eventType()).isEqualTo("account.locked");
         Map<String, Object> p = event.payload();
         assertThat(p.get("eventId")).isNotNull().asString().isNotBlank();
+        // TASK-BE-118: eventId must be UUID v7 per
+        // specs/contracts/events/account-events.md (account.locked).
+        UUID parsedEventId = UUID.fromString((String) p.get("eventId"));
+        assertThat(parsedEventId.version())
+                .as("account.locked.eventId must be UUID v7 (RFC 9562)")
+                .isEqualTo(7);
         assertThat(p.get("accountId")).isEqualTo(account.getId());
         assertThat(p.get("reasonCode")).isEqualTo(REASON_CODE);
         assertThat(p.get("actorType")).isEqualTo(ACTOR_TYPE);
@@ -87,7 +94,7 @@ class AccountDomainEventTest {
     }
 
     @Test
-    @DisplayName("buildLockedEvent — 호출마다 다른 eventId가 생성된다 (유니크성)")
+    @DisplayName("buildLockedEvent — 호출마다 다른 UUID v7 eventId가 생성된다 (유니크성)")
     void buildLockedEvent_eachCallProducesUniqueEventId() {
         Account account = newActiveAccount();
 
@@ -95,6 +102,9 @@ class AccountDomainEventTest {
         String id2 = (String) account.buildLockedEvent(REASON_CODE, ACTOR_TYPE, null, Instant.now()).payload().get("eventId");
 
         assertThat(id1).isNotEqualTo(id2);
+        // TASK-BE-118: both eventIds must be UUID v7.
+        assertThat(UUID.fromString(id1).version()).isEqualTo(7);
+        assertThat(UUID.fromString(id2).version()).isEqualTo(7);
     }
 
     @Test
