@@ -43,7 +43,7 @@ class DataExportUseCaseTest {
         return Account.reconstitute(
                 ACCOUNT_ID, EMAIL, null,
                 AccountStatus.ACTIVE,
-                CREATED_AT, CREATED_AT, null, null, 0);
+                CREATED_AT, CREATED_AT, null, null, null, 0);
     }
 
     private Profile sampleProfile() {

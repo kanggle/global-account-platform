@@ -52,7 +52,7 @@ class SignupUseCaseTest {
     private Account sampleSavedAccount() {
         return Account.reconstitute(
                 "acc-1", "new@example.com", null,
-                AccountStatus.ACTIVE, Instant.now(), Instant.now(), null, null, 0);
+                AccountStatus.ACTIVE, Instant.now(), Instant.now(), null, null, null, 0);
     }
 
     @Test

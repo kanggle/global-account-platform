@@ -116,6 +116,7 @@ class AccountDormantSchedulerTest {
                 Instant.now(),
                 null,
                 Instant.now().minusSeconds(400L * 86400),
+                null,
                 0);
         return AccountJpaEntity.fromDomain(account);
     }

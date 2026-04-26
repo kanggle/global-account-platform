@@ -25,6 +25,15 @@ public class Account {
     private Instant updatedAt;
     private Instant deletedAt;
     private Instant lastLoginSucceededAt;
+    /**
+     * TASK-BE-114: email verification timestamp.
+     *
+     * <p>{@code null} means the email has not been verified yet. The account
+     * stays ACTIVE either way — verification is non-blocking. Set exactly once
+     * by {@link #verifyEmail(Instant)}; subsequent attempts throw
+     * {@link IllegalStateException}.</p>
+     */
+    private Instant emailVerifiedAt;
     private int version;
 
     public static Account create(String email) {
@@ -48,6 +57,7 @@ public class Account {
                                         Instant createdAt, Instant updatedAt,
                                         Instant deletedAt,
                                         Instant lastLoginSucceededAt,
+                                        Instant emailVerifiedAt,
                                         int version) {
         Account account = new Account();
         account.id = id;
@@ -58,6 +68,7 @@ public class Account {
         account.updatedAt = updatedAt;
         account.deletedAt = deletedAt;
         account.lastLoginSucceededAt = lastLoginSucceededAt;
+        account.emailVerifiedAt = emailVerifiedAt;
         account.version = version;
         return account;
     }
@@ -87,6 +98,29 @@ public class Account {
         if (this.lastLoginSucceededAt == null || occurredAt.isAfter(this.lastLoginSucceededAt)) {
             this.lastLoginSucceededAt = occurredAt;
         }
+    }
+
+    /**
+     * Mark this account's email as verified at the given instant.
+     *
+     * <p>TASK-BE-114: idempotent first-write only. The field is set exactly
+     * once — re-verification is rejected with {@link IllegalStateException}
+     * so the application layer can surface a 409 {@code EMAIL_ALREADY_VERIFIED}
+     * to the caller.</p>
+     *
+     * <p>Verification does <strong>not</strong> change account status — the
+     * platform's signup flow is non-blocking and accounts stay ACTIVE either
+     * way. Only {@code emailVerifiedAt} and {@code updatedAt} change.</p>
+     *
+     * @param now timestamp at which verification occurred (UTC); never null
+     * @throws IllegalStateException if {@code emailVerifiedAt} is already set
+     */
+    public void verifyEmail(Instant now) {
+        if (this.emailVerifiedAt != null) {
+            throw new IllegalStateException("Email is already verified");
+        }
+        this.emailVerifiedAt = now;
+        this.updatedAt = now;
     }
 
     /**
