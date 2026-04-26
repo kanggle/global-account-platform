@@ -1,11 +1,15 @@
 package com.example.admin.presentation;
 
-import com.example.admin.application.OperatorAdminUseCase;
-import com.example.admin.application.OperatorAdminUseCase.CreateOperatorResult;
-import com.example.admin.application.OperatorAdminUseCase.OperatorPage;
-import com.example.admin.application.OperatorAdminUseCase.OperatorSummary;
-import com.example.admin.application.OperatorAdminUseCase.PatchRolesResult;
-import com.example.admin.application.OperatorAdminUseCase.PatchStatusResult;
+import com.example.admin.application.ChangeMyPasswordUseCase;
+import com.example.admin.application.CreateOperatorUseCase;
+import com.example.admin.application.CreateOperatorUseCase.CreateOperatorResult;
+import com.example.admin.application.OperatorQueryService;
+import com.example.admin.application.OperatorQueryService.OperatorPage;
+import com.example.admin.application.OperatorQueryService.OperatorSummary;
+import com.example.admin.application.PatchOperatorRoleUseCase;
+import com.example.admin.application.PatchOperatorRoleUseCase.PatchRolesResult;
+import com.example.admin.application.PatchOperatorStatusUseCase;
+import com.example.admin.application.PatchOperatorStatusUseCase.PatchStatusResult;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.domain.rbac.Permission;
 import com.example.admin.infrastructure.security.OperatorContextHolder;
@@ -40,35 +44,24 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * TASK-BE-083 — operator management HTTP surface. Matches the 5 endpoints in
- * {@code specs/contracts/http/admin-api.md} and mirrors the layering of
- * {@link AccountAdminController} / {@link AdminGdprController}.
- *
- * <p>Authorisation uses the central {@link RequiresPermission} aspect; the
- * {@code GET /api/admin/me} endpoint is authenticated-only (operator JWT
- * required) and so carries no permission annotation — the upstream
- * {@code OperatorAuthenticationFilter} enforces authentication, and this
- * endpoint is a GET (exempt from the aspect's deny-by-default mutation rule).
- */
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @Validated
 public class OperatorAdminController {
 
-    private final OperatorAdminUseCase useCase;
-
-    // ------------------------------------------------------------------ GET /me
+    private final OperatorQueryService queryService;
+    private final CreateOperatorUseCase createOperatorUseCase;
+    private final PatchOperatorRoleUseCase patchOperatorRoleUseCase;
+    private final PatchOperatorStatusUseCase patchOperatorStatusUseCase;
+    private final ChangeMyPasswordUseCase changeMyPasswordUseCase;
 
     @GetMapping("/me")
     public ResponseEntity<OperatorSummaryResponse> currentOperator() {
         String operatorId = OperatorContextHolder.require().operatorId();
-        OperatorSummary summary = useCase.getCurrentOperator(operatorId);
+        OperatorSummary summary = queryService.getCurrentOperator(operatorId);
         return ResponseEntity.ok(toResponse(summary));
     }
-
-    // --------------------------------------------------------- GET /operators
 
     @GetMapping("/operators")
     @RequiresPermission(Permission.OPERATOR_MANAGE)
@@ -77,7 +70,7 @@ public class OperatorAdminController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
 
-        OperatorPage result = useCase.listOperators(status, page, size);
+        OperatorPage result = queryService.listOperators(status, page, size);
         List<OperatorSummaryResponse> items = new ArrayList<>(result.content().size());
         for (OperatorSummary s : result.content()) {
             items.add(toResponse(s));
@@ -90,8 +83,6 @@ public class OperatorAdminController {
                 result.totalPages()));
     }
 
-    // -------------------------------------------------------- POST /operators
-
     @PostMapping("/operators")
     @RequiresPermission(Permission.OPERATOR_MANAGE)
     public ResponseEntity<CreateOperatorResponse> createOperator(
@@ -101,7 +92,7 @@ public class OperatorAdminController {
 
         String reason = requireReason(headerReason);
 
-        CreateOperatorResult result = useCase.createOperator(
+        CreateOperatorResult result = createOperatorUseCase.createOperator(
                 body.email(),
                 body.displayName(),
                 body.password(),
@@ -121,8 +112,6 @@ public class OperatorAdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // --------------------------------- PATCH /operators/{operatorId}/roles
-
     @PatchMapping("/operators/{operatorId}/roles")
     @RequiresPermission(Permission.OPERATOR_MANAGE)
     public ResponseEntity<PatchOperatorRolesResponse> patchRoles(
@@ -132,7 +121,7 @@ public class OperatorAdminController {
 
         String reason = requireReason(headerReason);
 
-        PatchRolesResult result = useCase.patchRoles(
+        PatchRolesResult result = patchOperatorRoleUseCase.patchRoles(
                 operatorId,
                 body.roles(),
                 OperatorContextHolder.require(),
@@ -141,8 +130,6 @@ public class OperatorAdminController {
         return ResponseEntity.ok(new PatchOperatorRolesResponse(
                 result.operatorId(), result.roles(), result.auditId()));
     }
-
-    // -------------------------------- PATCH /operators/{operatorId}/status
 
     @PatchMapping("/operators/{operatorId}/status")
     @RequiresPermission(Permission.OPERATOR_MANAGE)
@@ -153,7 +140,7 @@ public class OperatorAdminController {
 
         String reason = requireReason(headerReason);
 
-        PatchStatusResult result = useCase.patchStatus(
+        PatchStatusResult result = patchOperatorStatusUseCase.patchStatus(
                 operatorId,
                 body.status(),
                 OperatorContextHolder.require(),
@@ -166,19 +153,15 @@ public class OperatorAdminController {
                 result.auditId()));
     }
 
-    // ----------------------------- PATCH /operators/me/password
-
     @PatchMapping("/operators/me/password")
     @SelfServiceEndpoint
     public ResponseEntity<Void> changeMyPassword(
             @Valid @RequestBody ChangeMyPasswordRequest body) {
 
         String operatorId = OperatorContextHolder.require().operatorId();
-        useCase.changeMyPassword(operatorId, body.currentPassword(), body.newPassword());
+        changeMyPasswordUseCase.changeMyPassword(operatorId, body.currentPassword(), body.newPassword());
         return ResponseEntity.noContent().build();
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static OperatorSummaryResponse toResponse(OperatorSummary summary) {
         return new OperatorSummaryResponse(

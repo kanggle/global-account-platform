@@ -1,7 +1,7 @@
 package com.example.account.integration;
 
 import com.example.account.domain.repository.AccountRepository;
-import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
+import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.account.infrastructure.persistence.ProfileJpaRepository;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
@@ -111,7 +111,7 @@ class SignupRollbackIntegrationTest {
     private KafkaTemplate kafkaTemplate;
 
     @MockitoBean
-    private AccountOutboxPollingScheduler outboxPollingScheduler;
+    private OutboxPollingScheduler outboxPollingScheduler;
 
     @BeforeEach
     void resetWireMock() {

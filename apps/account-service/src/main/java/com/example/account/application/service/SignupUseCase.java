@@ -55,13 +55,7 @@ public class SignupUseCase {
 
             // Publish outbox event only after credential is persisted (avoids leaking
             // "account created" if the credential write later fails).
-            eventPublisher.publishAccountCreated(
-                    account.getId(),
-                    account.getEmail(),
-                    account.getStatus().name(),
-                    profile.getLocale(),
-                    account.getCreatedAt()
-            );
+            eventPublisher.publishAccountCreated(account, profile.getLocale());
 
             return SignupResult.from(account);
         } catch (DataIntegrityViolationException e) {

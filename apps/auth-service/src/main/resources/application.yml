@@ -53,6 +53,14 @@ outbox:
   polling:
     interval-ms: ${OUTBOX_POLLING_INTERVAL_MS:1000}
     batch-size: ${OUTBOX_POLLING_BATCH_SIZE:50}
+  topic-mapping:
+    auth.login.attempted: auth.login.attempted
+    auth.login.failed: auth.login.failed
+    auth.login.succeeded: auth.login.succeeded
+    auth.token.refreshed: auth.token.refreshed
+    auth.token.reuse.detected: auth.token.reuse.detected
+    auth.session.created: auth.session.created
+    auth.session.revoked: auth.session.revoked
 
 server:
   port: 8081

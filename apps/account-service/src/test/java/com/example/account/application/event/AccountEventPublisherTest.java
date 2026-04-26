@@ -1,5 +1,7 @@
 package com.example.account.application.event;
 
+import com.example.account.domain.account.Account;
+import com.example.account.domain.status.AccountStatus;
 import com.example.messaging.outbox.OutboxWriter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +27,7 @@ import static org.mockito.Mockito.verify;
 /**
  * Unit test for {@link AccountEventPublisher} focused on the
  * TASK-BE-041b-fix contract change: the flat {@code account.locked} payload
- * must carry an {@code eventId} (UUID v7) so downstream consumers can
+ * must carry an {@code eventId} (UUID) so downstream consumers can
  * idempotently deduplicate Kafka at-least-once redeliveries.
  */
 @ExtendWith(MockitoExtension.class)
@@ -41,11 +43,16 @@ class AccountEventPublisherTest {
     @InjectMocks
     private AccountEventPublisher publisher;
 
+    private Account account(String id) {
+        return Account.reconstitute(id, "user@example.com", null, AccountStatus.ACTIVE,
+                Instant.now(), Instant.now(), null, null, null, 0);
+    }
+
     @Test
     @DisplayName("publishAccountLocked payload includes a UUID eventId (idempotency key)")
     void publishAccountLockedIncludesEventId() throws Exception {
         publisher.publishAccountLocked(
-                "acc-1", "ADMIN_LOCK", "operator", "op-7",
+                account("acc-1"), "ADMIN_LOCK", "operator", "op-7",
                 Instant.parse("2026-04-14T10:00:00Z"));
 
         ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
@@ -71,9 +78,9 @@ class AccountEventPublisherTest {
     @Test
     @DisplayName("Each publishAccountLocked call generates a fresh eventId")
     void eventIdIsUniquePerCall() throws Exception {
-        publisher.publishAccountLocked("acc-1", "ADMIN_LOCK", "operator", "op-1",
+        publisher.publishAccountLocked(account("acc-1"), "ADMIN_LOCK", "operator", "op-1",
                 Instant.parse("2026-04-14T10:00:00Z"));
-        publisher.publishAccountLocked("acc-2", "AUTO_DETECT", "system", null,
+        publisher.publishAccountLocked(account("acc-2"), "AUTO_DETECT", "system", null,
                 Instant.parse("2026-04-14T10:00:01Z"));
 
         ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);

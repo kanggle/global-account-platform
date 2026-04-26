@@ -154,7 +154,7 @@ public class AccountAnonymizationScheduler {
             // Re-publish account.deleted with anonymized=true (retention.md §2.7,
             // account-events.md §account.deleted).
             eventPublisher.publishAccountDeletedAnonymized(
-                    account.getId(),
+                    account,
                     ctx.reasonCode(),
                     ctx.actorType(),
                     ctx.actorId(),

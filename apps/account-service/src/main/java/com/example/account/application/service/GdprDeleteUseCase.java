@@ -6,7 +6,6 @@ import com.example.account.application.result.GdprDeleteResult;
 import com.example.account.application.util.DigestUtils;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.history.AccountStatusHistoryEntry;
-import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.repository.ProfileRepository;
@@ -85,13 +84,13 @@ public class GdprDeleteUseCase {
         // Publish events
         Instant now = Instant.now();
         eventPublisher.publishStatusChanged(
-                account.getId(), previousStatus.name(), AccountStatus.DELETED.name(),
-                StatusChangeReason.REGULATED_DELETION.name(), "operator", operatorId, now);
+                account, previousStatus.name(), StatusChangeReason.REGULATED_DELETION.name(),
+                "operator", operatorId, now);
 
         // GDPR/PIPA Right to Erasure path is *immediate* (no grace period), so
         // gracePeriodEndsAt collapses onto the deletion instant — see retention.md §2.2.
         eventPublisher.publishAccountDeletedAnonymized(
-                account.getId(), StatusChangeReason.REGULATED_DELETION.name(),
+                account, StatusChangeReason.REGULATED_DELETION.name(),
                 "operator", operatorId, now, now);
 
         return new GdprDeleteResult(account.getId(), AccountStatus.DELETED.name(), emailHash, maskedAt);

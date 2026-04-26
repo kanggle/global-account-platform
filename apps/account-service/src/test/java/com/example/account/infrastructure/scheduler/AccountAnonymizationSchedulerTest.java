@@ -32,6 +32,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -192,7 +193,7 @@ class AccountAnonymizationSchedulerTest {
         // (retention.md §2.7, account-events.md §account.deleted).
         Instant expectedGraceEnd = DELETED_AT_OLD.plus(30, ChronoUnit.DAYS);
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(accountId),
+                any(Account.class),
                 eq(StatusChangeReason.USER_REQUEST.name()),
                 eq("user"),
                 eq(accountId),
@@ -227,7 +228,7 @@ class AccountAnonymizationSchedulerTest {
         scheduler.runAnonymizationBatch();
 
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(accountId),
+                any(Account.class),
                 eq(StatusChangeReason.ADMIN_DELETE.name()),
                 eq("operator"),
                 eq("op-1"),
@@ -254,7 +255,7 @@ class AccountAnonymizationSchedulerTest {
         scheduler.runAnonymizationBatch();
 
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(accountId),
+                any(Account.class),
                 eq(StatusChangeReason.USER_REQUEST.name()),
                 eq("system"),
                 eq(null),
@@ -324,11 +325,11 @@ class AccountAnonymizationSchedulerTest {
         verify(profileRepository).save(stillDeletedProfile);
         // History supplied actorType="user", actorId=stillDeletedId for the surviving account.
         verify(eventPublisher, times(1)).publishAccountDeletedAnonymized(
-                eq(stillDeletedId), any(), eq("user"), eq(stillDeletedId),
+                any(Account.class), any(), eq("user"), eq(stillDeletedId),
                 any(Instant.class), any(Instant.class));
         // Recovered account: no event published
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
-                eq(recoveredId), any(), any(), any(),
+                argThat(a -> recoveredId.equals(a.getId())), any(), any(), any(),
                 any(Instant.class), any(Instant.class));
 
         // Metrics: 1 processed, 1 failed (skipped)
@@ -385,10 +386,10 @@ class AccountAnonymizationSchedulerTest {
 
         // Event published only for the okId — context restored from history (user/okId).
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(okId), any(), eq("user"), eq(okId),
+                any(Account.class), any(), eq("user"), eq(okId),
                 any(Instant.class), any(Instant.class));
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
-                eq(failingId), any(), any(), any(),
+                argThat(a -> failingId.equals(a.getId())), any(), any(), any(),
                 any(Instant.class), any(Instant.class));
 
         // Metrics: 1 processed, 1 failed

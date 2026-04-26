@@ -53,6 +53,12 @@ management:
     tags:
       service: ${spring.application.name}
 
+outbox:
+  topic-mapping:
+    membership.subscription.activated: membership.subscription.activated
+    membership.subscription.expired: membership.subscription.expired
+    membership.subscription.cancelled: membership.subscription.cancelled
+
 internal:
   api:
     # Shared secret for X-Internal-Token on /internal/** routes. MUST be set in

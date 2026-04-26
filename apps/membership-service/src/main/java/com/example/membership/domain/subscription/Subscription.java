@@ -1,5 +1,6 @@
 package com.example.membership.domain.subscription;
 
+import com.example.membership.domain.event.MembershipDomainEvent;
 import com.example.membership.domain.plan.PlanLevel;
 import com.example.membership.domain.subscription.status.SubscriptionStatus;
 import com.example.membership.domain.subscription.status.SubscriptionStatusMachine;
@@ -8,6 +9,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -108,5 +112,37 @@ public class Subscription {
      */
     void unsafeSetExpiresAtForTest(LocalDateTime value) {
         this.expiresAt = value;
+    }
+
+    public MembershipDomainEvent buildActivatedEvent() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("subscriptionId", id);
+        payload.put("accountId", accountId);
+        payload.put("planLevel", planLevel.name());
+        payload.put("startedAt", toIsoString(startedAt));
+        payload.put("expiresAt", toIsoString(expiresAt));
+        return new MembershipDomainEvent("membership.subscription.activated", payload);
+    }
+
+    public MembershipDomainEvent buildExpiredEvent() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("subscriptionId", id);
+        payload.put("accountId", accountId);
+        payload.put("planLevel", planLevel.name());
+        payload.put("expiredAt", toIsoString(expiresAt));
+        return new MembershipDomainEvent("membership.subscription.expired", payload);
+    }
+
+    public MembershipDomainEvent buildCancelledEvent() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("subscriptionId", id);
+        payload.put("accountId", accountId);
+        payload.put("planLevel", planLevel.name());
+        payload.put("cancelledAt", toIsoString(cancelledAt));
+        return new MembershipDomainEvent("membership.subscription.cancelled", payload);
+    }
+
+    private static String toIsoString(LocalDateTime ldt) {
+        return ldt == null ? null : ldt.toInstant(ZoneOffset.UTC).toString();
     }
 }

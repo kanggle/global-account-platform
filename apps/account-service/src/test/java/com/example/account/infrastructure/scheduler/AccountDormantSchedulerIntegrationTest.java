@@ -6,7 +6,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
-import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
+import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.account.infrastructure.persistence.AccountStatusHistoryJpaRepository;
 import com.example.messaging.outbox.OutboxJpaEntity;
 import com.example.messaging.outbox.OutboxJpaRepository;
@@ -99,7 +99,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
     private KafkaTemplate kafkaTemplate;
 
     @MockitoBean
-    private AccountOutboxPollingScheduler outboxPollingScheduler;
+    private OutboxPollingScheduler outboxPollingScheduler;
 
     @Test
     @DisplayName("365일 초과 ACTIVE 계정이 DORMANT로 전환되고 account.status.changed 이벤트가 outbox에 적재된다")

@@ -1,5 +1,6 @@
 package com.example.account.domain.account;
 
+import com.example.account.domain.event.AccountDomainEvent;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.AccountStatusMachine;
 import com.example.account.domain.status.StatusChangeReason;
@@ -9,6 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Aggregate root for account domain.
@@ -145,5 +149,78 @@ public class Account {
         }
 
         return transition;
+    }
+
+    public AccountDomainEvent buildCreatedEvent(String emailHash, String locale) {
+        return new AccountDomainEvent("account.created", Map.of(
+                "accountId", id,
+                "emailHash", emailHash,
+                "status", status.name(),
+                "locale", locale,
+                "createdAt", createdAt.toString()
+        ));
+    }
+
+    public AccountDomainEvent buildStatusChangedEvent(String previousStatus, String reasonCode,
+                                                       String actorType, String actorId,
+                                                       Instant occurredAt) {
+        Map<String, Object> payload = new HashMap<>(Map.of(
+                "accountId", id,
+                "previousStatus", previousStatus,
+                "currentStatus", status.name(),
+                "reasonCode", reasonCode,
+                "actorType", actorType,
+                "occurredAt", occurredAt.toString()
+        ));
+        if (actorId != null) {
+            payload.put("actorId", actorId);
+        }
+        return new AccountDomainEvent("account.status.changed", payload);
+    }
+
+    public AccountDomainEvent buildLockedEvent(String reasonCode, String actorType,
+                                                String actorId, Instant lockedAt) {
+        Map<String, Object> payload = new HashMap<>(Map.of(
+                "eventId", UUID.randomUUID().toString(),
+                "accountId", id,
+                "reasonCode", reasonCode,
+                "actorType", actorType,
+                "lockedAt", lockedAt.toString()
+        ));
+        if (actorId != null) {
+            payload.put("actorId", actorId);
+        }
+        return new AccountDomainEvent("account.locked", payload);
+    }
+
+    public AccountDomainEvent buildUnlockedEvent(String reasonCode, String actorType,
+                                                  String actorId, Instant unlockedAt) {
+        Map<String, Object> payload = new HashMap<>(Map.of(
+                "accountId", id,
+                "reasonCode", reasonCode,
+                "actorType", actorType,
+                "unlockedAt", unlockedAt.toString()
+        ));
+        if (actorId != null) {
+            payload.put("actorId", actorId);
+        }
+        return new AccountDomainEvent("account.unlocked", payload);
+    }
+
+    public AccountDomainEvent buildDeletedEvent(String reasonCode, String actorType,
+                                                 String actorId, Instant deletedAt,
+                                                 Instant gracePeriodEndsAt, boolean anonymized) {
+        Map<String, Object> payload = new HashMap<>(Map.of(
+                "accountId", id,
+                "reasonCode", reasonCode,
+                "actorType", actorType,
+                "deletedAt", deletedAt.toString(),
+                "gracePeriodEndsAt", gracePeriodEndsAt.toString(),
+                "anonymized", anonymized
+        ));
+        if (actorId != null) {
+            payload.put("actorId", actorId);
+        }
+        return new AccountDomainEvent("account.deleted", payload);
     }
 }

@@ -82,6 +82,14 @@ account:
     connect-timeout-ms: 3000
     read-timeout-ms: 5000
 
+outbox:
+  topic-mapping:
+    account.created: account.created
+    account.status.changed: account.status.changed
+    account.locked: account.locked
+    account.unlocked: account.unlocked
+    account.deleted: account.deleted
+
 internal:
   api:
     token: ${INTERNAL_API_TOKEN:}

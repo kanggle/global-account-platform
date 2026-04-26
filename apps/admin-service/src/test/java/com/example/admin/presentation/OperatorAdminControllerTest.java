@@ -1,7 +1,11 @@
 package com.example.admin.presentation;
 
 import com.example.admin.application.AdminActionAuditor;
-import com.example.admin.application.OperatorAdminUseCase;
+import com.example.admin.application.ChangeMyPasswordUseCase;
+import com.example.admin.application.CreateOperatorUseCase;
+import com.example.admin.application.OperatorQueryService;
+import com.example.admin.application.PatchOperatorRoleUseCase;
+import com.example.admin.application.PatchOperatorStatusUseCase;
 import com.example.admin.application.exception.CurrentPasswordMismatchException;
 import com.example.admin.application.exception.OperatorEmailConflictException;
 import com.example.admin.application.exception.OperatorNotFoundException;
@@ -75,8 +79,11 @@ class OperatorAdminControllerTest {
     @Autowired
     MockMvc mockMvc;
 
-    @MockBean
-    OperatorAdminUseCase useCase;
+    @MockBean OperatorQueryService queryService;
+    @MockBean CreateOperatorUseCase createOperatorUseCase;
+    @MockBean PatchOperatorRoleUseCase patchOperatorRoleUseCase;
+    @MockBean PatchOperatorStatusUseCase patchOperatorStatusUseCase;
+    @MockBean ChangeMyPasswordUseCase changeMyPasswordUseCase;
 
     @MockBean
     PermissionEvaluator permissionEvaluator;
@@ -98,8 +105,8 @@ class OperatorAdminControllerTest {
 
     @Test
     void me_returns_current_operator_without_permission_annotation() throws Exception {
-        when(useCase.getCurrentOperator("op-actor")).thenReturn(
-                new OperatorAdminUseCase.OperatorSummary(
+        when(queryService.getCurrentOperator("op-actor")).thenReturn(
+                new OperatorQueryService.OperatorSummary(
                         "op-actor", "actor@example.com", "Actor",
                         "ACTIVE", List.of("SUPER_ADMIN"), true,
                         Instant.parse("2026-04-24T10:00:00Z"),
@@ -122,11 +129,8 @@ class OperatorAdminControllerTest {
 
     @Test
     void me_missing_operator_row_returns_401_token_invalid() throws Exception {
-        // TASK-BE-084: stale/revoked JWT with a valid signature but no
-        // backing row must produce 401 TOKEN_INVALID (not 404). The admin-api
-        // contract for GET /me defines only the 401 error code.
         doThrow(new OperatorUnauthorizedException("operator not found"))
-                .when(useCase).getCurrentOperator("op-actor");
+                .when(queryService).getCurrentOperator("op-actor");
 
         mockMvc.perform(get("/api/admin/me").header("Authorization", bearer()))
                 .andExpect(status().isUnauthorized())
@@ -137,11 +141,11 @@ class OperatorAdminControllerTest {
 
     @Test
     void list_operators_returns_page() throws Exception {
-        OperatorAdminUseCase.OperatorSummary s = new OperatorAdminUseCase.OperatorSummary(
+        OperatorQueryService.OperatorSummary s = new OperatorQueryService.OperatorSummary(
                 "op-1", "one@example.com", "One", "ACTIVE", List.of("SUPPORT_LOCK"),
                 false, null, Instant.parse("2026-01-01T00:00:00Z"));
-        when(useCase.listOperators(any(), anyInt(), anyInt()))
-                .thenReturn(new OperatorAdminUseCase.OperatorPage(List.of(s), 1L, 0, 20, 1));
+        when(queryService.listOperators(any(), anyInt(), anyInt()))
+                .thenReturn(new OperatorQueryService.OperatorPage(List.of(s), 1L, 0, 20, 1));
 
         mockMvc.perform(get("/api/admin/operators").header("Authorization", bearer()))
                 .andExpect(status().isOk())
@@ -169,9 +173,9 @@ class OperatorAdminControllerTest {
 
     @Test
     void create_operator_returns_201() throws Exception {
-        when(useCase.createOperator(
+        when(createOperatorUseCase.createOperator(
                 anyString(), anyString(), anyString(), any(), any(), anyString()))
-                .thenReturn(new OperatorAdminUseCase.CreateOperatorResult(
+                .thenReturn(new CreateOperatorUseCase.CreateOperatorResult(
                         "op-new", "new@example.com", "New", "ACTIVE",
                         List.of("SUPPORT_LOCK"), false,
                         Instant.parse("2026-04-24T10:00:00Z"),
@@ -198,7 +202,7 @@ class OperatorAdminControllerTest {
     @Test
     void create_operator_duplicate_email_returns_409() throws Exception {
         doThrow(new OperatorEmailConflictException("dup"))
-                .when(useCase).createOperator(anyString(), anyString(), anyString(), any(), any(), anyString());
+                .when(createOperatorUseCase).createOperator(anyString(), anyString(), anyString(), any(), any(), anyString());
 
         mockMvc.perform(post("/api/admin/operators")
                         .header("Authorization", bearer())
@@ -220,7 +224,7 @@ class OperatorAdminControllerTest {
     @Test
     void create_operator_unknown_role_returns_400() throws Exception {
         doThrow(new RoleNotFoundException("GHOST"))
-                .when(useCase).createOperator(anyString(), anyString(), anyString(), any(), any(), anyString());
+                .when(createOperatorUseCase).createOperator(anyString(), anyString(), anyString(), any(), any(), anyString());
 
         mockMvc.perform(post("/api/admin/operators")
                         .header("Authorization", bearer())
@@ -280,8 +284,8 @@ class OperatorAdminControllerTest {
 
     @Test
     void patch_roles_returns_200() throws Exception {
-        when(useCase.patchRoles(anyString(), any(), any(), anyString()))
-                .thenReturn(new OperatorAdminUseCase.PatchRolesResult(
+        when(patchOperatorRoleUseCase.patchRoles(anyString(), any(), any(), anyString()))
+                .thenReturn(new PatchOperatorRoleUseCase.PatchRolesResult(
                         "op-target",
                         List.of("SUPPORT_READONLY"),
                         "audit-patch"));
@@ -302,7 +306,7 @@ class OperatorAdminControllerTest {
     @Test
     void patch_roles_missing_operator_returns_404() throws Exception {
         doThrow(new OperatorNotFoundException("missing"))
-                .when(useCase).patchRoles(anyString(), any(), any(), anyString());
+                .when(patchOperatorRoleUseCase).patchRoles(anyString(), any(), any(), anyString());
 
         mockMvc.perform(patch("/api/admin/operators/ghost/roles")
                         .header("Authorization", bearer())
@@ -319,8 +323,8 @@ class OperatorAdminControllerTest {
 
     @Test
     void patch_status_success_returns_200() throws Exception {
-        when(useCase.patchStatus(anyString(), anyString(), any(), anyString()))
-                .thenReturn(new OperatorAdminUseCase.PatchStatusResult(
+        when(patchOperatorStatusUseCase.patchStatus(anyString(), anyString(), any(), anyString()))
+                .thenReturn(new PatchOperatorStatusUseCase.PatchStatusResult(
                         "op-target", "ACTIVE", "SUSPENDED", "audit-sus"));
 
         mockMvc.perform(patch("/api/admin/operators/op-target/status")
@@ -339,7 +343,7 @@ class OperatorAdminControllerTest {
     @Test
     void patch_status_self_suspend_returns_400() throws Exception {
         doThrow(new SelfSuspendForbiddenException("self"))
-                .when(useCase).patchStatus(anyString(), anyString(), any(), anyString());
+                .when(patchOperatorStatusUseCase).patchStatus(anyString(), anyString(), any(), anyString());
 
         mockMvc.perform(patch("/api/admin/operators/op-target/status")
                         .header("Authorization", bearer())
@@ -355,7 +359,7 @@ class OperatorAdminControllerTest {
     @Test
     void patch_status_same_value_returns_400_state_transition() throws Exception {
         doThrow(new StateTransitionInvalidException("already"))
-                .when(useCase).patchStatus(anyString(), anyString(), any(), anyString());
+                .when(patchOperatorStatusUseCase).patchStatus(anyString(), anyString(), any(), anyString());
 
         mockMvc.perform(patch("/api/admin/operators/op-target/status")
                         .header("Authorization", bearer())
@@ -408,7 +412,7 @@ class OperatorAdminControllerTest {
     @Test
     void change_my_password_current_mismatch_returns_400() throws Exception {
         doThrow(new CurrentPasswordMismatchException())
-                .when(useCase).changeMyPassword(anyString(), anyString(), anyString());
+                .when(changeMyPasswordUseCase).changeMyPassword(anyString(), anyString(), anyString());
 
         mockMvc.perform(patch("/api/admin/operators/me/password")
                         .header("Authorization", bearer())
@@ -423,7 +427,7 @@ class OperatorAdminControllerTest {
     @Test
     void change_my_password_policy_violation_returns_400() throws Exception {
         doThrow(new PasswordPolicyViolationException("Password must contain at least 3 categories"))
-                .when(useCase).changeMyPassword(anyString(), anyString(), anyString());
+                .when(changeMyPasswordUseCase).changeMyPassword(anyString(), anyString(), anyString());
 
         mockMvc.perform(patch("/api/admin/operators/me/password")
                         .header("Authorization", bearer())

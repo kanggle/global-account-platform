@@ -1,29 +1,25 @@
 package com.example.auth.application.event;
 
 import com.example.auth.domain.session.SessionContext;
+import com.example.messaging.event.BaseEventPublisher;
 import com.example.messaging.outbox.OutboxWriter;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
-@Slf4j
 @Component
-@RequiredArgsConstructor
-public class AuthEventPublisher {
+public class AuthEventPublisher extends BaseEventPublisher {
 
     private static final String AGGREGATE_TYPE = "auth";
     private static final String SOURCE = "auth-service";
 
-    private final OutboxWriter outboxWriter;
-    private final ObjectMapper objectMapper;
+    public AuthEventPublisher(OutboxWriter outboxWriter, ObjectMapper objectMapper) {
+        super(outboxWriter, objectMapper);
+    }
 
     public void publishLoginAttempted(String accountId, String emailHash, SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -35,7 +31,7 @@ public class AuthEventPublisher {
         payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("timestamp", Instant.now().toString());
 
-        writeEvent("auth.login.attempted", accountId != null ? accountId : emailHash, payload);
+        write("auth.login.attempted", accountId != null ? accountId : emailHash, payload);
     }
 
     public void publishLoginFailed(String accountId, String emailHash, String failureReason,
@@ -51,7 +47,7 @@ public class AuthEventPublisher {
         payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("timestamp", Instant.now().toString());
 
-        writeEvent("auth.login.failed", accountId != null ? accountId : emailHash, payload);
+        write("auth.login.failed", accountId != null ? accountId : emailHash, payload);
     }
 
     /**
@@ -72,7 +68,7 @@ public class AuthEventPublisher {
         payload.put("sessionJti", sessionJti);
         payload.put("timestamp", Instant.now().toString());
 
-        writeEvent("auth.login.succeeded", accountId, payload);
+        write("auth.login.succeeded", accountId, payload);
     }
 
     /**
@@ -99,7 +95,7 @@ public class AuthEventPublisher {
         payload.put("isNewDevice", isNewDevice);
         payload.put("timestamp", Instant.now().toString());
 
-        writeEvent("auth.login.succeeded", accountId, payload);
+        write("auth.login.succeeded", accountId, payload);
     }
 
     /**
@@ -122,7 +118,7 @@ public class AuthEventPublisher {
         payload.put("loginMethod", loginMethod);
         payload.put("timestamp", Instant.now().toString());
 
-        writeEvent("auth.login.succeeded", accountId, payload);
+        write("auth.login.succeeded", accountId, payload);
     }
 
     public void publishTokenRefreshed(String accountId, String previousJti, String newJti,
@@ -135,7 +131,7 @@ public class AuthEventPublisher {
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
         payload.put("timestamp", Instant.now().toString());
 
-        writeEvent("auth.token.refreshed", accountId, payload);
+        write("auth.token.refreshed", accountId, payload);
     }
 
     /**
@@ -156,7 +152,7 @@ public class AuthEventPublisher {
         payload.put("sessionsRevoked", sessionsRevoked);
         payload.put("revokedCount", revokedCount);
 
-        writeEvent("auth.token.reuse.detected", accountId, payload);
+        write("auth.token.reuse.detected", accountId, payload);
     }
 
     /**
@@ -181,7 +177,7 @@ public class AuthEventPublisher {
         payload.put("issuedAt", issuedAt.toString());
         payload.put("evictedDeviceIds", evictedDeviceIds != null ? evictedDeviceIds : List.of());
 
-        writeEvent("auth.session.created", accountId, payload);
+        write("auth.session.created", accountId, payload);
     }
 
     /**
@@ -208,25 +204,11 @@ public class AuthEventPublisher {
         actor.put("accountId", actorAccountId);
         payload.put("actor", actor);
 
-        writeEvent("auth.session.revoked", accountId, payload);
+        write("auth.session.revoked", accountId, payload);
     }
 
-    private void writeEvent(String eventType, String aggregateId, Map<String, Object> payload) {
-        Map<String, Object> envelope = new LinkedHashMap<>();
+    private void write(String eventType, String aggregateId, Map<String, Object> payload) {
         // TODO: TASK-BE-015 switch to UUID v7 when Java 21+ UUID v7 support is added
-        envelope.put("eventId", UUID.randomUUID().toString());
-        envelope.put("eventType", eventType);
-        envelope.put("source", SOURCE);
-        envelope.put("occurredAt", Instant.now().toString());
-        envelope.put("schemaVersion", 1);
-        envelope.put("partitionKey", aggregateId);
-        envelope.put("payload", payload);
-
-        try {
-            String json = objectMapper.writeValueAsString(envelope);
-            outboxWriter.save(AGGREGATE_TYPE, aggregateId, eventType, json);
-        } catch (JsonProcessingException e) {
-            log.error("Failed to serialize event payload for {}: {}", eventType, e.getMessage());
-        }
+        writeEvent(AGGREGATE_TYPE, aggregateId, eventType, SOURCE, payload);
     }
 }

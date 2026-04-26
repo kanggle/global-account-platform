@@ -8,7 +8,7 @@ import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
-import com.example.account.infrastructure.messaging.AccountOutboxPollingScheduler;
+import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.messaging.outbox.OutboxJpaEntity;
 import com.example.messaging.outbox.OutboxJpaRepository;
 import com.example.testsupport.integration.AbstractIntegrationTest;
@@ -98,7 +98,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
     private KafkaTemplate kafkaTemplate;
 
     @MockitoBean
-    private AccountOutboxPollingScheduler outboxPollingScheduler;
+    private OutboxPollingScheduler outboxPollingScheduler;
 
     @Test
     @DisplayName("30일 초과 DELETED + masked_at NULL — 배치 실행 후 PII 마스킹, masked_at 설정, account.deleted(anonymized=true) 발행")

@@ -9,6 +9,7 @@ dependencies {
     implementation project(':libs:java-web')
     implementation project(':libs:java-messaging')
     implementation project(':libs:java-observability')
+    implementation project(':libs:java-security')
 
     // Spring Boot starters
     implementation 'org.springframework.boot:spring-boot-starter-web'

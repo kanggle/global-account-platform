@@ -159,11 +159,11 @@ class GdprDeleteUseCaseTest {
 
         // Two events: status_changed + account_deleted_anonymized
         verify(eventPublisher).publishStatusChanged(
-                eq(ACCOUNT_ID), eq("ACTIVE"), eq("DELETED"),
+                any(Account.class), eq("ACTIVE"),
                 eq(StatusChangeReason.REGULATED_DELETION.name()),
                 eq("operator"), eq(OPERATOR_ID), any(Instant.class));
         verify(eventPublisher).publishAccountDeletedAnonymized(
-                eq(ACCOUNT_ID), eq(StatusChangeReason.REGULATED_DELETION.name()),
+                any(Account.class), eq(StatusChangeReason.REGULATED_DELETION.name()),
                 eq("operator"), eq(OPERATOR_ID), any(Instant.class), any(Instant.class));
     }
 
@@ -187,7 +187,7 @@ class GdprDeleteUseCaseTest {
 
         // Events still published exactly once each
         verify(eventPublisher, times(1)).publishStatusChanged(
-                any(), any(), any(), any(), any(), any(), any(Instant.class));
+                any(), any(), any(), any(), any(), any(Instant.class));
         verify(eventPublisher, times(1)).publishAccountDeletedAnonymized(
                 any(), any(), any(), any(), any(Instant.class), any(Instant.class));
     }
@@ -207,7 +207,7 @@ class GdprDeleteUseCaseTest {
         verify(profileRepository, never()).save(any(Profile.class));
         verify(historyRepository, never()).save(any(AccountStatusHistoryEntry.class));
         verify(eventPublisher, never()).publishStatusChanged(
-                any(), any(), any(), any(), any(), any(), any(Instant.class));
+                any(), any(), any(), any(), any(), any(Instant.class));
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
                 any(), any(), any(), any(), any(Instant.class), any(Instant.class));
     }
@@ -227,7 +227,7 @@ class GdprDeleteUseCaseTest {
         verify(profileRepository, never()).save(any(Profile.class));
         verify(historyRepository, never()).save(any(AccountStatusHistoryEntry.class));
         verify(eventPublisher, never()).publishStatusChanged(
-                any(), any(), any(), any(), any(), any(), any(Instant.class));
+                any(), any(), any(), any(), any(), any(Instant.class));
         verify(eventPublisher, never()).publishAccountDeletedAnonymized(
                 any(), any(), any(), any(), any(Instant.class), any(Instant.class));
     }

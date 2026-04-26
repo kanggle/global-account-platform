@@ -47,13 +47,7 @@ public class SocialSignupUseCase {
             profileRepository.save(profile);
 
             // Publish account.created outbox event
-            eventPublisher.publishAccountCreated(
-                    account.getId(),
-                    account.getEmail(),
-                    account.getStatus().name(),
-                    profile.getLocale(),
-                    account.getCreatedAt()
-            );
+            eventPublisher.publishAccountCreated(account, profile.getLocale());
 
             return SocialSignupResult.fromNew(account);
         } catch (DataIntegrityViolationException e) {

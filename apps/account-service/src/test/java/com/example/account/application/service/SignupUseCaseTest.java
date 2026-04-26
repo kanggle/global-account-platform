@@ -66,8 +66,7 @@ class SignupUseCaseTest {
         assertThat(result.accountId()).isEqualTo("acc-1");
         verify(authServicePort).createCredential(eq("acc-1"), eq("new@example.com"), eq("password123!"));
         verify(profileRepository).save(any(Profile.class));
-        verify(eventPublisher).publishAccountCreated(eq("acc-1"), eq("new@example.com"),
-                eq("ACTIVE"), any(), any(Instant.class));
+        verify(eventPublisher).publishAccountCreated(any(Account.class), any());
     }
 
     @Test
@@ -81,7 +80,7 @@ class SignupUseCaseTest {
         assertThatThrownBy(() -> signupUseCase.execute(sampleCommand()))
                 .isInstanceOf(AccountAlreadyExistsException.class);
 
-        verify(eventPublisher, never()).publishAccountCreated(any(), any(), any(), any(), any());
+        verify(eventPublisher, never()).publishAccountCreated(any(), any());
     }
 
     @Test
@@ -97,7 +96,7 @@ class SignupUseCaseTest {
 
         // unit test cannot observe the DB rollback — it verifies the event side-effect is
         // suppressed, which is the observable contract from outside the transaction.
-        verify(eventPublisher, never()).publishAccountCreated(any(), any(), any(), any(), any());
+        verify(eventPublisher, never()).publishAccountCreated(any(), any());
     }
 
     @Test

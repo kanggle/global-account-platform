@@ -13,11 +13,13 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -32,6 +34,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
  *       {@link ScheduledFuture}.</li>
  *   <li>Once stopped, {@link OutboxPollingScheduler#pollAndPublish()} returns
  *       early without touching {@link OutboxPublisher}.</li>
+ *   <li>{@link OutboxPollingScheduler#resolveTopic(String)} resolves from
+ *       config map and throws for unknown types.</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -39,23 +43,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 @DisplayName("OutboxPollingScheduler 수명주기 단위 테스트")
 class OutboxPollingSchedulerTest {
 
-    @Mock
-    private OutboxPublisher outboxPublisher;
+    @Mock private OutboxPublisher outboxPublisher;
+    @Mock private KafkaTemplate<String, String> kafkaTemplate;
+    @Mock private ThreadPoolTaskScheduler taskScheduler;
+    @Mock private ScheduledFuture<?> scheduledFuture;
 
-    @Mock
-    private KafkaTemplate<String, String> kafkaTemplate;
-
-    @Mock
-    private ThreadPoolTaskScheduler taskScheduler;
-
-    @Mock
-    private ScheduledFuture<?> scheduledFuture;
-
-    private TestScheduler scheduler;
+    private OutboxPollingScheduler scheduler;
 
     @BeforeEach
     void setUp() {
-        scheduler = new TestScheduler(outboxPublisher, kafkaTemplate, taskScheduler);
+        OutboxProperties props = new OutboxProperties();
+        props.setTopicMapping(Map.of("test.event", "test-topic"));
+        scheduler = new OutboxPollingScheduler(outboxPublisher, kafkaTemplate, taskScheduler, props, null);
         ReflectionTestUtils.setField(scheduler, "intervalMs", 1000L);
     }
 
@@ -95,21 +94,17 @@ class OutboxPollingSchedulerTest {
         verifyNoInteractions(outboxPublisher);
     }
 
-    /**
-     * Minimal concrete subclass exposed for the abstract {@link OutboxPollingScheduler}.
-     * {@link #resolveTopic(String)} is never invoked by these tests — all
-     * lifecycle assertions target the base class behaviour.
-     */
-    static class TestScheduler extends OutboxPollingScheduler {
-        TestScheduler(OutboxPublisher publisher,
-                      KafkaTemplate<String, String> kafka,
-                      ThreadPoolTaskScheduler scheduler) {
-            super(publisher, kafka, scheduler);
-        }
+    @Test
+    @DisplayName("topicMapping에 있는 이벤트 타입이면 매핑된 토픽 이름을 반환한다")
+    void resolveTopic_knownEventType_returnsTopic() {
+        assertThat(scheduler.resolveTopic("test.event")).isEqualTo("test-topic");
+    }
 
-        @Override
-        protected String resolveTopic(String eventType) {
-            return "test-topic";
-        }
+    @Test
+    @DisplayName("topicMapping에 없는 이벤트 타입이면 IllegalStateException 을 던진다")
+    void resolveTopic_unknownEventType_throwsIllegalStateException() {
+        assertThatThrownBy(() -> scheduler.resolveTopic("unknown.event"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unknown.event");
     }
 }

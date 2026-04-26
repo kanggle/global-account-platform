@@ -4,21 +4,17 @@ import com.example.auth.application.exception.AccountServiceUnavailableException
 import com.example.auth.application.port.AccountServicePort;
 import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.SocialSignupResult;
+import com.example.common.resilience.ResilienceClientFactory;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
-import io.github.resilience4j.retry.RetryConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -44,40 +40,9 @@ public class AccountServiceClient implements AccountServicePort {
             @Value("${auth.account-service.base-url}") String baseUrl,
             @Value("${auth.account-service.connect-timeout-ms:3000}") int connectTimeoutMs,
             @Value("${auth.account-service.read-timeout-ms:5000}") int readTimeoutMs) {
-
-        // Configure HTTP client with timeouts
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
-                .build();
-
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
-
-        this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
-                .requestFactory(requestFactory)
-                .build();
-
-        // Circuit breaker: 50% failure rate, 10s sliding window
-        CircuitBreakerConfig cbConfig = CircuitBreakerConfig.custom()
-                .failureRateThreshold(50)
-                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.TIME_BASED)
-                .slidingWindowSize(10)
-                .minimumNumberOfCalls(5)
-                .waitDurationInOpenState(Duration.ofSeconds(10))
-                .permittedNumberOfCallsInHalfOpenState(3)
-                .build();
-        this.circuitBreaker = CircuitBreaker.of("accountService", cbConfig);
-
-        // Retry: 2 retries, exponential backoff + jitter, no retry on 4xx
-        RetryConfig retryConfig = RetryConfig.custom()
-                .maxAttempts(3) // 1 initial + 2 retries
-                .intervalFunction(io.github.resilience4j.core.IntervalFunction
-                        .ofExponentialRandomBackoff(Duration.ofMillis(500)))
-                .ignoreExceptions(HttpClientErrorException.class)
-                .retryExceptions(Exception.class)
-                .build();
-        this.retry = Retry.of("accountService", retryConfig);
+        this.restClient = ResilienceClientFactory.buildRestClient(baseUrl, connectTimeoutMs, readTimeoutMs);
+        this.circuitBreaker = ResilienceClientFactory.buildCircuitBreaker("accountService");
+        this.retry = ResilienceClientFactory.buildRetry("accountService");
     }
 
     @Override
