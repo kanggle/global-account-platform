@@ -39,6 +39,20 @@ public class AuthExceptionHandler {
                 .body(ErrorResponse.of("PASSWORD_POLICY_VIOLATION", e.getMessage()));
     }
 
+    /**
+     * Password-reset confirm flow (TASK-BE-109): unknown / expired / already-used
+     * tokens, and the "credential row vanished between request and confirm" edge
+     * case, all surface as the same 400 so the API does not leak which condition
+     * triggered the rejection.
+     */
+    @ExceptionHandler(PasswordResetTokenInvalidException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordResetTokenInvalid(
+            PasswordResetTokenInvalidException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("PASSWORD_RESET_TOKEN_INVALID",
+                        "Password reset token is invalid or has expired"));
+    }
+
     @ExceptionHandler(CredentialAlreadyExistsException.class)
     public ResponseEntity<ErrorResponse> handleCredentialAlreadyExists(CredentialAlreadyExistsException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
