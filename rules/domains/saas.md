@@ -70,6 +70,15 @@ SaaS 도메인에서 공통으로 발생하는 에러는 [../../platform/error-h
 - `AUDIT_FAILURE` — 감사 row 기록 실패 시 명령 중단 (S5·audit-heavy 교차) (500)
 - `ACCOUNT_NOT_FOUND` — 대상 계정 미존재 (admin 경로 전용 맥락; 공개 account-api와 의미 동일하나 등록 맥락이 admin) (404)
 - `STATE_TRANSITION_INVALID` — 현재 상태에서 허용되지 않는 상태 전이 (admin 경로; S3 상태 기계와 교차) (422)
+- `TOTP_NOT_ENROLLED` — TOTP 미등록 운영자가 복구 코드 재발급 요청 시 (admin 경로; 재발급 전 `/api/admin/auth/2fa/enroll` 선행 필요) (404)
+
+### Email Verification (account-service 전용)
+
+다음 코드는 [../../platform/error-handling.md](../../platform/error-handling.md)의 `Email Verification [domain: saas]` 섹션에 등록되어 있다. account-service 이메일 인증 플로우(`POST /api/accounts/signup/verify-email`, `POST /api/accounts/signup/resend-verification-email`)에서만 발생한다.
+
+- `TOKEN_EXPIRED_OR_INVALID` — 이메일 인증 토큰 만료·미존재·이미 소비됨 (400)
+- `EMAIL_ALREADY_VERIFIED` — 해당 계정의 이메일이 이미 인증된 상태 (409)
+- `RATE_LIMITED` — 이메일 재발송 rate limit 초과 (5분 내 1회). `RATE_LIMIT_EXCEEDED`(로그인 rate limit, gateway/auth-service)와 구분. (429)
 
 ---
 
