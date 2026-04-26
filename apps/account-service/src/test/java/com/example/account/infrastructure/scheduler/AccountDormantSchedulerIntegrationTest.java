@@ -196,6 +196,81 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("lastLoginSucceededAt이 NULL이고 createdAt이 366일 초과면 createdAt 기준으로 DORMANT 전환된다 (BE-103 이전 계정)")
+    void runDormantBatch_nullLastLogin_oldCreatedAt_transitionsToDormant() {
+        // 시나리오: BE-103 auth.login.succeeded 컨슈머가 도입되기 전 생성된 계정.
+        // last_login_succeeded_at은 한 번도 채워지지 않아 NULL이고, created_at은 366일 전.
+        // COALESCE(last_login_succeeded_at, created_at)이 created_at으로 폴백되어
+        // 365일 임계를 초과하므로 DORMANT 전환되어야 한다 (retention.md §1.3/§1.4).
+        String email = "dormant-null-login-" + UUID.randomUUID() + "@example.com";
+        Account account = createActiveAccount(email);
+        Instant longAgoCreated = Instant.now().minus(366, ChronoUnit.DAYS);
+        setAccountTimestamps(account.getId(), longAgoCreated);
+
+        // last_login_succeeded_at이 실제로 NULL로 저장됐는지 SQL로 직접 검증
+        // (Timestamp.from(null) 같은 사고를 방지).
+        Timestamp persistedLastLogin = jdbcTemplate.queryForObject(
+                "SELECT last_login_succeeded_at FROM accounts WHERE id = ?",
+                Timestamp.class,
+                account.getId());
+        assertThat(persistedLastLogin).isNull();
+
+        scheduler.runDormantBatch();
+
+        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.DORMANT);
+
+        // History append: 1행, ACTIVE → DORMANT, DORMANT_365D, system.
+        var history = historyRepository.findByAccountIdOrderByOccurredAtDesc(account.getId());
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0).getFromStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(history.get(0).getToStatus()).isEqualTo(AccountStatus.DORMANT);
+        assertThat(history.get(0).getReasonCode()).isEqualTo(StatusChangeReason.DORMANT_365D);
+        assertThat(history.get(0).getActorType()).isEqualTo("system");
+        assertThat(history.get(0).getActorId()).isNull();
+
+        // Outbox: account.status.changed 1건 적재.
+        List<OutboxJpaEntity> outboxRows = findOutboxByAggregateId(account.getId());
+        assertThat(outboxRows)
+                .extracting(OutboxJpaEntity::getEventType)
+                .contains("account.status.changed");
+        OutboxJpaEntity statusEvent = outboxRows.stream()
+                .filter(e -> "account.status.changed".equals(e.getEventType()))
+                .findFirst().orElseThrow();
+        assertThat(statusEvent.getAggregateType()).isEqualTo("Account");
+        assertThat(statusEvent.getPayload()).contains("\"previousStatus\":\"ACTIVE\"");
+        assertThat(statusEvent.getPayload()).contains("\"currentStatus\":\"DORMANT\"");
+        assertThat(statusEvent.getPayload()).contains("\"reasonCode\":\"DORMANT_365D\"");
+    }
+
+    @Test
+    @DisplayName("createdAt이 366일 초과여도 lastLoginSucceededAt이 364일이면 ACTIVE 유지된다 (최근 로그인 이력 보호)")
+    void runDormantBatch_recentLastLogin_oldCreatedAt_remainsActive() {
+        // 시나리오: 계정 자체는 366일 전 생성되었지만 364일 전 로그인 성공 이력이 있는 경우.
+        // COALESCE(last_login_succeeded_at, created_at) = last_login_succeeded_at (364일 전)이
+        // 365일 임계 안쪽이므로 휴면 후보에서 제외되어야 한다.
+        String email = "dormant-recent-login-" + UUID.randomUUID() + "@example.com";
+        Account account = createActiveAccount(email);
+        Instant longAgoCreated = Instant.now().minus(366, ChronoUnit.DAYS);
+        Instant recentLogin = Instant.now().minus(364, ChronoUnit.DAYS);
+        setAccountTimestamps(account.getId(), longAgoCreated, recentLogin);
+
+        scheduler.runDormantBatch();
+
+        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+
+        // history에 추가된 행이 없어야 한다.
+        assertThat(historyRepository.findByAccountIdOrderByOccurredAtDesc(account.getId()))
+                .isEmpty();
+
+        // outbox에 account.status.changed 이벤트가 적재되지 않아야 한다.
+        assertThat(findOutboxByAggregateId(account.getId()))
+                .extracting(OutboxJpaEntity::getEventType)
+                .doesNotContain("account.status.changed");
+    }
+
+    @Test
     @DisplayName("이미 DORMANT인 계정은 배치에서 다시 처리되지 않는다 (status='ACTIVE' 필터에 의해 제외)")
     void runDormantBatch_alreadyDormant_isNotReprocessed() {
         String email = "dormant-already-" + UUID.randomUUID() + "@example.com";
@@ -241,6 +316,23 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
                 "UPDATE accounts SET created_at = ?, last_login_succeeded_at = ? WHERE id = ?",
                 Timestamp.from(createdAt),
                 Timestamp.from(lastLoginSucceededAt),
+                accountId);
+    }
+
+    /**
+     * Overload for the BE-103-pre-migration scenario: set {@code created_at} to a fixed past
+     * instant while keeping {@code last_login_succeeded_at = NULL}. Exercises the
+     * {@code COALESCE(last_login_succeeded_at, created_at)} fallback branch in
+     * {@link com.example.account.infrastructure.persistence.AccountJpaRepository#findActiveDormantCandidates}.
+     *
+     * <p>Binding {@code null} as the second parameter — JdbcTemplate maps that to SQL NULL,
+     * which is what the COALESCE expression needs to fall through to {@code created_at}.
+     */
+    private void setAccountTimestamps(String accountId, Instant createdAt) {
+        jdbcTemplate.update(
+                "UPDATE accounts SET created_at = ?, last_login_succeeded_at = ? WHERE id = ?",
+                Timestamp.from(createdAt),
+                null,
                 accountId);
     }
 
