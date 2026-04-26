@@ -41,6 +41,13 @@ public class AccountJpaEntity {
     @Column(name = "last_login_succeeded_at")
     private Instant lastLoginSucceededAt;
 
+    /**
+     * TASK-BE-114: email verification timestamp. NULL until the user completes
+     * the verify-email flow. Existing rows on V0008 migration are NULL.
+     */
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
     @Version
     @Column(nullable = false)
     private int version;
@@ -55,12 +62,13 @@ public class AccountJpaEntity {
         entity.updatedAt = account.getUpdatedAt();
         entity.deletedAt = account.getDeletedAt();
         entity.lastLoginSucceededAt = account.getLastLoginSucceededAt();
+        entity.emailVerifiedAt = account.getEmailVerifiedAt();
         entity.version = account.getVersion();
         return entity;
     }
 
     public Account toDomain() {
         return Account.reconstitute(id, email, emailHash, status, createdAt, updatedAt,
-                deletedAt, lastLoginSucceededAt, version);
+                deletedAt, lastLoginSucceededAt, emailVerifiedAt, version);
     }
 }

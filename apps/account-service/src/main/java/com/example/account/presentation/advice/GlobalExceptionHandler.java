@@ -2,6 +2,9 @@ package com.example.account.presentation.advice;
 
 import com.example.account.application.exception.AccountAlreadyExistsException;
 import com.example.account.application.exception.AccountNotFoundException;
+import com.example.account.application.exception.EmailAlreadyVerifiedException;
+import com.example.account.application.exception.EmailVerificationTokenInvalidException;
+import com.example.account.application.exception.RateLimitedException;
 import com.example.account.application.port.AuthServicePort;
 import com.example.account.domain.status.StateTransitionException;
 import com.example.web.dto.ErrorResponse;
@@ -36,6 +39,38 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleStateTransitionInvalid(StateTransitionException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("STATE_TRANSITION_INVALID", e.getMessage()));
+    }
+
+    /**
+     * TASK-BE-114: email-verify token is missing, expired, or already consumed.
+     * All three conditions surface uniformly so the API does not leak which
+     * one tripped (mirrors auth-service's password-reset confirm path).
+     */
+    @ExceptionHandler(EmailVerificationTokenInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleEmailVerificationTokenInvalid(
+            EmailVerificationTokenInvalidException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("TOKEN_EXPIRED_OR_INVALID",
+                        "Email verification token is invalid or has expired"));
+    }
+
+    /**
+     * TASK-BE-114: verify-email or resend on an already-verified account.
+     */
+    @ExceptionHandler(EmailAlreadyVerifiedException.class)
+    public ResponseEntity<ErrorResponse> handleEmailAlreadyVerified(EmailAlreadyVerifiedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("EMAIL_ALREADY_VERIFIED",
+                        "Email is already verified"));
+    }
+
+    /**
+     * TASK-BE-114: 5-minute resend-verification-email rate limit hit.
+     */
+    @ExceptionHandler(RateLimitedException.class)
+    public ResponseEntity<ErrorResponse> handleRateLimited(RateLimitedException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ErrorResponse.of("RATE_LIMITED", e.getMessage()));
     }
 
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)

@@ -107,6 +107,7 @@ class AccountAnonymizationSchedulerTest {
                 Instant.parse("2025-12-01T00:00:00Z"),
                 DELETED_AT_OLD,
                 null,
+                null,
                 0);
     }
 
@@ -116,6 +117,7 @@ class AccountAnonymizationSchedulerTest {
                 AccountStatus.ACTIVE,
                 Instant.parse("2025-12-01T00:00:00Z"),
                 Instant.parse("2025-12-01T00:00:00Z"),
+                null,
                 null,
                 null,
                 0);

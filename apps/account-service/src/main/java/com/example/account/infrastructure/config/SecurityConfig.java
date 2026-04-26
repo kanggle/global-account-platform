@@ -30,6 +30,8 @@ public class SecurityConfig {
                 .addFilterBefore(internalApiFilter(), UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/accounts/signup").permitAll()
+                        // TASK-BE-114: token in body is the auth — no JWT required.
+                        .requestMatchers("/api/accounts/signup/verify-email").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/api/**").permitAll()

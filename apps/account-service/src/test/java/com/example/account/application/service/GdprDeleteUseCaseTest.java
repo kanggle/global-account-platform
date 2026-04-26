@@ -74,7 +74,7 @@ class GdprDeleteUseCaseTest {
                 AccountStatus.ACTIVE,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-01T00:00:00Z"),
-                null, null, 0);
+                null, null, null, 0);
     }
 
     private Account deletedAccount() {
@@ -83,7 +83,7 @@ class GdprDeleteUseCaseTest {
                 AccountStatus.DELETED,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-01T00:00:00Z"),
-                Instant.parse("2026-01-02T00:00:00Z"), null, 0);
+                Instant.parse("2026-01-02T00:00:00Z"), null, null, 0);
     }
 
     private Profile profileWithPii() {
