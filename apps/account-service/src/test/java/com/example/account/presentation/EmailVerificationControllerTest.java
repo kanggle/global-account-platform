@@ -3,6 +3,7 @@ package com.example.account.presentation;
 import com.example.account.application.exception.EmailAlreadyVerifiedException;
 import com.example.account.application.exception.EmailVerificationTokenInvalidException;
 import com.example.account.application.exception.RateLimitedException;
+import com.example.account.application.result.VerifyEmailResult;
 import com.example.account.application.service.SendVerificationEmailUseCase;
 import com.example.account.application.service.VerifyEmailUseCase;
 import com.example.account.infrastructure.config.SecurityConfig;
@@ -57,7 +58,7 @@ class EmailVerificationControllerTest {
     void verifyEmail_validToken_returns200() throws Exception {
         Instant verifiedAt = Instant.parse("2026-04-26T10:00:00Z");
         given(verifyEmailUseCase.execute(anyString()))
-                .willReturn(new VerifyEmailUseCase.VerifyEmailResult("acc-1", verifiedAt));
+                .willReturn(new VerifyEmailResult("acc-1", verifiedAt));
 
         mockMvc.perform(post("/api/accounts/signup/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)
