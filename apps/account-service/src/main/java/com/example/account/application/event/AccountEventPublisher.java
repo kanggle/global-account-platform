@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 
 @Component
@@ -33,7 +34,7 @@ public class AccountEventPublisher {
     public void publishStatusChanged(String accountId, String previousStatus, String currentStatus,
                                       String reasonCode, String actorType, String actorId,
                                       Instant occurredAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+        Map<String, Object> payload = new HashMap<>(Map.of(
                 "accountId", accountId,
                 "previousStatus", previousStatus,
                 "currentStatus", currentStatus,
@@ -54,7 +55,7 @@ public class AccountEventPublisher {
         // via the account_lock_history.event_id unique constraint. Without this field,
         // the consumer would synthesize a random UUID per delivery and insert duplicate
         // rows on Kafka at-least-once redelivery (contract: specs/contracts/events/account-events.md).
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+        Map<String, Object> payload = new HashMap<>(Map.of(
                 "eventId", UuidV7.randomString(),
                 "accountId", accountId,
                 "reasonCode", reasonCode,
@@ -69,7 +70,7 @@ public class AccountEventPublisher {
 
     public void publishAccountUnlocked(String accountId, String reasonCode,
                                         String actorType, String actorId, Instant unlockedAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+        Map<String, Object> payload = new HashMap<>(Map.of(
                 "accountId", accountId,
                 "reasonCode", reasonCode,
                 "actorType", actorType,
@@ -84,18 +85,7 @@ public class AccountEventPublisher {
     public void publishAccountDeleted(String accountId, String reasonCode,
                                        String actorType, String actorId,
                                        Instant deletedAt, Instant gracePeriodEndsAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
-                "accountId", accountId,
-                "reasonCode", reasonCode,
-                "actorType", actorType,
-                "deletedAt", deletedAt.toString(),
-                "gracePeriodEndsAt", gracePeriodEndsAt.toString(),
-                "anonymized", false
-        ));
-        if (actorId != null) {
-            payload.put("actorId", actorId);
-        }
-        outboxWriter.save("Account", accountId, "account.deleted", toJson(payload));
+        publishAccountDeletedEvent(accountId, reasonCode, actorType, actorId, deletedAt, gracePeriodEndsAt, false);
     }
 
     /**
@@ -111,13 +101,20 @@ public class AccountEventPublisher {
                                                     String actorType, String actorId,
                                                     Instant deletedAt,
                                                     Instant gracePeriodEndsAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+        publishAccountDeletedEvent(accountId, reasonCode, actorType, actorId, deletedAt, gracePeriodEndsAt, true);
+    }
+
+    private void publishAccountDeletedEvent(String accountId, String reasonCode,
+                                             String actorType, String actorId,
+                                             Instant deletedAt, Instant gracePeriodEndsAt,
+                                             boolean anonymized) {
+        Map<String, Object> payload = new HashMap<>(Map.of(
                 "accountId", accountId,
                 "reasonCode", reasonCode,
                 "actorType", actorType,
                 "deletedAt", deletedAt.toString(),
                 "gracePeriodEndsAt", gracePeriodEndsAt.toString(),
-                "anonymized", true
+                "anonymized", anonymized
         ));
         if (actorId != null) {
             payload.put("actorId", actorId);
