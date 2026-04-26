@@ -65,7 +65,7 @@ public class AccountStatusUseCase {
 
         accountRepository.save(account);
 
-        recordStatusHistory(account.getId(), transition, command);
+        recordStatusHistory(account.getId(), transition, command.actorType(), command.actorId(), command.details());
 
         Instant now = Instant.now();
         publishStatusChangeEvents(account, previousStatus, command, now);
@@ -79,15 +79,15 @@ public class AccountStatusUseCase {
     }
 
     private void recordStatusHistory(String accountId, StatusTransition transition,
-                                      ChangeStatusCommand command) {
+                                      String actorType, String actorId, String details) {
         AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
                 accountId,
                 transition.from(),
                 transition.to(),
                 transition.reason(),
-                command.actorType(),
-                command.actorId(),
-                command.details()
+                actorType,
+                actorId,
+                details
         );
         historyRepository.save(historyEntry);
     }
@@ -127,20 +127,11 @@ public class AccountStatusUseCase {
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         AccountStatus previousStatus = account.getStatus();
-        account.changeStatus(statusMachine, AccountStatus.DELETED, reason);
+        StatusTransition transition = account.changeStatus(statusMachine, AccountStatus.DELETED, reason);
 
         accountRepository.save(account);
 
-        AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
-                account.getId(),
-                previousStatus,
-                AccountStatus.DELETED,
-                reason,
-                actorType,
-                actorId,
-                null
-        );
-        historyRepository.save(historyEntry);
+        recordStatusHistory(account.getId(), transition, actorType, actorId, null);
 
         Instant now = Instant.now();
         Instant gracePeriodEndsAt = now.plus(gracePeriodDays, ChronoUnit.DAYS);
