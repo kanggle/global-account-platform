@@ -17,14 +17,17 @@ import com.example.admin.application.exception.InvalidRefreshTokenException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
+import com.example.admin.application.exception.TotpNotEnrolledException;
 import com.example.admin.infrastructure.security.BootstrapContext;
 import com.example.admin.infrastructure.security.BootstrapTokenService;
 import com.example.admin.infrastructure.security.OperatorAuthenticationFilter;
+import com.example.admin.infrastructure.security.OperatorContextHolder;
 import com.example.admin.presentation.dto.AdminLoginRequest;
 import com.example.admin.presentation.dto.AdminLoginResponse;
 import com.example.admin.presentation.dto.AdminLogoutRequest;
 import com.example.admin.presentation.dto.AdminRefreshRequest;
 import com.example.admin.presentation.dto.AdminRefreshResponse;
+import com.example.admin.presentation.dto.RegenerateRecoveryCodesResponse;
 import com.example.admin.presentation.dto.TotpEnrollResponse;
 import com.example.admin.presentation.dto.TotpVerifyRequest;
 import com.example.admin.presentation.dto.TotpVerifyResponse;
@@ -217,6 +220,73 @@ public class AdminAuthController {
                 throw ex;
             }
             // FAILURE path: swallow secondary audit error
+        }
+    }
+
+    /**
+     * TASK-BE-113 — operator self-service recovery-code regeneration. Auth: a
+     * valid operator access JWT ({@code token_type=admin}). The current
+     * operator UUID is taken from the {@link OperatorContext} populated by
+     * {@link OperatorAuthenticationFilter}; no path/body operator id is
+     * accepted (an operator may only regenerate their own codes).
+     *
+     * <p>Atomically replaces {@code recovery_codes_hashed} on
+     * {@code admin_operator_totp}. Plain-text codes are returned exactly once
+     * in the HTTP response and are NOT logged (R4 compliance).
+     */
+    @PostMapping("/2fa/recovery-codes/regenerate")
+    public ResponseEntity<RegenerateRecoveryCodesResponse> regenerateRecoveryCodes() {
+        OperatorContext op = OperatorContextHolder.require();
+        String operatorId = op.operatorId();
+        Instant startedAt = Instant.now();
+        String auditId = auditor.newAuditId();
+
+        try {
+            java.util.List<String> codes = totpService.regenerateRecoveryCodes(operatorId);
+            auditor.record(new AdminActionAuditor.AuditRecord(
+                    auditId,
+                    ActionCode.OPERATOR_2FA_RECOVERY_REGENERATE,
+                    op,
+                    "OPERATOR",
+                    operatorId,
+                    AdminActionAuditor.REASON_SELF_RECOVERY_REGENERATE,
+                    null,
+                    "regenerate:" + auditId,
+                    Outcome.SUCCESS,
+                    null,
+                    startedAt,
+                    Instant.now()));
+            // Plain-text codes are intentionally NOT logged (R4 compliance).
+            return ResponseEntity.ok(new RegenerateRecoveryCodesResponse(codes));
+        } catch (TotpNotEnrolledException ex) {
+            safeRecordRecoveryRegenerateFailure(auditId, op, "TOTP_NOT_ENROLLED", startedAt);
+            throw ex;
+        } catch (RuntimeException ex) {
+            safeRecordRecoveryRegenerateFailure(auditId, op, ex.getClass().getSimpleName(), startedAt);
+            throw ex;
+        }
+    }
+
+    private void safeRecordRecoveryRegenerateFailure(String auditId,
+                                                     OperatorContext op,
+                                                     String detail,
+                                                     Instant startedAt) {
+        try {
+            auditor.record(new AdminActionAuditor.AuditRecord(
+                    auditId,
+                    ActionCode.OPERATOR_2FA_RECOVERY_REGENERATE,
+                    op,
+                    "OPERATOR",
+                    op.operatorId(),
+                    AdminActionAuditor.REASON_SELF_RECOVERY_REGENERATE,
+                    null,
+                    "regenerate:" + auditId + ":failed",
+                    Outcome.FAILURE,
+                    detail,
+                    startedAt,
+                    Instant.now()));
+        } catch (RuntimeException ignored) {
+            // Best-effort on failure path — do not mask the original exception.
         }
     }
 

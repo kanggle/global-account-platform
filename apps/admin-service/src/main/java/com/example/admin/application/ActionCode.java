@@ -8,6 +8,9 @@ public enum ActionCode {
     // TASK-BE-029-2: operator self 2FA enrollment + verify. target_type=OPERATOR.
     OPERATOR_2FA_ENROLL,
     OPERATOR_2FA_VERIFY,
+    // TASK-BE-113: operator self recovery-code regeneration. target_type=OPERATOR,
+    // permission_used=auth.2fa_recovery_regenerate, twofa_used=FALSE.
+    OPERATOR_2FA_RECOVERY_REGENERATE,
     // TASK-BE-029-3: operator self-login (password + optional 2FA). target_type=OPERATOR,
     // permission_used=auth.login, twofa_used is set per-outcome on the audit row.
     OPERATOR_LOGIN,

@@ -1,6 +1,7 @@
 package com.example.admin.application;
 
 import com.example.admin.application.exception.OperatorNotFoundException;
+import com.example.admin.application.exception.TotpNotEnrolledException;
 import com.example.admin.infrastructure.persistence.AdminOperatorTotpJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminOperatorTotpJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
@@ -18,14 +19,22 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -107,6 +116,43 @@ class TotpEnrollmentServiceTest {
         assertThatThrownBy(() -> svc.enroll("missing"))
                 .isInstanceOf(OperatorNotFoundException.class)
                 .hasMessageContaining("missing");
+    }
+
+    @Test
+    void regenerateRecoveryCodes_returns10Codes_andReplacesHashes() {
+        AdminOperatorJpaEntity operator = mock(AdminOperatorJpaEntity.class);
+        when(operator.getId()).thenReturn(42L);
+        when(operatorRepository.findByOperatorId("op-uuid")).thenReturn(Optional.of(operator));
+
+        AdminOperatorTotpJpaEntity totpRow = mock(AdminOperatorTotpJpaEntity.class);
+        when(totpRepository.findById(42L)).thenReturn(Optional.of(totpRow));
+        when(totpRepository.save(totpRow)).thenReturn(totpRow);
+
+        TotpEnrollmentService svc = newService(deterministicRandom());
+        List<String> codes = svc.regenerateRecoveryCodes("op-uuid");
+
+        assertThat(codes).hasSize(10);
+        for (String code : codes) {
+            assertThat(code).hasSize(14);
+            assertThat(code.charAt(4)).isEqualTo('-');
+            assertThat(code.charAt(9)).isEqualTo('-');
+        }
+        assertThat(new HashSet<>(codes)).hasSize(10);
+        verify(totpRow).replaceRecoveryHashes(anyString(), any(Instant.class));
+        verify(totpRepository).save(totpRow);
+        verify(passwordHasher, times(10)).hash(anyString());
+    }
+
+    @Test
+    void regenerateRecoveryCodes_totpNotEnrolled_throwsTotpNotEnrolledException() {
+        AdminOperatorJpaEntity operator = mock(AdminOperatorJpaEntity.class);
+        when(operator.getId()).thenReturn(99L);
+        when(operatorRepository.findByOperatorId("unenrolled")).thenReturn(Optional.of(operator));
+        when(totpRepository.findById(99L)).thenReturn(Optional.empty());
+
+        TotpEnrollmentService svc = newService(new SecureRandom(new byte[]{0}));
+        assertThatThrownBy(() -> svc.regenerateRecoveryCodes("unenrolled"))
+                .isInstanceOf(TotpNotEnrolledException.class);
     }
 }
 
