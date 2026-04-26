@@ -94,7 +94,7 @@ All services must return errors in the following JSON format:
 
 | Code | HTTP | Description |
 |---|---|---|
-| RATE_LIMIT_EXCEEDED | 429 | Too many login attempts. Try again later. |
+| RATE_LIMIT_EXCEEDED | 429 | Too many login attempts (auth-service / gateway login rate limit). Try again later. Distinct from `RATE_LIMITED` (account-service signup and email-verification resend rate limits) — see saas Email Verification section. Code unification is deferred to a separate task; do not conflate the two contexts. |
 
 ## OAuth
 
@@ -220,6 +220,14 @@ All services must return errors in the following JSON format:
 | Code | HTTP | Description |
 |---|---|---|
 | AUTH_SERVICE_UNAVAILABLE | 503 | Authentication service is temporarily unavailable (account-service signup flow — auth-service 5xx/timeout/circuit-open triggers fail-closed rollback) |
+
+## Email Verification  `[domain: saas]`
+
+| Code | HTTP | Description |
+|---|---|---|
+| TOKEN_EXPIRED_OR_INVALID | 400 | Email verification token is expired, does not exist in the Redis store (`email-verify:{token}`), or has already been consumed (account-service `POST /api/accounts/signup/verify-email`). Distinct from auth-service `INVALID_REFRESH_TOKEN` and admin-service `INVALID_BOOTSTRAP_TOKEN` which apply to JWT-based tokens; this code is reserved for the opaque email-verification UUID flow. |
+| EMAIL_ALREADY_VERIFIED | 409 | The target account's email is already verified (`accounts.email_verified_at IS NOT NULL`). Surfaced by both `POST /api/accounts/signup/verify-email` (re-verification of an already-verified account) and `POST /api/accounts/signup/resend-verification-email` (resend request when no verification is needed). |
+| RATE_LIMITED | 429 | Per-account or per-flow rate limit exceeded for signup-related flows in account-service. Currently surfaced by `POST /api/accounts/signup` (signup attempts rate limit) and `POST /api/accounts/signup/resend-verification-email` (5-minute single-shot resend window via `email-verify:rate:{accountId}` Redis marker). Distinct from `RATE_LIMIT_EXCEEDED` (auth-service / gateway login rate limit) — code unification is deferred to a separate task. Do not conflate the two contexts. |
 
 ## Admin Operations  `[domain: saas]`
 
