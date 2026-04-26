@@ -51,6 +51,8 @@ public class AdminActionAuditor {
         // TASK-BE-029-2 — self-directed 2FA enroll/verify
         map.put(ActionCode.OPERATOR_2FA_ENROLL, "OPERATOR");
         map.put(ActionCode.OPERATOR_2FA_VERIFY, "OPERATOR");
+        // TASK-BE-113 — self-directed recovery-code regeneration
+        map.put(ActionCode.OPERATOR_2FA_RECOVERY_REGENERATE, "OPERATOR");
         // TASK-BE-029-3 — login audit rows
         map.put(ActionCode.OPERATOR_LOGIN, "OPERATOR");
         // TASK-BE-040 — refresh rotation + self-logout
@@ -81,6 +83,10 @@ public class AdminActionAuditor {
     /** Reason constants stamped on session-lifecycle audit rows (no X-Operator-Reason). */
     public static final String REASON_SELF_REFRESH = "<self_refresh>";
     public static final String REASON_SELF_LOGOUT = "<self_logout>";
+    /** Synthetic permission string for the self-service recovery-code regeneration endpoint (TASK-BE-113). */
+    public static final String PERMISSION_2FA_RECOVERY_REGENERATE = "auth.2fa_recovery_regenerate";
+    /** Reason constant stamped on recovery-code regeneration audit rows (no X-Operator-Reason). */
+    public static final String REASON_SELF_RECOVERY_REGENERATE = "<self_recovery_regenerate>";
 
     private final AdminActionJpaRepository repository;
     private final AdminOperatorJpaRepository operatorRepository;
@@ -355,6 +361,7 @@ public class AdminActionAuditor {
             // 2FA sub-tree (no grantable permission; treat as sentinel for audit).
             case OPERATOR_2FA_ENROLL -> PERMISSION_2FA_ENROLL;
             case OPERATOR_2FA_VERIFY -> PERMISSION_2FA_VERIFY;
+            case OPERATOR_2FA_RECOVERY_REGENERATE -> PERMISSION_2FA_RECOVERY_REGENERATE;
             case OPERATOR_LOGIN -> PERMISSION_LOGIN;
             case OPERATOR_REFRESH -> PERMISSION_REFRESH;
             case OPERATOR_LOGOUT -> PERMISSION_LOGOUT;

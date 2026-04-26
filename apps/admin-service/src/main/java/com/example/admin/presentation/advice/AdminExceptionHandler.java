@@ -20,6 +20,7 @@ import com.example.admin.application.exception.RoleNotFoundException;
 import com.example.admin.application.exception.SelfSuspendForbiddenException;
 import com.example.admin.application.exception.StateTransitionInvalidException;
 import com.example.admin.application.exception.TokenRevokedException;
+import com.example.admin.application.exception.TotpNotEnrolledException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
@@ -77,6 +78,13 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalid2Fa(InvalidTwoFaCodeException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("INVALID_2FA_CODE", "TOTP code is invalid"));
+    }
+
+    @ExceptionHandler(TotpNotEnrolledException.class)
+    public ResponseEntity<ErrorResponse> handleTotpNotEnrolled(TotpNotEnrolledException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("TOTP_NOT_ENROLLED",
+                        "TOTP enrollment is required before recovery-code regeneration"));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

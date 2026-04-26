@@ -2,6 +2,7 @@ package com.example.admin.application;
 
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
 import com.example.admin.application.exception.OperatorNotFoundException;
+import com.example.admin.application.exception.TotpNotEnrolledException;
 import com.example.admin.infrastructure.persistence.AdminOperatorTotpJpaEntity;
 import com.example.admin.infrastructure.persistence.AdminOperatorTotpJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
@@ -98,6 +99,50 @@ public class TotpEnrollmentService {
         // Zeroise plaintext secret — best effort; JVM may still retain copies.
         java.util.Arrays.fill(secret, (byte) 0);
         return new EnrollmentResult(otpauth, plainRecovery, now);
+    }
+
+    /**
+     * Regenerates the 10 backup recovery codes for an already-enrolled operator
+     * (TASK-BE-113). Existing {@code recovery_codes_hashed} are atomically
+     * replaced with hashes of the freshly generated codes — previous codes are
+     * invalidated immediately. Plain-text codes are returned to the caller for
+     * one-time exposure in the HTTP response and are NOT logged.
+     *
+     * @param operatorUuid external UUID v7 of the operator (JWT {@code sub}).
+     * @return list of 10 plain-text recovery codes ({@code XXXX-XXXX-XXXX}).
+     * @throws OperatorNotFoundException if no {@code admin_operators} row exists for the UUID.
+     * @throws TotpNotEnrolledException  if the operator has not yet enrolled TOTP.
+     */
+    @Transactional
+    public List<String> regenerateRecoveryCodes(String operatorUuid) {
+        AdminOperatorJpaEntity operator = operatorRepository.findByOperatorId(operatorUuid)
+                .orElseThrow(() -> new OperatorNotFoundException(
+                        "admin_operators row not found for operatorId=" + operatorUuid));
+        long operatorPk = operator.getId();
+
+        AdminOperatorTotpJpaEntity row = totpRepository.findById(operatorPk)
+                .orElseThrow(() -> new TotpNotEnrolledException(
+                        "TOTP not enrolled for operator"));
+
+        List<String> plainRecovery = new ArrayList<>(RECOVERY_CODE_COUNT);
+        List<String> hashed = new ArrayList<>(RECOVERY_CODE_COUNT);
+        for (int i = 0; i < RECOVERY_CODE_COUNT; i++) {
+            String plain = generateRecoveryCode(recoveryRandom);
+            plainRecovery.add(plain);
+            hashed.add(passwordHasher.hash(plain));
+        }
+        String hashedJson;
+        try {
+            hashedJson = objectMapper.writeValueAsString(hashed);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize recovery code hashes", e);
+        }
+
+        row.replaceRecoveryHashes(hashedJson, Instant.now());
+        totpRepository.save(row);
+
+        // Plain-text codes are intentionally NOT logged (R4 compliance).
+        return plainRecovery;
     }
 
     /**
