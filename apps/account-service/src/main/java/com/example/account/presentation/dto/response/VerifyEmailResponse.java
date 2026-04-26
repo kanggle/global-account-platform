@@ -1,6 +1,6 @@
 package com.example.account.presentation.dto.response;
 
-import com.example.account.application.service.VerifyEmailUseCase;
+import com.example.account.application.result.VerifyEmailResult;
 
 import java.time.Instant;
 
@@ -15,7 +15,7 @@ public record VerifyEmailResponse(
         Instant emailVerifiedAt
 ) {
 
-    public static VerifyEmailResponse from(VerifyEmailUseCase.VerifyEmailResult result) {
+    public static VerifyEmailResponse from(VerifyEmailResult result) {
         return new VerifyEmailResponse(result.accountId(), result.emailVerifiedAt());
     }
 }

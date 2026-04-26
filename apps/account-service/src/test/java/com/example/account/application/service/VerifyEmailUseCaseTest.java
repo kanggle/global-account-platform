@@ -2,6 +2,7 @@ package com.example.account.application.service;
 
 import com.example.account.application.exception.EmailAlreadyVerifiedException;
 import com.example.account.application.exception.EmailVerificationTokenInvalidException;
+import com.example.account.application.result.VerifyEmailResult;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.EmailVerificationTokenStore;
@@ -74,7 +75,7 @@ class VerifyEmailUseCaseTest {
         given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(unverifiedAccount()));
         given(accountRepository.save(any(Account.class))).willAnswer(inv -> inv.getArgument(0));
 
-        VerifyEmailUseCase.VerifyEmailResult result = useCase.execute(TOKEN);
+        VerifyEmailResult result = useCase.execute(TOKEN);
 
         assertThat(result.accountId()).isEqualTo(ACCOUNT_ID);
         assertThat(result.emailVerifiedAt()).isNotNull();

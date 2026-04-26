@@ -1,5 +1,6 @@
 package com.example.account.presentation;
 
+import com.example.account.application.result.VerifyEmailResult;
 import com.example.account.application.service.SendVerificationEmailUseCase;
 import com.example.account.application.service.VerifyEmailUseCase;
 import com.example.account.presentation.dto.request.VerifyEmailRequest;
@@ -38,7 +39,7 @@ public class EmailVerificationController {
     @PostMapping("/verify-email")
     public ResponseEntity<VerifyEmailResponse> verifyEmail(
             @Valid @RequestBody VerifyEmailRequest request) {
-        VerifyEmailUseCase.VerifyEmailResult result =
+        VerifyEmailResult result =
                 verifyEmailUseCase.execute(request.token());
         return ResponseEntity.ok(VerifyEmailResponse.from(result));
     }

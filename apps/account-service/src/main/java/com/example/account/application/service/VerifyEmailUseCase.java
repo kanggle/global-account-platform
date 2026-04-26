@@ -2,6 +2,7 @@ package com.example.account.application.service;
 
 import com.example.account.application.exception.EmailAlreadyVerifiedException;
 import com.example.account.application.exception.EmailVerificationTokenInvalidException;
+import com.example.account.application.result.VerifyEmailResult;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.EmailVerificationTokenStore;
@@ -84,11 +85,4 @@ public class VerifyEmailUseCase {
         return new VerifyEmailResult(accountId, account.getEmailVerifiedAt());
     }
 
-    /**
-     * Result of a successful verify-email call. Carries the new
-     * {@code emailVerifiedAt} so the controller can echo it back in the
-     * response without needing to re-query the account.
-     */
-    public record VerifyEmailResult(String accountId, Instant emailVerifiedAt) {
-    }
 }
