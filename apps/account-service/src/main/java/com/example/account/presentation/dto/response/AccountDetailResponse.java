@@ -1,5 +1,7 @@
 package com.example.account.presentation.dto.response;
 
+import com.example.account.application.result.AccountDetailResult;
+
 import java.time.Instant;
 
 public record AccountDetailResponse(
@@ -19,13 +21,10 @@ public record AccountDetailResponse(
         return "*".repeat(phone.length() - 4) + phone.substring(phone.length() - 4);
     }
 
-    public static AccountDetailResponse of(
-            com.example.account.infrastructure.persistence.AccountJpaEntity account,
-            com.example.account.infrastructure.persistence.ProfileJpaEntity profile) {
-        Profile p = profile == null ? null
-                : new Profile(profile.getDisplayName(), maskPhone(profile.getPhoneNumber()));
+    public static AccountDetailResponse of(AccountDetailResult result) {
+        Profile p = result.profile() == null ? null
+                : new Profile(result.profile().displayName(), maskPhone(result.profile().phoneNumber()));
         return new AccountDetailResponse(
-                account.getId(), account.getEmail(), account.getStatus().name(),
-                account.getCreatedAt(), p);
+                result.id(), result.email(), result.status(), result.createdAt(), p);
     }
 }

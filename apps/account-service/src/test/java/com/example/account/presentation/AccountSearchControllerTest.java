@@ -1,9 +1,9 @@
 package com.example.account.presentation;
 
+import com.example.account.application.result.AccountDetailResult;
+import com.example.account.application.result.AccountSearchResult;
+import com.example.account.application.service.AccountSearchQueryService;
 import com.example.account.infrastructure.config.SecurityConfig;
-import com.example.account.infrastructure.persistence.AccountJpaEntity;
-import com.example.account.infrastructure.persistence.AccountJpaRepository;
-import com.example.account.infrastructure.persistence.ProfileJpaRepository;
 import com.example.account.presentation.advice.GlobalExceptionHandler;
 import com.example.account.presentation.internal.AccountSearchController;
 import org.junit.jupiter.api.DisplayName;
@@ -11,8 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -22,6 +20,7 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -36,17 +35,15 @@ class AccountSearchControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    AccountJpaRepository accountRepository;
-
-    @MockitoBean
-    ProfileJpaRepository profileRepository;
+    AccountSearchQueryService accountSearchQueryService;
 
     @Test
     @DisplayName("GET /internal/accounts (no email) returns paginated list")
     void search_noEmail_returnsPaginatedList() throws Exception {
-        var entity = mockEntity("acc-1", "a@example.com");
-        var page = new PageImpl<>(List.of(entity), PageRequest.of(0, 20), 1);
-        given(accountRepository.findAllAccounts(any(org.springframework.data.domain.Pageable.class))).willReturn(page);
+        var item = new AccountSearchResult.Item("acc-1", "a@example.com", "ACTIVE",
+                Instant.parse("2026-01-01T00:00:00Z"));
+        var result = new AccountSearchResult(List.of(item), 1, 0, 20, 1);
+        given(accountSearchQueryService.search(isNull(), eq(0), eq(20))).willReturn(result);
 
         mockMvc.perform(get("/internal/accounts"))
                 .andExpect(status().isOk())
@@ -61,9 +58,10 @@ class AccountSearchControllerTest {
     @Test
     @DisplayName("GET /internal/accounts?page=1&size=5 returns correct page")
     void search_noEmail_pageAndSize_appliedCorrectly() throws Exception {
-        var entity = mockEntity("acc-2", "b@example.com");
-        var page = new PageImpl<>(List.of(entity), PageRequest.of(1, 5), 6);
-        given(accountRepository.findAllAccounts(eq(PageRequest.of(1, 5)))).willReturn(page);
+        var item = new AccountSearchResult.Item("acc-2", "b@example.com", "ACTIVE",
+                Instant.parse("2026-01-01T00:00:00Z"));
+        var result = new AccountSearchResult(List.of(item), 6, 1, 5, 2);
+        given(accountSearchQueryService.search(isNull(), eq(1), eq(5))).willReturn(result);
 
         mockMvc.perform(get("/internal/accounts?page=1&size=5"))
                 .andExpect(status().isOk())
@@ -75,6 +73,9 @@ class AccountSearchControllerTest {
     @Test
     @DisplayName("GET /internal/accounts?size=101 returns 400")
     void search_sizeOverMax_returns400() throws Exception {
+        given(accountSearchQueryService.search(any(), eq(0), eq(101)))
+                .willThrow(new IllegalArgumentException("size must be ≤ 100"));
+
         mockMvc.perform(get("/internal/accounts?size=101"))
                 .andExpect(status().isBadRequest());
     }
@@ -82,8 +83,10 @@ class AccountSearchControllerTest {
     @Test
     @DisplayName("GET /internal/accounts?email=a@example.com returns single item")
     void search_withEmail_returnsSingleItem() throws Exception {
-        var entity = mockEntity("acc-1", "a@example.com");
-        given(accountRepository.findByEmail("a@example.com")).willReturn(Optional.of(entity));
+        var item = new AccountSearchResult.Item("acc-1", "a@example.com", "ACTIVE",
+                Instant.parse("2026-01-01T00:00:00Z"));
+        var result = new AccountSearchResult(List.of(item), 1, 0, 20, 1);
+        given(accountSearchQueryService.search(eq("a@example.com"), eq(0), eq(20))).willReturn(result);
 
         mockMvc.perform(get("/internal/accounts?email=a@example.com"))
                 .andExpect(status().isOk())
@@ -94,7 +97,8 @@ class AccountSearchControllerTest {
     @Test
     @DisplayName("GET /internal/accounts?email=unknown returns empty content")
     void search_withUnknownEmail_returnsEmpty() throws Exception {
-        given(accountRepository.findByEmail("unknown@example.com")).willReturn(Optional.empty());
+        var result = new AccountSearchResult(List.of(), 0, 0, 20, 0);
+        given(accountSearchQueryService.search(eq("unknown@example.com"), eq(0), eq(20))).willReturn(result);
 
         mockMvc.perform(get("/internal/accounts?email=unknown@example.com"))
                 .andExpect(status().isOk())
@@ -102,13 +106,27 @@ class AccountSearchControllerTest {
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
 
-    private AccountJpaEntity mockEntity(String id, String email) {
-        var entity = org.mockito.Mockito.mock(AccountJpaEntity.class);
-        org.mockito.Mockito.when(entity.getId()).thenReturn(id);
-        org.mockito.Mockito.when(entity.getEmail()).thenReturn(email);
-        org.mockito.Mockito.when(entity.getStatus()).thenReturn(
-                com.example.account.domain.status.AccountStatus.ACTIVE);
-        org.mockito.Mockito.when(entity.getCreatedAt()).thenReturn(Instant.parse("2026-01-01T00:00:00Z"));
-        return entity;
+    @Test
+    @DisplayName("GET /internal/accounts/{id} returns 200 with detail")
+    void detail_existingAccount_returns200() throws Exception {
+        var profile = new AccountDetailResult.Profile("John Doe", "01012345678");
+        var detail = new AccountDetailResult("acc-1", "a@example.com", "ACTIVE",
+                Instant.parse("2026-01-01T00:00:00Z"), profile);
+        given(accountSearchQueryService.detail(eq("acc-1"))).willReturn(Optional.of(detail));
+
+        mockMvc.perform(get("/internal/accounts/acc-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("acc-1"))
+                .andExpect(jsonPath("$.email").value("a@example.com"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    @DisplayName("GET /internal/accounts/{id} unknown returns 404")
+    void detail_unknownAccount_returns404() throws Exception {
+        given(accountSearchQueryService.detail(eq("acc-999"))).willReturn(Optional.empty());
+
+        mockMvc.perform(get("/internal/accounts/acc-999"))
+                .andExpect(status().isNotFound());
     }
 }
