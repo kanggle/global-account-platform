@@ -23,7 +23,7 @@ public class CredentialRepositoryAdapter implements CredentialRepository {
         if (email == null) {
             return Optional.empty();
         }
-        return credentialJpaRepository.findByEmail(Credential.normalizeEmail(email))
+        return credentialJpaRepository.findByEmail(email)
                 .map(CredentialJpaEntity::toDomain);
     }
 
