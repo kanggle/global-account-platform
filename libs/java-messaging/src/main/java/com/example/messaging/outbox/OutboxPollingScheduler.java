@@ -101,7 +101,7 @@ public class OutboxPollingScheduler {
         }
     }
 
-    protected String resolveTopic(String eventType) {
+    private String resolveTopic(String eventType) {
         String topic = topicMapping.get(eventType);
         if (topic == null) {
             throw new IllegalStateException("No topic mapping for event type: " + eventType);

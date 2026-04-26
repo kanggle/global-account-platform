@@ -1,13 +1,11 @@
 package com.example.admin.application;
 
 import com.example.admin.application.exception.OperatorNotFoundException;
-import com.example.admin.application.exception.RoleNotFoundException;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaEntity;
-import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.CachingPermissionEvaluator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,10 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @Slf4j
 @Service
@@ -28,9 +24,9 @@ public class PatchOperatorRoleUseCase {
 
     private final AdminOperatorJpaRepository operatorRepository;
     private final AdminOperatorRoleJpaRepository operatorRoleRepository;
-    private final AdminRoleJpaRepository roleRepository;
     private final AdminActionAuditor auditor;
     private final CachingPermissionEvaluator cachingPermissionEvaluator;
+    private final OperatorRoleResolver operatorRoleResolver;
 
     @Transactional
     public PatchRolesResult patchRoles(String operatorUuid,
@@ -41,10 +37,10 @@ public class PatchOperatorRoleUseCase {
                 .orElseThrow(() -> new OperatorNotFoundException(
                         "Operator not found for operatorId=" + operatorUuid));
 
-        Map<String, AdminRoleJpaEntity> resolvedRoles = resolveRoles(roleNames);
+        Map<String, AdminRoleJpaEntity> resolvedRoles = operatorRoleResolver.resolveRoles(roleNames);
 
         Instant now = Instant.now();
-        Long actorInternalId = resolveActorInternalId(actor);
+        Long actorInternalId = operatorRoleResolver.resolveActorInternalId(actor);
 
         operatorRoleRepository.deleteByOperatorId(entity.getId());
 
@@ -63,7 +59,7 @@ public class PatchOperatorRoleUseCase {
                 actor,
                 "OPERATOR",
                 operatorUuid,
-                normalizeReason(reason),
+                OperatorRoleResolver.normalizeReason(reason),
                 null,
                 "roles:" + auditId,
                 Outcome.SUCCESS,
@@ -75,37 +71,6 @@ public class PatchOperatorRoleUseCase {
 
         List<String> orderedRoles = new ArrayList<>(resolvedRoles.keySet());
         return new PatchRolesResult(operatorUuid, orderedRoles, auditId);
-    }
-
-    private Map<String, AdminRoleJpaEntity> resolveRoles(List<String> roleNames) {
-        if (roleNames == null || roleNames.isEmpty()) {
-            return new LinkedHashMap<>();
-        }
-        LinkedHashMap<String, AdminRoleJpaEntity> out = new LinkedHashMap<>();
-        List<AdminRoleJpaEntity> found = roleRepository.findByNameIn(roleNames);
-        Map<String, AdminRoleJpaEntity> byName = new LinkedHashMap<>();
-        for (AdminRoleJpaEntity r : found) {
-            byName.put(r.getName(), r);
-        }
-        for (String name : roleNames) {
-            if (name == null || name.isBlank()) continue;
-            AdminRoleJpaEntity role = byName.get(name);
-            if (role == null) {
-                throw new RoleNotFoundException("Unknown role name: " + name);
-            }
-            out.putIfAbsent(name, role);
-        }
-        return out;
-    }
-
-    private Long resolveActorInternalId(OperatorContext actor) {
-        if (actor == null || actor.operatorId() == null) return null;
-        Optional<AdminOperatorJpaEntity> found = operatorRepository.findByOperatorId(actor.operatorId());
-        return found.map(AdminOperatorJpaEntity::getId).orElse(null);
-    }
-
-    private static String normalizeReason(String reason) {
-        return (reason == null || reason.isBlank()) ? "<not_provided>" : reason;
     }
 
     private void safeInvalidatePermissionCache(String operatorUuid) {

@@ -8,6 +8,7 @@ import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaRep
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaRepository;
 import com.gap.security.password.PasswordHasher;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -17,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.List;
@@ -42,7 +44,29 @@ class CreateOperatorUseCaseTest {
     @Mock AdminActionAuditor auditor;
     @Mock PasswordHasher passwordHasher;
 
-    @InjectMocks CreateOperatorUseCase useCase;
+    CreateOperatorUseCase useCase;
+
+    @org.junit.jupiter.api.BeforeEach
+    void initUseCase() {
+        OperatorRoleResolver resolver = newResolver(operatorRepository, roleRepository);
+        useCase = new CreateOperatorUseCase(
+                operatorRepository, operatorRoleRepository, auditor, passwordHasher, resolver);
+    }
+
+    /** Reflectively instantiate the package-private helper from this test package. */
+    private static OperatorRoleResolver newResolver(
+            AdminOperatorJpaRepository operatorRepository,
+            AdminRoleJpaRepository roleRepository) {
+        try {
+            Constructor<OperatorRoleResolver> ctor =
+                    OperatorRoleResolver.class.getDeclaredConstructor(
+                            AdminOperatorJpaRepository.class, AdminRoleJpaRepository.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(operatorRepository, roleRepository);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
 
     private OperatorContext actor() {
         return new OperatorContext("actor-uuid", "jti-1");
@@ -89,6 +113,7 @@ class CreateOperatorUseCaseTest {
     }
 
     @Test
+    @DisplayName("운영자 생성 성공 시 비밀번호 해시 저장 + 감사 기록이 모두 수행된다")
     void createOperator_success_persists_hash_and_audits() {
         when(operatorRepository.existsByEmail("new@example.com")).thenReturn(false);
         when(roleRepository.findByNameIn(List.of("SUPER_ADMIN")))
@@ -127,6 +152,7 @@ class CreateOperatorUseCaseTest {
     }
 
     @Test
+    @DisplayName("이메일이 이미 존재하면 INSERT 전에 충돌 예외를 던진다")
     void createOperator_duplicate_email_throws_conflict_before_persist() {
         when(operatorRepository.existsByEmail("dup@example.com")).thenReturn(true);
 
@@ -139,6 +165,7 @@ class CreateOperatorUseCaseTest {
     }
 
     @Test
+    @DisplayName("알 수 없는 role 이름이 포함되면 RoleNotFoundException 으로 거부한다")
     void createOperator_unknown_role_throws_role_not_found() {
         when(operatorRepository.existsByEmail(anyString())).thenReturn(false);
         when(roleRepository.findByNameIn(List.of("DOES_NOT_EXIST"))).thenReturn(List.of());
@@ -152,6 +179,7 @@ class CreateOperatorUseCaseTest {
     }
 
     @Test
+    @DisplayName("role 목록이 비어 있어도 생성은 허용된다")
     void createOperator_empty_roles_is_allowed() {
         when(operatorRepository.existsByEmail(anyString())).thenReturn(false);
         when(passwordHasher.hash(anyString())).thenReturn("h");

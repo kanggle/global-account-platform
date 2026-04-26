@@ -8,14 +8,16 @@ import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaRep
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.CachingPermissionEvaluator;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.List;
@@ -40,7 +42,29 @@ class PatchOperatorRoleUseCaseTest {
     @Mock AdminActionAuditor auditor;
     @Mock CachingPermissionEvaluator cachingPermissionEvaluator;
 
-    @InjectMocks PatchOperatorRoleUseCase useCase;
+    PatchOperatorRoleUseCase useCase;
+
+    @BeforeEach
+    void initUseCase() {
+        OperatorRoleResolver resolver = newResolver(operatorRepository, roleRepository);
+        useCase = new PatchOperatorRoleUseCase(
+                operatorRepository, operatorRoleRepository, auditor, cachingPermissionEvaluator, resolver);
+    }
+
+    /** Reflectively instantiate the package-private helper from this test package. */
+    private static OperatorRoleResolver newResolver(
+            AdminOperatorJpaRepository operatorRepository,
+            AdminRoleJpaRepository roleRepository) {
+        try {
+            Constructor<OperatorRoleResolver> ctor =
+                    OperatorRoleResolver.class.getDeclaredConstructor(
+                            AdminOperatorJpaRepository.class, AdminRoleJpaRepository.class);
+            ctor.setAccessible(true);
+            return ctor.newInstance(operatorRepository, roleRepository);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
 
     private OperatorContext actor() {
         return new OperatorContext("actor-uuid", "jti-1");
@@ -87,6 +111,7 @@ class PatchOperatorRoleUseCaseTest {
     }
 
     @Test
+    @DisplayName("role 패치 성공 시 기존 role 을 모두 교체하고 권한 캐시를 무효화한다")
     void patchRoles_replaces_all_and_invalidates_cache() {
         AdminOperatorJpaEntity target = operator(77L, "target-uuid", "t@ex.com", "ACTIVE");
         when(operatorRepository.findByOperatorId("target-uuid")).thenReturn(Optional.of(target));
@@ -111,6 +136,7 @@ class PatchOperatorRoleUseCaseTest {
     }
 
     @Test
+    @DisplayName("빈 role 배열도 허용되며 권한 캐시는 여전히 무효화된다")
     void patchRoles_empty_array_allowed_still_invalidates_cache() {
         AdminOperatorJpaEntity target = operator(77L, "target-uuid", "t@ex.com", "ACTIVE");
         when(operatorRepository.findByOperatorId("target-uuid")).thenReturn(Optional.of(target));
@@ -127,6 +153,7 @@ class PatchOperatorRoleUseCaseTest {
     }
 
     @Test
+    @DisplayName("알 수 없는 role 이 포함되면 예외를 던지고 기존 role 삭제 단계로 진행하지 않는다")
     void patchRoles_unknown_role_throws_and_skips_delete() {
         AdminOperatorJpaEntity target = operator(77L, "target-uuid", "t@ex.com", "ACTIVE");
         when(operatorRepository.findByOperatorId("target-uuid")).thenReturn(Optional.of(target));
@@ -141,6 +168,7 @@ class PatchOperatorRoleUseCaseTest {
     }
 
     @Test
+    @DisplayName("대상 운영자가 존재하지 않으면 OperatorNotFoundException 을 던진다")
     void patchRoles_missing_operator_throws_not_found() {
         when(operatorRepository.findByOperatorId("ghost")).thenReturn(Optional.empty());
 

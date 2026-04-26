@@ -9,6 +9,7 @@ import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaEnt
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaRepository;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -81,6 +82,7 @@ class OperatorQueryServiceTest {
     }
 
     @Test
+    @DisplayName("현재 운영자 조회 시 role 목록이 포함된 summary 를 반환한다")
     void getCurrentOperator_returns_summary_with_roles() {
         AdminOperatorJpaEntity op = operator(10L, "op-uuid", "op@example.com", "ACTIVE");
         when(operatorRepository.findByOperatorId("op-uuid")).thenReturn(Optional.of(op));
@@ -98,6 +100,7 @@ class OperatorQueryServiceTest {
     }
 
     @Test
+    @DisplayName("운영자 레지스트리에 없는 토큰으로 조회하면 OperatorUnauthorizedException 을 던진다")
     void getCurrentOperator_missing_operator_throws_unauthorized() {
         when(operatorRepository.findByOperatorId("missing")).thenReturn(Optional.empty());
 
@@ -106,6 +109,7 @@ class OperatorQueryServiceTest {
     }
 
     @Test
+    @DisplayName("운영자 목록 조회 시 페이지마다 role 매핑이 포함된다")
     void listOperators_returns_paginated_roles() {
         AdminOperatorJpaEntity op = operator(1L, "op-1-uuid", "one@ex.com", "ACTIVE");
         org.springframework.data.domain.Page<AdminOperatorJpaEntity> page =
@@ -129,6 +133,7 @@ class OperatorQueryServiceTest {
     }
 
     @Test
+    @DisplayName("status 필터가 주어지면 findByStatus 경로로 라우팅되며 findAll 은 호출되지 않는다")
     void listOperators_status_filter_routes_to_status_query() {
         org.springframework.data.domain.Page<AdminOperatorJpaEntity> empty =
                 new org.springframework.data.domain.PageImpl<>(List.of());
