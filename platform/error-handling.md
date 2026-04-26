@@ -243,6 +243,7 @@ All services must return errors in the following JSON format:
 | INVALID_CREDENTIALS | 401 | Operator lookup miss or Argon2id password verification failure on `POST /api/admin/auth/login` (returned without distinguishing the two so miss vs wrong-password cannot be inferred from the response) |
 | ENROLLMENT_REQUIRED | 401 | Operator's role set requires 2FA but no `admin_operator_totp` row exists. Response body carries a single-use bootstrap token authorising the `/2fa/enroll` sub-tree |
 | INVALID_RECOVERY_CODE | 401 | Submitted recovery code does not match any stored Argon2id hash after normalization (upper-case trim) and optimistic-lock retry |
+| TOTP_NOT_ENROLLED | 404 | Operator has not yet enrolled TOTP; regeneration requires an existing enrollment (`POST /api/admin/auth/2fa/enroll` 선행 필요) |
 | BAD_REQUEST | 400 | Login request body violates the `totpCode` / `recoveryCode` mutual exclusion (both present, or both absent when 2FA is required) |
 | INVALID_REFRESH_TOKEN | 401 | Operator refresh JWT failed signature/exp/issuer/`token_type=admin_refresh` validation, the jti is not registered in `admin_operator_refresh_tokens`, or the operator id does not match the registered row (TASK-BE-040) |
 | REFRESH_TOKEN_REUSE_DETECTED | 401 | An already-revoked refresh jti was presented again — the operator's entire refresh-token chain is bulk-revoked with reason `REUSE_DETECTED` (TASK-BE-040) |
