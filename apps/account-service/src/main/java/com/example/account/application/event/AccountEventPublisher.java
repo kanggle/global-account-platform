@@ -1,5 +1,6 @@
 package com.example.account.application.event;
 
+import com.example.account.application.util.DigestUtils;
 import com.example.common.id.UuidV7;
 import com.example.messaging.outbox.OutboxWriter;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -21,7 +22,7 @@ public class AccountEventPublisher {
                                        String locale, Instant createdAt) {
         Map<String, Object> payload = Map.of(
                 "accountId", accountId,
-                "emailHash", sha256Short(email),
+                "emailHash", DigestUtils.sha256Short(email, 10),
                 "status", status,
                 "locale", locale,
                 "createdAt", createdAt.toString()
@@ -132,17 +133,4 @@ public class AccountEventPublisher {
         }
     }
 
-    private String sha256Short(String input) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.substring(0, 10);
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
-    }
 }

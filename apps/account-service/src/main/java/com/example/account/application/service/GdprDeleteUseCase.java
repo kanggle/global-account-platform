@@ -3,6 +3,7 @@ package com.example.account.application.service;
 import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.application.exception.AccountNotFoundException;
 import com.example.account.application.result.GdprDeleteResult;
+import com.example.account.application.util.DigestUtils;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.profile.Profile;
@@ -17,9 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 
 /**
@@ -59,7 +57,7 @@ public class GdprDeleteUseCase {
         account.changeStatus(statusMachine, AccountStatus.DELETED, StatusChangeReason.REGULATED_DELETION);
 
         // Mask email: replace with hash-based value
-        String emailHash = sha256(account.getEmail());
+        String emailHash = DigestUtils.sha256Hex(account.getEmail());
         String maskedEmail = "gdpr_" + emailHash + "@deleted.local";
         account.maskEmail(emailHash, maskedEmail);
 
@@ -99,17 +97,4 @@ public class GdprDeleteUseCase {
         return new GdprDeleteResult(account.getId(), AccountStatus.DELETED.name(), emailHash, maskedAt);
     }
 
-    private static String sha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
-    }
 }
