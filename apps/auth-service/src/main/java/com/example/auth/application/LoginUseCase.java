@@ -70,10 +70,7 @@ public class LoginUseCase {
         // to call account-service for password verification.
         Optional<Credential> credentialOpt = credentialRepository.findByAccountIdEmail(command.email());
         if (credentialOpt.isEmpty()) {
-            loginAttemptCounter.incrementFailureCount(emailHash);
-            int newCount = loginAttemptCounter.getFailureCount(emailHash);
-            authEventPublisher.publishLoginFailed(null, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
-            throw new CredentialsInvalidException();
+            recordCredentialFailureAndThrow(null, emailHash, ctx);
         }
         Credential credential = credentialOpt.get();
         String accountId = credential.getAccountId();
@@ -84,34 +81,25 @@ public class LoginUseCase {
         // With V0006 enforcing NOT NULL on credential_hash this is belt-and-suspenders.
         if (credential.getCredentialHash() == null) {
             log.warn("Credential row has null hash for accountId={}; treating as invalid", accountId);
-            loginAttemptCounter.incrementFailureCount(emailHash);
-            int newCount = loginAttemptCounter.getFailureCount(emailHash);
-            authEventPublisher.publishLoginFailed(accountId, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
-            throw new CredentialsInvalidException();
+            recordCredentialFailureAndThrow(accountId, emailHash, ctx);
         }
 
         // Account status is still owned by account-service (S1 physical
         // separation of Identity and Account/Profile).
-        AccountStatusLookupResult status = accountServicePort.getAccountStatus(accountId)
-                .orElseThrow(() -> {
-                    // Credential exists but account is gone — treat as invalid
-                    // to avoid leaking "credential-yes, account-no" signal.
-                    loginAttemptCounter.incrementFailureCount(emailHash);
-                    int newCount = loginAttemptCounter.getFailureCount(emailHash);
-                    authEventPublisher.publishLoginFailed(accountId, emailHash,
-                            "CREDENTIALS_INVALID", newCount, ctx);
-                    return new CredentialsInvalidException();
-                });
+        Optional<AccountStatusLookupResult> statusOpt = accountServicePort.getAccountStatus(accountId);
+        if (statusOpt.isEmpty()) {
+            // Credential exists but account is gone — treat as invalid
+            // to avoid leaking "credential-yes, account-no" signal.
+            recordCredentialFailureAndThrow(accountId, emailHash, ctx);
+        }
+        AccountStatusLookupResult status = statusOpt.get();
 
         checkAccountStatus(status.accountStatus(), accountId, emailHash, ctx);
 
         // Verify password
         boolean passwordValid = passwordHasher.verify(command.password(), credential.getCredentialHash());
         if (!passwordValid) {
-            loginAttemptCounter.incrementFailureCount(emailHash);
-            int newCount = loginAttemptCounter.getFailureCount(emailHash);
-            authEventPublisher.publishLoginFailed(accountId, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
-            throw new CredentialsInvalidException();
+            recordCredentialFailureAndThrow(accountId, emailHash, ctx);
         }
 
         // Login success — register/touch the device_session BEFORE issuing tokens so the
@@ -173,6 +161,17 @@ public class LoginUseCase {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
+    }
+
+    /**
+     * Records a CREDENTIALS_INVALID failure (increment counter, publish event)
+     * and throws {@link CredentialsInvalidException}. Never returns normally.
+     */
+    private void recordCredentialFailureAndThrow(String accountId, String emailHash, SessionContext ctx) {
+        loginAttemptCounter.incrementFailureCount(emailHash);
+        int newCount = loginAttemptCounter.getFailureCount(emailHash);
+        authEventPublisher.publishLoginFailed(accountId, emailHash, "CREDENTIALS_INVALID", newCount, ctx);
+        throw new CredentialsInvalidException();
     }
 
     private void checkAccountStatus(String status, String accountId, String emailHash, SessionContext ctx) {
