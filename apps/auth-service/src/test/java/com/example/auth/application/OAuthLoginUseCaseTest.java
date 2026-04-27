@@ -2,6 +2,7 @@ package com.example.auth.application;
 
 import com.example.auth.application.command.OAuthCallbackCommand;
 import com.example.auth.application.command.OAuthCallbackTxnCommand;
+import com.example.auth.application.exception.InvalidOAuthRedirectUriException;
 import com.example.auth.application.exception.InvalidOAuthStateException;
 import com.example.auth.application.exception.OAuthEmailRequiredException;
 import com.example.auth.application.port.AccountServicePort;
@@ -36,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -80,10 +82,24 @@ class OAuthLoginUseCaseTest {
             "provider-user-1", "user@example.com", "User", OAuthProvider.GOOGLE);
 
     private OAuthCallbackCommand command;
+    private OAuthProperties.ProviderProperties googleProps;
 
     @BeforeEach
     void setUp() {
         command = new OAuthCallbackCommand("GOOGLE", CODE, STATE, REDIRECT_URI, CTX);
+
+        googleProps = new OAuthProperties.ProviderProperties();
+        googleProps.setClientId("test-google-client-id");
+        googleProps.setClientSecret("test-google-client-secret");
+        googleProps.setRedirectUri(REDIRECT_URI);
+        googleProps.setAllowedRedirectUris(java.util.List.of(REDIRECT_URI));
+        googleProps.setScopes("openid,email,profile");
+        googleProps.setTokenUri("https://oauth2.googleapis.com/token");
+        googleProps.setAuthUri("https://accounts.google.com/o/oauth2/v2/auth");
+        // Lenient: a couple of tests short-circuit before reading provider props
+        // (e.g. invalid-state callback). Strict stubs would fail those tests
+        // even though the setup is logically required for most others.
+        lenient().when(oAuthProperties.getGoogle()).thenReturn(googleProps);
     }
 
     @Test
@@ -269,6 +285,84 @@ class OAuthLoginUseCaseTest {
         verify(oAuthClient).exchangeCodeForUserInfo(CODE, REDIRECT_URI);
         verify(accountServicePort).socialSignup("user@example.com", "GOOGLE", "provider-user-1", "User");
         verify(accountServicePort).getAccountStatus("acc-1");
+    }
+
+    @Test
+    @DisplayName("authorize: redirect_uri 화이트리스트 외 값 → InvalidOAuthRedirectUriException")
+    void authorize_redirectUriNotInAllowlist_throws() {
+        assertThatThrownBy(() ->
+                oAuthLoginUseCase.authorize("GOOGLE", "https://attacker.example.com/callback"))
+                .isInstanceOf(InvalidOAuthRedirectUriException.class);
+
+        // state 가 Redis 에 저장되기 전에 reject 되어야 함
+        verify(redisTemplate, never()).opsForValue();
+    }
+
+    @Test
+    @DisplayName("authorize: redirect_uri 화이트리스트 일치 → state 저장 + URL 반환")
+    void authorize_redirectUriInAllowlist_succeeds() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        var result = oAuthLoginUseCase.authorize("GOOGLE", REDIRECT_URI);
+
+        assertThat(result.authorizationUrl()).contains("client_id=test-google-client-id");
+        assertThat(result.state()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("authorize: redirectUri null → 기본값(props.redirectUri) 으로 fallback, 화이트리스트 통과")
+    void authorize_nullRedirectUri_fallsBackToDefault() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        var result = oAuthLoginUseCase.authorize("GOOGLE", null);
+
+        assertThat(result.authorizationUrl()).contains("redirect_uri=");
+        assertThat(result.state()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("authorize: 단일 redirect-uri 만 설정된 레거시 props → resolveAllowedRedirectUris 가 fallback 으로 동작")
+    void authorize_legacyConfigWithoutAllowlist_fallsBackToSingleRedirectUri() {
+        OAuthProperties.ProviderProperties legacy = new OAuthProperties.ProviderProperties();
+        legacy.setClientId("legacy-id");
+        legacy.setRedirectUri("https://legacy.example.com/cb");
+        legacy.setScopes("openid");
+        legacy.setAuthUri("https://legacy.example.com/auth");
+        when(oAuthProperties.getGoogle()).thenReturn(legacy);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+
+        var result = oAuthLoginUseCase.authorize("GOOGLE", "https://legacy.example.com/cb");
+        assertThat(result.state()).isNotBlank();
+
+        assertThatThrownBy(() ->
+                oAuthLoginUseCase.authorize("GOOGLE", "https://attacker.example.com/cb"))
+                .isInstanceOf(InvalidOAuthRedirectUriException.class);
+    }
+
+    @Test
+    @DisplayName("callback: redirect_uri 화이트리스트 외 값 → 예외, provider HTTP/account-service HTTP 둘 다 호출 안 됨")
+    void callback_redirectUriNotInAllowlist_throws() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+
+        OAuthCallbackCommand evil = new OAuthCallbackCommand(
+                "GOOGLE", CODE, STATE, "https://attacker.example.com/cb", CTX);
+
+        assertThatThrownBy(() -> oAuthLoginUseCase.callback(evil))
+                .isInstanceOf(InvalidOAuthRedirectUriException.class);
+
+        verify(oAuthClientFactory, never()).getClient(any());
+        verify(accountServicePort, never()).socialSignup(anyString(), anyString(), anyString(), anyString());
+        verify(accountServicePort, never()).getAccountStatus(anyString());
+        verify(oAuthLoginTransactionalStep, never()).persistLogin(any());
+    }
+
+    @Test
+    @DisplayName("authorize: redirectUri trailing-slash 차이 → exact-match 로 reject (정규화 우회 방지)")
+    void authorize_redirectUriTrailingSlashDifference_throws() {
+        assertThatThrownBy(() ->
+                oAuthLoginUseCase.authorize("GOOGLE", REDIRECT_URI + "/"))
+                .isInstanceOf(InvalidOAuthRedirectUriException.class);
     }
 
     @Test

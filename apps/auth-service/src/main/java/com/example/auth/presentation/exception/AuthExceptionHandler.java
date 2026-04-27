@@ -112,6 +112,14 @@ public class AuthExceptionHandler extends CommonGlobalExceptionHandler {
                 .body(ErrorResponse.of("INVALID_STATE", "Invalid or expired OAuth state"));
     }
 
+    @ExceptionHandler(com.example.auth.application.exception.InvalidOAuthRedirectUriException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOAuthRedirectUri(
+            com.example.auth.application.exception.InvalidOAuthRedirectUriException e) {
+        log.warn("Rejected OAuth request with redirect_uri not in allowlist");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_REDIRECT_URI", "Invalid redirect_uri"));
+    }
+
     @ExceptionHandler(com.example.auth.application.exception.OAuthEmailRequiredException.class)
     public ResponseEntity<ErrorResponse> handleOAuthEmailRequired(
             com.example.auth.application.exception.OAuthEmailRequiredException e) {

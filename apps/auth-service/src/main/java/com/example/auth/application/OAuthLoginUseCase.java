@@ -48,13 +48,15 @@ public class OAuthLoginUseCase {
         OAuthProvider provider = parseProvider(providerStr);
         OAuthProperties.ProviderProperties props = getProviderProperties(provider);
 
+        String effectiveRedirectUri = (redirectUri != null && !redirectUri.isBlank())
+                ? redirectUri : props.getRedirectUri();
+
+        validateRedirectUri(props, effectiveRedirectUri);
+
         String state = UuidV7.randomString();
 
         // Store state in Redis
         redisTemplate.opsForValue().set(STATE_KEY_PREFIX + state, provider.name(), STATE_TTL);
-
-        String effectiveRedirectUri = (redirectUri != null && !redirectUri.isBlank())
-                ? redirectUri : props.getRedirectUri();
 
         String authorizationUrl = buildAuthorizationUrl(props, effectiveRedirectUri, state);
 
@@ -101,12 +103,15 @@ public class OAuthLoginUseCase {
             throw new InvalidOAuthStateException();
         }
 
+        OAuthProperties.ProviderProperties props = getProviderProperties(provider);
+        String effectiveRedirectUri = (command.redirectUri() != null && !command.redirectUri().isBlank())
+                ? command.redirectUri() : props.getRedirectUri();
+        validateRedirectUri(props, effectiveRedirectUri);
+
         // External HTTP: token exchange + userinfo. OUTSIDE @Transactional (TASK-BE-069).
         OAuthClient client = oAuthClientFactory.getClient(provider);
         OAuthUserInfo userInfo;
         try {
-            String effectiveRedirectUri = (command.redirectUri() != null && !command.redirectUri().isBlank())
-                    ? command.redirectUri() : getProviderProperties(provider).getRedirectUri();
             userInfo = client.exchangeCodeForUserInfo(command.code(), effectiveRedirectUri);
         } catch (OAuthProviderException e) {
             log.error("OAuth provider error for {}: {}", provider, e.getMessage());
@@ -161,6 +166,15 @@ public class OAuthLoginUseCase {
             case KAKAO -> oAuthProperties.getKakao();
             case MICROSOFT -> oAuthProperties.getMicrosoft();
         };
+    }
+
+    private void validateRedirectUri(OAuthProperties.ProviderProperties props, String redirectUri) {
+        if (redirectUri == null || redirectUri.isBlank()) {
+            throw new InvalidOAuthRedirectUriException();
+        }
+        if (!props.resolveAllowedRedirectUris().contains(redirectUri)) {
+            throw new InvalidOAuthRedirectUriException();
+        }
     }
 
     private String buildAuthorizationUrl(OAuthProperties.ProviderProperties props,
