@@ -41,20 +41,14 @@ public class SessionAdminUseCase {
             // Circuit breaker OPEN on auth-service force-logout: record FAILURE
             // completion before re-throw so AdminExceptionHandler maps to 503
             // CIRCUIT_OPEN (A10 fail-closed).
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
-                    "SESSION", cmd.accountId(),
-                    cmd.reason(), null, cmd.idempotencyKey(),
-                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.idempotencyKey(),
+                    startedAt, "CIRCUIT_OPEN: " + ex.getMessage());
             throw ex;
         } catch (DownstreamFailureException ex) {
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
-                    "SESSION", cmd.accountId(),
-                    cmd.reason(), null, cmd.idempotencyKey(),
-                    Outcome.FAILURE, ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.SESSION_REVOKE, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.idempotencyKey(),
+                    startedAt, ex.getMessage());
             throw ex;
         }
 
@@ -72,5 +66,17 @@ public class SessionAdminUseCase {
                 cmd.operator().operatorId(),
                 downstream.revokedAt() != null ? downstream.revokedAt() : completedAt,
                 auditId);
+    }
+
+    private void recordAuditFailure(String auditId, ActionCode actionCode,
+                                    OperatorContext operator, String targetId,
+                                    String reason, String idempotencyKey,
+                                    Instant startedAt, String failureMessage) {
+        auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
+                auditId, actionCode, operator,
+                "SESSION", targetId,
+                reason, null, idempotencyKey,
+                Outcome.FAILURE, failureMessage,
+                startedAt, Instant.now()));
     }
 }
