@@ -33,11 +33,7 @@ public class SecurityEventPublisher extends BaseEventPublisher {
     }
 
     public void publishSuspiciousDetected(SuspiciousEvent event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("suspiciousEventId", event.getId());
-        payload.put("accountId", event.getAccountId());
-        payload.put("ruleCode", event.getRuleCode());
-        payload.put("riskScore", event.getRiskScore());
+        Map<String, Object> payload = buildSuspiciousEventBase(event);
         payload.put("actionTaken", event.getActionTaken().name());
         payload.put("evidence", event.getEvidence());
         payload.put("triggerEventId", event.getTriggerEventId());
@@ -46,11 +42,7 @@ public class SecurityEventPublisher extends BaseEventPublisher {
     }
 
     public void publishAutoLockTriggered(SuspiciousEvent event, AccountLockClient.Status status) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("suspiciousEventId", event.getId());
-        payload.put("accountId", event.getAccountId());
-        payload.put("ruleCode", event.getRuleCode());
-        payload.put("riskScore", event.getRiskScore());
+        Map<String, Object> payload = buildSuspiciousEventBase(event);
         payload.put("lockRequestResult", mapStatus(status));
         payload.put("lockRequestedAt", Instant.now().toString());
         writeEnvelope(TOPIC_AUTO_LOCK_TRIGGERED, event.getAccountId(), payload);
@@ -61,14 +53,26 @@ public class SecurityEventPublisher extends BaseEventPublisher {
      * by the operator manual-intervention path.
      */
     public void publishAutoLockPending(SuspiciousEvent event) {
+        Map<String, Object> payload = buildSuspiciousEventBase(event);
+        payload.put("reason", "ACCOUNT_SERVICE_UNREACHABLE");
+        payload.put("raisedAt", Instant.now().toString());
+        writeEnvelope(TOPIC_AUTO_LOCK_PENDING, event.getAccountId(), payload);
+    }
+
+    /**
+     * Builds the 4 common fields shared by every {@link SuspiciousEvent}-based publish
+     * method in the documented insertion order: {@code suspiciousEventId, accountId,
+     * ruleCode, riskScore}. Returned as a mutable {@link LinkedHashMap} so callers can
+     * append method-specific fields after the common prefix. Mirrors the
+     * {@code AuthEventPublisher#buildLoginSucceededBase} pattern (TASK-BE-131).
+     */
+    private Map<String, Object> buildSuspiciousEventBase(SuspiciousEvent event) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("suspiciousEventId", event.getId());
         payload.put("accountId", event.getAccountId());
         payload.put("ruleCode", event.getRuleCode());
         payload.put("riskScore", event.getRiskScore());
-        payload.put("reason", "ACCOUNT_SERVICE_UNREACHABLE");
-        payload.put("raisedAt", Instant.now().toString());
-        writeEnvelope(TOPIC_AUTO_LOCK_PENDING, event.getAccountId(), payload);
+        return payload;
     }
 
     /**
