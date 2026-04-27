@@ -4,8 +4,6 @@ import com.example.membership.application.event.MembershipEventPublisher;
 import com.example.membership.application.exception.SubscriptionNotFoundException;
 import com.example.membership.domain.subscription.Subscription;
 import com.example.membership.domain.subscription.SubscriptionRepository;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryEntry;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryRepository;
 import com.example.membership.domain.subscription.status.SubscriptionStatus;
 import com.example.membership.domain.subscription.status.SubscriptionStatusMachine;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +20,7 @@ import java.time.LocalDateTime;
 public class ExpireSubscriptionUseCase {
 
     private final SubscriptionRepository subscriptionRepository;
-    private final SubscriptionStatusHistoryRepository historyRepository;
+    private final SubscriptionStatusHistoryRecorder historyRecorder;
     private final MembershipEventPublisher eventPublisher;
     private final SubscriptionStatusMachine statusMachine = new SubscriptionStatusMachine();
 
@@ -46,10 +44,9 @@ public class ExpireSubscriptionUseCase {
         s.expire(now, statusMachine);
         subscriptionRepository.save(s);
 
-        historyRepository.append(new SubscriptionStatusHistoryEntry(
-                s.getId(), s.getAccountId(),
+        historyRecorder.recordTransition(s,
                 from, SubscriptionStatus.EXPIRED,
-                "SCHEDULED_EXPIRE", "SYSTEM", now));
+                "SCHEDULED_EXPIRE", "SYSTEM", now);
 
         eventPublisher.publishExpired(s);
     }
