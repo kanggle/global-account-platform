@@ -97,6 +97,11 @@ public class OAuthLoginUseCase {
 
         // Verify state from Redis (GETDEL for atomic check-and-delete).
         // Done outside txn — state check is an auth prerequisite, not a DB write.
+        // Note: state is consumed (single-use) BEFORE redirect_uri validation. A
+        // brute-forced state with a wrong redirect_uri will burn that state slot.
+        // Acceptable because state is 128-bit UUIDv7 and not enumerable; deferring
+        // state consumption past validation would re-enable replay of expired
+        // attempts that fail validation.
         String stateKey = STATE_KEY_PREFIX + command.state();
         String storedProvider = redisTemplate.opsForValue().getAndDelete(stateKey);
         if (storedProvider == null) {
