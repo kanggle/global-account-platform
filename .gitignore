@@ -3,6 +3,13 @@
 .env.*
 !.env.example
 
+# Cryptographic keys — production main resources only.
+# Test fixture keys under src/test/resources/keys/ remain tracked.
+apps/*/src/main/resources/keys/*.pem
+apps/*/src/main/resources/keys/*.key
+!apps/*/src/main/resources/keys/*.pem.example
+!apps/*/src/main/resources/keys/*.key.example
+
 # Local H2 database files
 /data/
 
