@@ -8,7 +8,7 @@ auth-service — OAuthLoginUseCase redirect_uri 화이트리스트 검증 (Criti
 
 # Status
 
-review
+done
 
 # Owner
 
