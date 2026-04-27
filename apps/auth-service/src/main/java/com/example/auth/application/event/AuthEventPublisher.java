@@ -58,19 +58,13 @@ public class AuthEventPublisher {
      * Legacy 3-arg form kept for integration tests and any pre-TASK-BE-025 call site.
      * Emits a payload that <b>omits</b> {@code deviceId} and {@code isNewDevice} entirely
      * (field absence, not explicit nulls) so consumers correctly treat the event as legacy
-     * and fall back to fingerprint logic via {@code JsonNode#isMissingNode()}. Built
-     * independently of the 5-arg form to avoid leaking null keys into the JSON envelope
-     * (TASK-BE-026 warning absorption from TASK-BE-025 review).
+     * and fall back to fingerprint logic via {@code JsonNode#isMissingNode()}.
+     * The shared {@link #buildLoginSucceededBase} helper is intentionally limited to the
+     * 7 common fields and never inserts the additive TASK-BE-025/OAuth fields, preserving
+     * the "no null keys" contract for legacy consumers.
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("accountId", accountId);
-        payload.put("ipMasked", ctx.ipMasked());
-        payload.put("userAgentFamily", ctx.userAgentFamily());
-        payload.put("deviceFingerprint", ctx.deviceFingerprint());
-        payload.put("geoCountry", ctx.resolvedGeoCountry());
-        payload.put("sessionJti", sessionJti);
-        payload.put("timestamp", Instant.now().toString());
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, ctx);
 
         writeEvent("auth.login.succeeded", accountId, payload);
     }
@@ -88,16 +82,12 @@ public class AuthEventPublisher {
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx,
                                       String deviceId, Boolean isNewDevice) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("accountId", accountId);
-        payload.put("ipMasked", ctx.ipMasked());
-        payload.put("userAgentFamily", ctx.userAgentFamily());
-        payload.put("deviceFingerprint", ctx.deviceFingerprint());
-        payload.put("geoCountry", ctx.resolvedGeoCountry());
-        payload.put("sessionJti", sessionJti);
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, ctx);
+        // Preserve documented field order: deviceId/isNewDevice come BEFORE timestamp.
+        Object timestamp = payload.remove("timestamp");
         payload.put("deviceId", deviceId);
         payload.put("isNewDevice", isNewDevice);
-        payload.put("timestamp", Instant.now().toString());
+        payload.put("timestamp", timestamp);
 
         writeEvent("auth.login.succeeded", accountId, payload);
     }
@@ -110,6 +100,29 @@ public class AuthEventPublisher {
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx,
                                       String deviceId, Boolean isNewDevice, String loginMethod) {
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, ctx);
+        // Preserve documented field order: deviceId/isNewDevice/loginMethod BEFORE timestamp.
+        Object timestamp = payload.remove("timestamp");
+        payload.put("deviceId", deviceId);
+        payload.put("isNewDevice", isNewDevice);
+        payload.put("loginMethod", loginMethod);
+        payload.put("timestamp", timestamp);
+
+        writeEvent("auth.login.succeeded", accountId, payload);
+    }
+
+    /**
+     * Builds the 7 common fields shared by every {@code publishLoginSucceeded} overload in
+     * the documented insertion order: accountId, ipMasked, userAgentFamily,
+     * deviceFingerprint, geoCountry, sessionJti, timestamp. Returned as a mutable
+     * {@link LinkedHashMap} so callers can append additional fields (extended overloads
+     * remove/re-insert {@code timestamp} to keep it last). Intentionally excludes
+     * {@code deviceId}, {@code isNewDevice}, and {@code loginMethod} so that the legacy
+     * 3-arg form never leaks null keys into the JSON envelope (TASK-BE-026 contract:
+     * field absence, not explicit nulls).
+     */
+    private Map<String, Object> buildLoginSucceededBase(String accountId, String sessionJti,
+                                                        SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("accountId", accountId);
         payload.put("ipMasked", ctx.ipMasked());
@@ -117,12 +130,8 @@ public class AuthEventPublisher {
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
         payload.put("geoCountry", ctx.resolvedGeoCountry());
         payload.put("sessionJti", sessionJti);
-        payload.put("deviceId", deviceId);
-        payload.put("isNewDevice", isNewDevice);
-        payload.put("loginMethod", loginMethod);
         payload.put("timestamp", Instant.now().toString());
-
-        writeEvent("auth.login.succeeded", accountId, payload);
+        return payload;
     }
 
     public void publishTokenRefreshed(String accountId, String previousJti, String newJti,

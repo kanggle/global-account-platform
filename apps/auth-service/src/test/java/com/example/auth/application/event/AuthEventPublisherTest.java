@@ -251,6 +251,88 @@ class AuthEventPublisherTest {
     }
 
     @Test
+    @DisplayName("publishLoginSucceeded (6-arg) includes loginMethod and preserves field order")
+    void publishLoginSucceeded_includesLoginMethodAndPreservesOrder() throws Exception {
+        // given
+        SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "KR");
+
+        // when
+        authEventPublisher.publishLoginSucceeded(
+                ACCOUNT_ID, "jti-003", ctx, "dev-oauth", true, "OAUTH_GOOGLE");
+
+        // then
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(outboxWriter).save(eq("auth"), eq(ACCOUNT_ID),
+                eq("auth.login.succeeded"), payloadCaptor.capture());
+
+        Map<String, Object> envelope = objectMapper.readValue(
+                payloadCaptor.getValue(), new TypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
+        assertThat(payload).containsEntry("accountId", ACCOUNT_ID);
+        assertThat(payload).containsEntry("sessionJti", "jti-003");
+        assertThat(payload).containsEntry("deviceId", "dev-oauth");
+        assertThat(payload).containsEntry("isNewDevice", true);
+        assertThat(payload).containsEntry("loginMethod", "OAUTH_GOOGLE");
+        assertThat(payload).containsEntry("geoCountry", "KR");
+        // TASK-BE-131: refactor must preserve documented insertion order. timestamp last,
+        // additive fields immediately before it, common 7 fields up front.
+        assertThat(payload.keySet()).containsExactly(
+                "accountId", "ipMasked", "userAgentFamily", "deviceFingerprint",
+                "geoCountry", "sessionJti", "deviceId", "isNewDevice", "loginMethod",
+                "timestamp");
+    }
+
+    @Test
+    @DisplayName("publishLoginSucceeded (5-arg) preserves field order with timestamp last")
+    void publishLoginSucceeded_5arg_preservesOrder() throws Exception {
+        // given
+        SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "KR");
+
+        // when
+        authEventPublisher.publishLoginSucceeded(ACCOUNT_ID, "jti-004", ctx, "dev-1", false);
+
+        // then
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(outboxWriter).save(eq("auth"), eq(ACCOUNT_ID),
+                eq("auth.login.succeeded"), payloadCaptor.capture());
+
+        Map<String, Object> envelope = objectMapper.readValue(
+                payloadCaptor.getValue(), new TypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
+        // TASK-BE-131: 5-arg must produce common 7 + deviceId + isNewDevice with timestamp last.
+        assertThat(payload.keySet()).containsExactly(
+                "accountId", "ipMasked", "userAgentFamily", "deviceFingerprint",
+                "geoCountry", "sessionJti", "deviceId", "isNewDevice", "timestamp");
+    }
+
+    @Test
+    @DisplayName("publishLoginSucceeded (3-arg legacy) emits exactly the 7 common fields in order")
+    void publishLoginSucceeded_3arg_exactlyCommonFields() throws Exception {
+        // given
+        SessionContext ctx = new SessionContext("127.0.0.1", "Chrome/120", "fp-123", "JP");
+
+        // when
+        authEventPublisher.publishLoginSucceeded(ACCOUNT_ID, "jti-005", ctx);
+
+        // then
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
+        verify(outboxWriter).save(eq("auth"), eq(ACCOUNT_ID),
+                eq("auth.login.succeeded"), payloadCaptor.capture());
+
+        Map<String, Object> envelope = objectMapper.readValue(
+                payloadCaptor.getValue(), new TypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) envelope.get("payload");
+        // TASK-BE-131 + TASK-BE-026: legacy 3-arg form must contain exactly the 7 common
+        // fields in declared order — no deviceId/isNewDevice/loginMethod keys at all.
+        assertThat(payload.keySet()).containsExactly(
+                "accountId", "ipMasked", "userAgentFamily", "deviceFingerprint",
+                "geoCountry", "sessionJti", "timestamp");
+    }
+
+    @Test
     @DisplayName("geoCountry defaults to XX when not provided")
     void geoCountryDefaultsToXX() throws Exception {
         // given - using 3-arg constructor which defaults geoCountry to "XX"
