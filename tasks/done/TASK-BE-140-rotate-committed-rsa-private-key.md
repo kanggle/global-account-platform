@@ -8,7 +8,7 @@ auth-service — 커밋된 RSA private key 회수 및 .gitignore/startup guard �
 
 # Status
 
-review
+done
 
 # Owner
 
