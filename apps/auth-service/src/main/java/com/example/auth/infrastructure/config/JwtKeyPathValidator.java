@@ -17,7 +17,7 @@ import java.util.Set;
 @Component
 public class JwtKeyPathValidator {
 
-    static final Set<String> ALLOWED_CLASSPATH_PROFILES = Set.of("local", "test", "integration-test");
+    static final Set<String> ALLOWED_CLASSPATH_PROFILES = Set.of("local", "test", "integration-test", "e2e");
     private static final String CLASSPATH_PREFIX = "classpath:";
 
     private final Environment environment;

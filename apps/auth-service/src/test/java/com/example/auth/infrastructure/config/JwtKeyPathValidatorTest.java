@@ -124,9 +124,21 @@ class JwtKeyPathValidatorTest {
     }
 
     @Test
-    @DisplayName("ALLOWED_CLASSPATH_PROFILES 상수가 local/test/integration-test 만 포함")
+    @DisplayName("e2e 프로파일 + classpath 경로 → 통과 (CI docker-compose 환경)")
+    void validate_e2eProfile_classpath_passes() {
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("e2e");
+
+        JwtKeyPathValidator validator = new JwtKeyPathValidator(
+                env, "classpath:keys/private.pem", "classpath:keys/public.pem");
+
+        assertThatCode(validator::validate).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("ALLOWED_CLASSPATH_PROFILES 상수가 local/test/integration-test/e2e 만 포함")
     void allowedClasspathProfiles_isExpectedSet() {
         assertThat(JwtKeyPathValidator.ALLOWED_CLASSPATH_PROFILES)
-                .containsExactlyInAnyOrder("local", "test", "integration-test");
+                .containsExactlyInAnyOrder("local", "test", "integration-test", "e2e");
     }
 }
