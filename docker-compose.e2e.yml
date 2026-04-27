@@ -176,6 +176,9 @@ services:
       DB_NAME: account_db
       DB_USERNAME: account_user
       DB_PASSWORD: account_pass
+      # TASK-BE-142: /internal/** is fail-closed when token is unset. Must match
+      # the value used by sibling services (admin-service, security-service).
+      INTERNAL_API_TOKEN: e2e-internal-token
     # TASK-BE-045: stagger startup (auth -> account -> admin -> security) to
     # spread initial HikariCP checkFailFast connection bursts on MySQL.
     depends_on:
@@ -194,6 +197,9 @@ services:
       DB_NAME: security_db
       DB_USERNAME: security_user
       DB_PASSWORD: security_pass
+      # TASK-BE-142: token used for outbound calls to account-service /internal/**.
+      # Must match account-service's INTERNAL_API_TOKEN.
+      INTERNAL_SERVICE_TOKEN: e2e-internal-token
     # TASK-BE-045: last in the startup chain (auth -> account -> admin -> security).
     depends_on:
       mysql: { condition: service_healthy }

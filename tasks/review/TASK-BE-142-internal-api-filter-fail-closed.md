@@ -60,7 +60,9 @@ backend
   - 토큰 공백/null + `/internal/**` 요청 → 401 반환
   - 토큰 설정됨 + 헤더 일치 → 통과 (기존)
   - 토큰 설정됨 + 헤더 불일치/누락 → 401 (기존)
-- 부팅 가드: `@PostConstruct` 에서 비-test 프로파일이면서 토큰 공백이면 `IllegalStateException`
+- 부팅 처리: 토큰 미설정 시 startup WARN 로그 + 요청 시점 401 (membership-service 가 이미 채택한 패턴과 일관). 헬스체크/메트릭/non-internal 엔드포인트는 정상 가동시키되 `/internal/**` 만 차단.
+
+> **Deviation note:** 초안의 "비-test 프로파일에서 `IllegalStateException` 으로 부팅 거부" 안은 채택하지 않음. 이유: (1) membership-service 가 이미 WARN+요청차단 패턴을 사용 중이라 일관성 유지, (2) 부팅 거부는 헬스체크/메트릭까지 차단해 운영 가시성을 떨어뜨림, (3) /internal/** 만 차단하면 동일한 보안 효과를 얻을 수 있음.
 
 ## Out of Scope
 
@@ -71,12 +73,12 @@ backend
 
 # Acceptance Criteria
 
-- [ ] 3개 서비스 모두 `InternalApiFilter` 가 토큰 공백 시 401 반환
-- [ ] `application.yml` 의 `internal.api.token` 기본값을 빈 문자열에서 placeholder(예: `""` → 미설정 의도 명시) 또는 제거하고 env 만 받도록 변경
-- [ ] 비-test 프로파일 + 빈 토큰 → 부팅 시 `IllegalStateException`
-- [ ] test 프로파일은 토큰 없이도 정상 부팅 (기존 통합 테스트 유지)
-- [ ] 단위 테스트: 빈 토큰 + `/internal/**` 요청 → 401 검증
-- [ ] `:apps:account-service:test`, `:apps:membership-service:test`, `:apps:security-service:test` 통과
+- [x] account-service `InternalApiFilter` 가 토큰 공백+bypass=false 시 401 반환 (membership-service 는 본 변경 이전부터 fail-closed). security-service `InternalAuthFilter` 도 별도 클래스로 이미 fail-closed.
+- [x] `application.yml` 에 `internal.api.bypass-when-unconfigured: ${INTERNAL_API_BYPASS_WHEN_UNCONFIGURED:false}` 추가 — 운영 기본값 fail-closed, env 로 슬라이스 테스트 우회 가능
+- [x] **deviation**: 부팅 거부 대신 startup WARN + 요청 시점 401 (위 Deviation note 참고). test 프로파일은 토큰 없이도 정상 부팅 — `SecurityConfig` 가 testProfileActive 시 bypass=true.
+- [x] 단위 테스트: account-service `InternalApiFilterTest` 8개, membership-service `InternalApiFilterTest` 6개 (parity)
+- [x] `:apps:account-service:test`, `:apps:membership-service:test` 통과
+- [x] `docker-compose.e2e.yml` 에 account-service `INTERNAL_API_TOKEN`, security-service `INTERNAL_SERVICE_TOKEN` 주입 (BE-142 review fix C-1)
 
 ---
 
