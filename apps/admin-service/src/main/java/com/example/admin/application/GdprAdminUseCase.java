@@ -42,20 +42,14 @@ public class GdprAdminUseCase {
                     cmd.operator().operatorId(),
                     cmd.idempotencyKey());
         } catch (CallNotPermittedException ex) {
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.GDPR_DELETE, cmd.operator(),
-                    "ACCOUNT", cmd.accountId(),
-                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
-                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.GDPR_DELETE, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    startedAt, "CIRCUIT_OPEN: " + ex.getMessage());
             throw ex;
         } catch (DownstreamFailureException ex) {
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.GDPR_DELETE, cmd.operator(),
-                    "ACCOUNT", cmd.accountId(),
-                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
-                    Outcome.FAILURE, ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.GDPR_DELETE, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    startedAt, ex.getMessage());
             throw ex;
         }
 
@@ -84,20 +78,12 @@ public class GdprAdminUseCase {
         try {
             downstream = accountServiceClient.export(accountId, operator.operatorId());
         } catch (CallNotPermittedException ex) {
-            auditor.record(new AdminActionAuditor.AuditRecord(
-                    auditId, ActionCode.DATA_EXPORT, operator,
-                    "ACCOUNT", accountId,
-                    reason, null, null,
-                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordSingleShotAuditFailure(auditId, ActionCode.DATA_EXPORT, operator,
+                    accountId, reason, startedAt, "CIRCUIT_OPEN: " + ex.getMessage());
             throw ex;
         } catch (DownstreamFailureException ex) {
-            auditor.record(new AdminActionAuditor.AuditRecord(
-                    auditId, ActionCode.DATA_EXPORT, operator,
-                    "ACCOUNT", accountId,
-                    reason, null, null,
-                    Outcome.FAILURE, ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordSingleShotAuditFailure(auditId, ActionCode.DATA_EXPORT, operator,
+                    accountId, reason, startedAt, ex.getMessage());
             throw ex;
         }
 
@@ -132,5 +118,29 @@ public class GdprAdminUseCase {
         if (reason == null || reason.isBlank()) {
             throw new ReasonRequiredException();
         }
+    }
+
+    private void recordAuditFailure(String auditId, ActionCode actionCode,
+                                    OperatorContext operator, String targetId,
+                                    String reason, String ticketId, String idempotencyKey,
+                                    Instant startedAt, String failureMessage) {
+        auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
+                auditId, actionCode, operator,
+                "ACCOUNT", targetId,
+                reason, ticketId, idempotencyKey,
+                Outcome.FAILURE, failureMessage,
+                startedAt, Instant.now()));
+    }
+
+    private void recordSingleShotAuditFailure(String auditId, ActionCode actionCode,
+                                              OperatorContext operator, String targetId,
+                                              String reason, Instant startedAt,
+                                              String failureMessage) {
+        auditor.record(new AdminActionAuditor.AuditRecord(
+                auditId, actionCode, operator,
+                "ACCOUNT", targetId,
+                reason, null, null,
+                Outcome.FAILURE, failureMessage,
+                startedAt, Instant.now()));
     }
 }
