@@ -10,6 +10,7 @@ import com.example.community.domain.post.PostVisibility;
 import com.example.community.domain.post.status.PostStatusHistoryEntry;
 import com.example.community.domain.post.status.PostStatusHistoryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -38,7 +39,8 @@ class PublishPostUseCaseTest {
     PublishPostUseCase useCase;
 
     @Test
-    void artist_publishes_public_post_ok() {
+    @DisplayName("아티스트가 PUBLIC ARTIST_POST 를 발행하면 PostView 가 반환된다")
+    void execute_artistPublishesPublicPost_returnsPostView() {
         PostMediaUrlsSerializer serializer = new PostMediaUrlsSerializer(new ObjectMapper());
         useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, serializer);
 
@@ -60,7 +62,8 @@ class PublishPostUseCaseTest {
     }
 
     @Test
-    void fan_cannot_publish_artist_post() {
+    @DisplayName("팬 역할이 ARTIST_POST 를 발행하려 하면 PermissionDeniedException 이 발생한다")
+    void execute_fanPublishesArtistPost_throwsPermissionDenied() {
         useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup,
                 new PostMediaUrlsSerializer(new ObjectMapper()));
 
