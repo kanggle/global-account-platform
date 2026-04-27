@@ -83,6 +83,9 @@ account:
     read-timeout-ms: 5000
 
 outbox:
+  polling:
+    interval-ms: ${OUTBOX_POLLING_INTERVAL_MS:1000}
+    batch-size: ${OUTBOX_POLLING_BATCH_SIZE:50}
   topic-mapping:
     account.created: account.created
     account.status.changed: account.status.changed
@@ -92,4 +95,9 @@ outbox:
 
 internal:
   api:
+    # Token used to authenticate /internal/** requests from sibling services. MUST be set in
+    # production; when unset and bypass-when-unconfigured=false (default), all /internal/**
+    # requests are rejected with 401 (fail-closed). The bypass flag is intended for
+    # @WebMvcTest slice tests and local development only — never enable in production.
     token: ${INTERNAL_API_TOKEN:}
+    bypass-when-unconfigured: ${INTERNAL_API_BYPASS_WHEN_UNCONFIGURED:false}

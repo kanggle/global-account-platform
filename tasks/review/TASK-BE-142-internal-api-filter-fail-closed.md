@@ -8,7 +8,7 @@ InternalApiFilter 빈 토큰 시 fail-closed 로 전환 (Critical C-3)
 
 # Status
 
-ready
+review
 
 # Owner
 
