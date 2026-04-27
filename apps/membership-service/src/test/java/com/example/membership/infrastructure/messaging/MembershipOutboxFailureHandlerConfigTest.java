@@ -23,7 +23,7 @@ class MembershipOutboxFailureHandlerConfigTest {
     private final MembershipOutboxFailureHandlerConfig config = new MembershipOutboxFailureHandlerConfig();
 
     @Test
-    @DisplayName("outboxFailureHandler_singleFailure_incrementsCounterTaggedWithEventType")
+    @DisplayName("단일 publish 실패 시 event_type 태그와 함께 카운터가 1 증가한다")
     void outboxFailureHandler_singleFailure_incrementsCounterTaggedWithEventType() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         OutboxFailureHandler handler = config.outboxFailureHandler(registry);
@@ -40,7 +40,7 @@ class MembershipOutboxFailureHandlerConfigTest {
     }
 
     @Test
-    @DisplayName("outboxFailureHandler_multipleEventTypes_registersSeparateCountersPerTag")
+    @DisplayName("여러 event_type으로 실패 시 태그별 독립 카운터가 각각 증가한다")
     void outboxFailureHandler_multipleEventTypes_registersSeparateCountersPerTag() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         OutboxFailureHandler handler = config.outboxFailureHandler(registry);
@@ -63,7 +63,7 @@ class MembershipOutboxFailureHandlerConfigTest {
     }
 
     @Test
-    @DisplayName("outboxFailureHandler_meterRegistryProvided_returnsNonNullHandler")
+    @DisplayName("MeterRegistry를 주입하면 null이 아닌 OutboxFailureHandler를 반환한다")
     void outboxFailureHandler_meterRegistryProvided_returnsNonNullHandler() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
