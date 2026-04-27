@@ -5,25 +5,25 @@ import com.example.admin.application.exception.RoleNotFoundException;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaRepository;
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorRoleJpaRepository;
-import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaEntity;
 import com.example.admin.infrastructure.persistence.rbac.AdminRoleJpaRepository;
 import com.gap.security.password.PasswordHasher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import static com.example.admin.application.OperatorUseCaseTestSupport.actor;
+import static com.example.admin.application.OperatorUseCaseTestSupport.newResolver;
+import static com.example.admin.application.OperatorUseCaseTestSupport.operator;
+import static com.example.admin.application.OperatorUseCaseTestSupport.role;
+import static com.example.admin.application.OperatorUseCaseTestSupport.setField;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,65 +51,6 @@ class CreateOperatorUseCaseTest {
         OperatorRoleResolver resolver = newResolver(operatorRepository, roleRepository);
         useCase = new CreateOperatorUseCase(
                 operatorRepository, operatorRoleRepository, auditor, passwordHasher, resolver);
-    }
-
-    /** Reflectively instantiate the package-private helper from this test package. */
-    private static OperatorRoleResolver newResolver(
-            AdminOperatorJpaRepository operatorRepository,
-            AdminRoleJpaRepository roleRepository) {
-        try {
-            Constructor<OperatorRoleResolver> ctor =
-                    OperatorRoleResolver.class.getDeclaredConstructor(
-                            AdminOperatorJpaRepository.class, AdminRoleJpaRepository.class);
-            ctor.setAccessible(true);
-            return ctor.newInstance(operatorRepository, roleRepository);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    private OperatorContext actor() {
-        return new OperatorContext("actor-uuid", "jti-1");
-    }
-
-    private AdminRoleJpaEntity role(Long id, String name) {
-        try {
-            var ctor = AdminRoleJpaEntity.class.getDeclaredConstructor();
-            ctor.setAccessible(true);
-            AdminRoleJpaEntity r = ctor.newInstance();
-            setField(r, "id", id);
-            setField(r, "name", name);
-            setField(r, "description", name);
-            return r;
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    private AdminOperatorJpaEntity operator(Long id, String uuid, String email, String status) {
-        AdminOperatorJpaEntity e = AdminOperatorJpaEntity.create(
-                uuid, email, "hash", "Display", status, Instant.parse("2026-01-01T00:00:00Z"));
-        setField(e, "id", id);
-        return e;
-    }
-
-    private static void setField(Object target, String name, Object value) {
-        try {
-            Field field = findField(target.getClass(), name);
-            field.setAccessible(true);
-            field.set(target, value);
-        } catch (ReflectiveOperationException ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
-        Class<?> current = type;
-        while (current != null) {
-            try { return current.getDeclaredField(name); }
-            catch (NoSuchFieldException ignored) { current = current.getSuperclass(); }
-        }
-        throw new NoSuchFieldException(name);
     }
 
     @Test

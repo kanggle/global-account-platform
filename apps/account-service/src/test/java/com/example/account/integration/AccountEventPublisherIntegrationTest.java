@@ -4,6 +4,7 @@ import com.example.account.application.event.AccountEventPublisher;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.status.AccountStatus;
 import com.example.messaging.outbox.OutboxPollingScheduler;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -12,12 +13,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
@@ -41,37 +41,22 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>Pairs with {@code AccountEventPublisherTest} (unit) which mocks the
  * outbox writer; this test exercises the full domain factory → publisher →
  * outbox table path with real serialization.
+ *
+ * <p>TASK-BE-126: extends {@link AbstractIntegrationTest} so MySQL/Kafka containers are
+ * shared per-JVM (platform/testing-strategy.md "Container Lifecycle"). Service-specific
+ * properties (Flyway enable, internal API token) are registered via the subclass
+ * {@code @DynamicPropertySource}; Spring merges every {@code @DynamicPropertySource}
+ * up the class hierarchy, so the base's MySQL/Kafka registrations stay active.
+ * Docker availability is enforced by {@code DockerAvailableCondition} from the base class.
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 @DisplayName("TASK-BE-118: AccountEventPublisher integration — account.locked outbox payload")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-class AccountEventPublisherIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
-
-    @SuppressWarnings("resource")
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("account_db")
-            .withUsername("account_user")
-            .withPassword("account_pass")
-            .withCommand("mysqld",
-                    "--default-authentication-plugin=mysql_native_password",
-                    "--log-bin-trust-function-creators=1");
+class AccountEventPublisherIntegrationTest extends AbstractIntegrationTest {
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("internal.api.token", () -> "test-internal-token");
     }

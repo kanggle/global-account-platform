@@ -50,6 +50,7 @@ apps/admin-service/src/main/java/com/example/admin/
 │   ├── RevokeSessionCommand.java
 │   ├── QueryAuditCommand.java
 │   ├── OperatorContext.java             ← 현재 실행 중인 운영자 + 사유 + 티켓 ID
+│   ├── OperatorRoleResolver.java        ← (TASK-BE-121) use-case role-name → JPA entity 리졸버 + actor internal id 헬퍼. 패키지-사적, application 전용.
 │   ├── AdminActionAuditor.java          ← 모든 command 전·후 감사 기록
 │   └── event/
 │       └── AdminEventPublisher.java     ← admin.action.performed outbox
@@ -61,7 +62,7 @@ apps/admin-service/src/main/java/com/example/admin/
     │   └── SecurityServiceClient.java   ← 감사 조회 호출
     ├── security/
     │   ├── OperatorAuthenticationFilter.java   ← 별도 인증 경계
-    │   └── OperatorRoleResolver.java
+    │   └── OperatorEndpointAccessResolver.java ← (planned, 미구현) role 기반 엔드포인트 접근 제어. application/OperatorRoleResolver(use-case 헬퍼)와 다른 책임.
     ├── persistence/                     ← 최소한의 로컬 상태만
     │   ├── AdminActionJpaEntity.java    ← 감사 원장 (append-only)
     │   └── AdminActionJpaRepository.java
@@ -115,7 +116,7 @@ presentation → application → infrastructure/client
 
 ### infrastructure/security/
 - `OperatorAuthenticationFilter`: admin-scope JWT 검증 + 2FA 확인 (선택)
-- `OperatorRoleResolver`: role 기반 권한 (SUPER_ADMIN / ACCOUNT_ADMIN / AUDITOR 등) → 엔드포인트 접근 제어
+- `OperatorEndpointAccessResolver` (planned, 미구현): role 기반 권한 (SUPER_ADMIN / ACCOUNT_ADMIN / AUDITOR 등) → 엔드포인트 접근 제어. **주의**: 이 클래스는 `application/OperatorRoleResolver`(TASK-BE-121에서 추가된 use-case role-name → JPA entity 리졸버)와 책임이 완전히 다르다. 이름 충돌을 피하기 위해 본 placeholder는 구현 시 `OperatorEndpointAccessResolver`(또는 동등한 RBAC 의도가 드러나는 이름)으로 명명한다.
 
 ### infrastructure/persistence/
 - `admin_actions` 테이블은 **append-only** (DB 트리거 또는 권한 제한으로 UPDATE/DELETE 차단)
