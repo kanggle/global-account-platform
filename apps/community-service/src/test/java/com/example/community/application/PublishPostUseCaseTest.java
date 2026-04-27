@@ -39,8 +39,8 @@ class PublishPostUseCaseTest {
 
     @Test
     void artist_publishes_public_post_ok() {
-        ObjectMapper mapper = new ObjectMapper();
-        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, mapper);
+        PostMediaUrlsSerializer serializer = new PostMediaUrlsSerializer(new ObjectMapper());
+        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, serializer);
 
         when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
         when(accountProfileLookup.displayNameOf("artist-1")).thenReturn("Stage Name");
@@ -61,7 +61,8 @@ class PublishPostUseCaseTest {
 
     @Test
     void fan_cannot_publish_artist_post() {
-        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, new ObjectMapper());
+        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup,
+                new PostMediaUrlsSerializer(new ObjectMapper()));
 
         PublishPostCommand cmd = new PublishPostCommand(
                 new ActorContext("fan-1", Set.of("FAN")),

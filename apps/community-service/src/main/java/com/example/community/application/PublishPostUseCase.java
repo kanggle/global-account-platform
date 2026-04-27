@@ -10,8 +10,6 @@ import com.example.community.domain.post.status.ActorType;
 import com.example.community.domain.post.status.PostStatus;
 import com.example.community.domain.post.status.PostStatusHistoryEntry;
 import com.example.community.domain.post.status.PostStatusHistoryRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,7 +26,7 @@ public class PublishPostUseCase {
     private final PostStatusHistoryRepository historyRepository;
     private final CommunityEventPublisher eventPublisher;
     private final AccountProfileLookup accountProfileLookup;
-    private final ObjectMapper objectMapper;
+    private final PostMediaUrlsSerializer mediaUrlsSerializer;
 
     @Transactional
     public PostView execute(PublishPostCommand cmd) {
@@ -37,14 +35,7 @@ public class PublishPostUseCase {
             throw new PermissionDeniedException("ARTIST role required to publish ARTIST_POST");
         }
 
-        String mediaUrlsJson = null;
-        if (cmd.mediaUrls() != null && !cmd.mediaUrls().isEmpty()) {
-            try {
-                mediaUrlsJson = objectMapper.writeValueAsString(cmd.mediaUrls());
-            } catch (JsonProcessingException e) {
-                throw new IllegalArgumentException("Invalid mediaUrls");
-            }
-        }
+        String mediaUrlsJson = mediaUrlsSerializer.serialize(cmd.mediaUrls());
 
         Post post = Post.createDraft(
                 actor.accountId(),
