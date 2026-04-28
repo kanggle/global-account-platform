@@ -8,7 +8,7 @@ auth-service — RequestPasswordResetUseCase 이메일별 rate limit 추가 (Hig
 
 # Status
 
-review
+done
 
 # Owner
 
