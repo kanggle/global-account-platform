@@ -3,9 +3,10 @@ package com.example.auth.application;
 import com.example.auth.application.command.RequestPasswordResetCommand;
 import com.example.auth.application.port.EmailSenderPort;
 import com.example.auth.domain.credentials.Credential;
-import com.example.auth.domain.credentials.CredentialHash;
 import com.example.auth.domain.repository.CredentialRepository;
+import com.example.auth.domain.repository.PasswordResetAttemptCounter;
 import com.example.auth.domain.repository.PasswordResetTokenStore;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -40,10 +42,20 @@ class RequestPasswordResetUseCaseTest {
     private PasswordResetTokenStore passwordResetTokenStore;
 
     @Mock
+    private PasswordResetAttemptCounter rateLimitCounter;
+
+    @Mock
     private EmailSenderPort emailSenderPort;
 
     @InjectMocks
     private RequestPasswordResetUseCase useCase;
+
+    @BeforeEach
+    void setUp() {
+        // Default: rate limit lets the request through. Tests that exercise
+        // the over-limit path override this stub explicitly.
+        lenient().when(rateLimitCounter.tryAcquire(anyString())).thenReturn(true);
+    }
 
     @Test
     @DisplayName("이메일이 존재하면 토큰을 저장하고 이메일을 발송한다")
@@ -134,5 +146,44 @@ class RequestPasswordResetUseCaseTest {
         verify(emailSenderPort).sendPasswordResetEmail(eq(email), anyString());
         // delete must NOT be called on failure — the user may complete via a retry
         verify(passwordResetTokenStore, never()).delete(anyString());
+    }
+
+    @Test
+    @DisplayName("rate limit 초과 시 등록된 이메일이라도 토큰 발급/이메일 발송이 모두 차단된다 (TASK-BE-144)")
+    void execute_rateLimitExceeded_existingEmail_silentDrop() {
+        // given — repository would resolve, but counter blocks the request
+        String email = "spam-target@example.com";
+        given(rateLimitCounter.tryAcquire(anyString())).willReturn(false);
+
+        // when
+        useCase.execute(new RequestPasswordResetCommand(email));
+
+        // then — credential lookup must not even fire (cheaper + fewer leaks)
+        verifyNoInteractions(credentialRepository);
+        verifyNoInteractions(passwordResetTokenStore);
+        verifyNoInteractions(emailSenderPort);
+    }
+
+    @Test
+    @DisplayName("rate limit 초과 시 미등록 이메일도 동일하게 silent drop — enumeration 방지")
+    void execute_rateLimitExceeded_unknownEmail_silentDrop() {
+        given(rateLimitCounter.tryAcquire(anyString())).willReturn(false);
+
+        useCase.execute(new RequestPasswordResetCommand("ghost@example.com"));
+
+        verifyNoInteractions(credentialRepository);
+        verifyNoInteractions(passwordResetTokenStore);
+        verifyNoInteractions(emailSenderPort);
+    }
+
+    @Test
+    @DisplayName("rate limit 카운터는 발견/미발견 분기에 무관하게 호출된다 (timing oracle 방지)")
+    void execute_counterCalled_regardlessOfCredentialExistence() {
+        given(credentialRepository.findByAccountIdEmail(anyString()))
+                .willReturn(Optional.empty());
+
+        useCase.execute(new RequestPasswordResetCommand("any@example.com"));
+
+        verify(rateLimitCounter).tryAcquire(anyString());
     }
 }

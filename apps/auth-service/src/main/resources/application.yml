@@ -116,6 +116,12 @@ auth:
   login:
     max-failure-count: ${LOGIN_MAX_FAILURES:5}
     failure-window-seconds: ${LOGIN_FAILURE_WINDOW:900}
+  password-reset:
+    rate-limit:
+      # TASK-BE-144: per-email reset request flood protection (silent drop on overflow,
+      # 204 response shape preserved to avoid account-existence leaks).
+      window-seconds: ${PASSWORD_RESET_WINDOW:900}
+      max-attempts: ${PASSWORD_RESET_MAX_ATTEMPTS:3}
   device-session:
     max-active-sessions: ${AUTH_MAX_ACTIVE_SESSIONS:10}
   account-service:
