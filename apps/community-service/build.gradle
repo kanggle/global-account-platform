@@ -54,6 +54,7 @@ dependencies {
     testImplementation 'com.jayway.jsonpath:json-path'
     testImplementation 'org.awaitility:awaitility'
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
+    testImplementation testFixtures(project(':libs:java-test-support'))
 }
 
 dependencyManagement {
