@@ -9,6 +9,7 @@ import com.example.auth.application.result.OAuthAuthorizeResult;
 import com.example.auth.application.result.OAuthLoginResult;
 import com.example.auth.application.result.SocialSignupResult;
 import com.example.auth.domain.oauth.OAuthProvider;
+import com.example.auth.domain.repository.OAuthStateStore;
 import com.example.auth.domain.session.SessionContext;
 import com.example.auth.infrastructure.oauth.*;
 import com.example.auth.infrastructure.persistence.SocialIdentityJpaEntity;
@@ -16,12 +17,10 @@ import com.example.auth.infrastructure.persistence.SocialIdentityJpaRepository;
 import com.example.common.id.UuidV7;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Optional;
 
 @Slf4j
@@ -29,13 +28,9 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class OAuthLoginUseCase {
 
-    private static final String STATE_KEY_PREFIX = "oauth:state:";
-    // TTL aligned with specs/features/oauth-social-login.md: 10 minutes (TASK-BE-087).
-    private static final Duration STATE_TTL = Duration.ofMinutes(10);
-
     private final OAuthProperties oAuthProperties;
     private final OAuthClientFactory oAuthClientFactory;
-    private final StringRedisTemplate redisTemplate;
+    private final OAuthStateStore oAuthStateStore;
     private final OAuthLoginTransactionalStep oAuthLoginTransactionalStep;
     private final AccountServicePort accountServicePort;
     private final SocialIdentityJpaRepository socialIdentityJpaRepository;
@@ -55,8 +50,8 @@ public class OAuthLoginUseCase {
 
         String state = UuidV7.randomString();
 
-        // Store state in Redis
-        redisTemplate.opsForValue().set(STATE_KEY_PREFIX + state, provider.name(), STATE_TTL);
+        // Persist via the domain port — key prefix + TTL live in the adapter.
+        oAuthStateStore.store(state, provider);
 
         String authorizationUrl = buildAuthorizationUrl(props, effectiveRedirectUri, state);
 
@@ -95,16 +90,14 @@ public class OAuthLoginUseCase {
         OAuthProvider provider = parseProvider(command.provider());
         SessionContext ctx = command.sessionContext();
 
-        // Verify state from Redis (GETDEL for atomic check-and-delete).
+        // Verify state via the domain port (GETDEL for atomic check-and-delete).
         // Done outside txn — state check is an auth prerequisite, not a DB write.
         // Note: state is consumed (single-use) BEFORE redirect_uri validation. A
         // brute-forced state with a wrong redirect_uri will burn that state slot.
         // Acceptable because state is 128-bit UUIDv7 and not enumerable; deferring
         // state consumption past validation would re-enable replay of expired
         // attempts that fail validation.
-        String stateKey = STATE_KEY_PREFIX + command.state();
-        String storedProvider = redisTemplate.opsForValue().getAndDelete(stateKey);
-        if (storedProvider == null) {
+        if (oAuthStateStore.consumeAtomic(command.state()).isEmpty()) {
             throw new InvalidOAuthStateException();
         }
 

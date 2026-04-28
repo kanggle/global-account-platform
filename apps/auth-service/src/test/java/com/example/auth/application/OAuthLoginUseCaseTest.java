@@ -10,6 +10,7 @@ import com.example.auth.application.result.AccountStatusLookupResult;
 import com.example.auth.application.result.OAuthLoginResult;
 import com.example.auth.application.result.SocialSignupResult;
 import com.example.auth.domain.oauth.OAuthProvider;
+import com.example.auth.domain.repository.OAuthStateStore;
 import com.example.auth.domain.session.SessionContext;
 import com.example.auth.infrastructure.oauth.OAuthClient;
 import com.example.auth.infrastructure.oauth.OAuthClientFactory;
@@ -27,8 +28,6 @@ import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.Optional;
 
@@ -63,18 +62,16 @@ class OAuthLoginUseCaseTest {
 
     @Mock private OAuthProperties oAuthProperties;
     @Mock private OAuthClientFactory oAuthClientFactory;
-    @Mock private StringRedisTemplate redisTemplate;
+    @Mock private OAuthStateStore oAuthStateStore;
     @Mock private OAuthLoginTransactionalStep oAuthLoginTransactionalStep;
     @Mock private AccountServicePort accountServicePort;
     @Mock private SocialIdentityJpaRepository socialIdentityJpaRepository;
-    @Mock private ValueOperations<String, String> valueOperations;
     @Mock private OAuthClient oAuthClient;
 
     @InjectMocks
     private OAuthLoginUseCase oAuthLoginUseCase;
 
     private static final String STATE = "state-abc";
-    private static final String STATE_KEY = "oauth:state:" + STATE;
     private static final String CODE = "auth-code-123";
     private static final String REDIRECT_URI = "http://localhost:3000/oauth/callback";
     private static final SessionContext CTX = new SessionContext("127.0.0.1", "Chrome/120", "fp-1");
@@ -107,8 +104,7 @@ class OAuthLoginUseCaseTest {
             + "→ persistLogin, txn command carries resolved accountId/isNewAccount/accountStatus")
     void callback_newIdentity_allHttpBeforeTransactionalStep() {
         // given
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         when(oAuthClient.exchangeCodeForUserInfo(CODE, REDIRECT_URI)).thenReturn(USER_INFO);
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
@@ -153,8 +149,7 @@ class OAuthLoginUseCaseTest {
     @DisplayName("callback (existing identity): socialSignup NOT called, accountId taken from "
             + "pre-existing SocialIdentityJpaEntity, getAccountStatus still runs before txn")
     void callback_existingIdentity_skipsSocialSignup() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         when(oAuthClient.exchangeCodeForUserInfo(CODE, REDIRECT_URI)).thenReturn(USER_INFO);
         var existing = SocialIdentityJpaEntity.create(
@@ -189,8 +184,7 @@ class OAuthLoginUseCaseTest {
     @DisplayName("callback: getAccountStatus returns empty → txn command carries empty status; "
             + "txn step decides what to do with it")
     void callback_accountStatusEmpty_propagatesEmpty() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         when(oAuthClient.exchangeCodeForUserInfo(CODE, REDIRECT_URI)).thenReturn(USER_INFO);
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
@@ -212,8 +206,7 @@ class OAuthLoginUseCaseTest {
     @Test
     @DisplayName("callback: invalid state short-circuits — no HTTP call, no txn step")
     void callback_invalidStateSkipsHttpAndTxn() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn(null);
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> oAuthLoginUseCase.callback(command))
                 .isInstanceOf(InvalidOAuthStateException.class);
@@ -227,8 +220,7 @@ class OAuthLoginUseCaseTest {
     @Test
     @DisplayName("callback: provider HTTP failure propagates; account-service HTTP and txn step NOT called")
     void callback_providerHttpFailure_skipsAccountServiceAndTxn() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         OAuthProviderException providerFailure =
                 new OAuthProviderException("google token exchange failed");
@@ -245,8 +237,7 @@ class OAuthLoginUseCaseTest {
     @Test
     @DisplayName("callback: empty email from provider → reject BEFORE account-service HTTP and txn step")
     void callback_emptyEmail_skipsAccountServiceAndTxn() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         OAuthUserInfo noEmail = new OAuthUserInfo(
                 "provider-user-1", "", "User", OAuthProvider.GOOGLE);
@@ -264,8 +255,7 @@ class OAuthLoginUseCaseTest {
     @DisplayName("callback: when the transactional step fails, HTTP calls are NOT retried "
             + "(already performed — single-shot semantics preserved)")
     void callback_txnFailure_httpNotRetried() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         when(oAuthClient.exchangeCodeForUserInfo(CODE, REDIRECT_URI)).thenReturn(USER_INFO);
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
@@ -294,30 +284,28 @@ class OAuthLoginUseCaseTest {
                 oAuthLoginUseCase.authorize("GOOGLE", "https://attacker.example.com/callback"))
                 .isInstanceOf(InvalidOAuthRedirectUriException.class);
 
-        // state 가 Redis 에 저장되기 전에 reject 되어야 함
-        verify(redisTemplate, never()).opsForValue();
+        // state 가 저장되기 전에 reject 되어야 함
+        verify(oAuthStateStore, never()).store(anyString(), any());
     }
 
     @Test
     @DisplayName("authorize: redirect_uri 화이트리스트 일치 → state 저장 + URL 반환")
     void authorize_redirectUriInAllowlist_succeeds() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-
         var result = oAuthLoginUseCase.authorize("GOOGLE", REDIRECT_URI);
 
         assertThat(result.authorizationUrl()).contains("client_id=test-google-client-id");
         assertThat(result.state()).isNotBlank();
+        verify(oAuthStateStore).store(result.state(), OAuthProvider.GOOGLE);
     }
 
     @Test
     @DisplayName("authorize: redirectUri null → 기본값(props.redirectUri) 으로 fallback, 화이트리스트 통과")
     void authorize_nullRedirectUri_fallsBackToDefault() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-
         var result = oAuthLoginUseCase.authorize("GOOGLE", null);
 
         assertThat(result.authorizationUrl()).contains("redirect_uri=");
         assertThat(result.state()).isNotBlank();
+        verify(oAuthStateStore).store(result.state(), OAuthProvider.GOOGLE);
     }
 
     @Test
@@ -329,7 +317,6 @@ class OAuthLoginUseCaseTest {
         legacy.setScopes("openid");
         legacy.setAuthUri("https://legacy.example.com/auth");
         when(oAuthProperties.getGoogle()).thenReturn(legacy);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         var result = oAuthLoginUseCase.authorize("GOOGLE", "https://legacy.example.com/cb");
         assertThat(result.state()).isNotBlank();
@@ -342,8 +329,7 @@ class OAuthLoginUseCaseTest {
     @Test
     @DisplayName("callback: redirect_uri 화이트리스트 외 값 → 예외, provider HTTP/account-service HTTP 둘 다 호출 안 됨")
     void callback_redirectUriNotInAllowlist_throws() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
 
         OAuthCallbackCommand evil = new OAuthCallbackCommand(
                 "GOOGLE", CODE, STATE, "https://attacker.example.com/cb", CTX);
@@ -372,8 +358,7 @@ class OAuthLoginUseCaseTest {
         OAuthProperties.ProviderProperties google = new OAuthProperties.ProviderProperties();
         google.setRedirectUri("http://default/callback");
         when(oAuthProperties.getGoogle()).thenReturn(google);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.getAndDelete(STATE_KEY)).thenReturn("GOOGLE");
+        when(oAuthStateStore.consumeAtomic(STATE)).thenReturn(Optional.of(OAuthProvider.GOOGLE));
         when(oAuthClientFactory.getClient(OAuthProvider.GOOGLE)).thenReturn(oAuthClient);
         when(oAuthClient.exchangeCodeForUserInfo(anyString(), anyString())).thenReturn(USER_INFO);
         when(socialIdentityJpaRepository.findByProviderAndProviderUserId("GOOGLE", "provider-user-1"))
