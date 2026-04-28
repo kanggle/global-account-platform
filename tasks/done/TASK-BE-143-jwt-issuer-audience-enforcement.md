@@ -8,7 +8,7 @@ libs/java-security — Rs256JwtVerifier iss/aud claim 강제 검증 (High H-1)
 
 # Status
 
-review
+done
 
 # Owner
 
