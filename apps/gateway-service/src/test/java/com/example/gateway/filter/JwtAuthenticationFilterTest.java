@@ -12,6 +12,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
+import org.springframework.data.redis.core.ReactiveValueOperations;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -25,7 +27,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,13 +45,22 @@ class JwtAuthenticationFilterTest {
     @Mock
     private GatewayFilterChain chain;
 
+    @Mock
+    private ReactiveStringRedisTemplate redisTemplate;
+
+    @Mock
+    private ReactiveValueOperations<String, String> valueOps;
+
     private JwtAuthenticationFilter filter;
     private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        filter = new JwtAuthenticationFilter(tokenValidator, routeConfig, objectMapper);
+        filter = new JwtAuthenticationFilter(tokenValidator, routeConfig, objectMapper, redisTemplate);
+        // Lenient: only the success-path tests reach the redis check; other tests short-circuit earlier.
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        lenient().when(valueOps.get(anyString())).thenReturn(Mono.empty());
     }
 
     @Test

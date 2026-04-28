@@ -56,6 +56,8 @@ gateway:
     jwks-refresh-interval-ms: 600000
     jwks-cache-ttl-seconds: 600
     grace-period-seconds: 300
+    # TASK-BE-143: enforce iss claim. Must match auth.jwt.issuer in auth-service.
+    expected-issuer: ${JWT_EXPECTED_ISSUER:global-account-platform}
 
   rate-limit:
     fail-open: ${RATE_LIMIT_FAIL_OPEN:true}

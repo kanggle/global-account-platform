@@ -130,4 +130,110 @@ class JwtSignerVerifierTest {
 
         assertThat(verified.get("jti")).isEqualTo("unique-token-id-456");
     }
+
+    @Test
+    @DisplayName("verify passes when iss claim matches expectedIssuer (TASK-BE-143)")
+    void verifyPassesWithMatchingIssuer() {
+        JwtSigner signer = new Rs256JwtSigner(keyPair.getPrivate(), "test-kid-1");
+        JwtVerifier verifier = new Rs256JwtVerifier(keyPair.getPublic(), "global-account-platform");
+
+        Instant now = Instant.now();
+        Map<String, Object> claims = Map.of(
+                "sub", "user-123",
+                "iss", "global-account-platform",
+                "exp", now.plusSeconds(1800)
+        );
+
+        String token = signer.sign(claims);
+        Map<String, Object> verified = verifier.verify(token);
+
+        assertThat(verified.get("iss")).isEqualTo("global-account-platform");
+    }
+
+    @Test
+    @DisplayName("verify fails when iss claim differs from expectedIssuer (TASK-BE-143)")
+    void verifyFailsWithMismatchedIssuer() {
+        JwtSigner signer = new Rs256JwtSigner(keyPair.getPrivate(), "test-kid-1");
+        JwtVerifier verifier = new Rs256JwtVerifier(keyPair.getPublic(), "global-account-platform");
+
+        Instant now = Instant.now();
+        Map<String, Object> claims = Map.of(
+                "sub", "user-123",
+                "iss", "attacker-issuer",
+                "exp", now.plusSeconds(1800)
+        );
+
+        String token = signer.sign(claims);
+
+        assertThatThrownBy(() -> verifier.verify(token))
+                .isInstanceOf(JwtVerificationException.class);
+    }
+
+    @Test
+    @DisplayName("verify fails when iss claim is missing (TASK-BE-143)")
+    void verifyFailsWithMissingIssuer() {
+        JwtSigner signer = new Rs256JwtSigner(keyPair.getPrivate(), "test-kid-1");
+        JwtVerifier verifier = new Rs256JwtVerifier(keyPair.getPublic(), "global-account-platform");
+
+        Instant now = Instant.now();
+        Map<String, Object> claims = Map.of(
+                "sub", "user-123",
+                "exp", now.plusSeconds(1800)
+        );
+
+        String token = signer.sign(claims);
+
+        assertThatThrownBy(() -> verifier.verify(token))
+                .isInstanceOf(JwtVerificationException.class);
+    }
+
+    @Test
+    @DisplayName("verify ignores iss when expectedIssuer is null (backward compat)")
+    void verifyIgnoresIssuerWhenNull() {
+        JwtSigner signer = new Rs256JwtSigner(keyPair.getPrivate(), "test-kid-1");
+        JwtVerifier verifier = new Rs256JwtVerifier(keyPair.getPublic(), null);
+
+        Instant now = Instant.now();
+        Map<String, Object> claims = Map.of(
+                "sub", "user-123",
+                "iss", "any-issuer",
+                "exp", now.plusSeconds(1800)
+        );
+
+        String token = signer.sign(claims);
+        Map<String, Object> verified = verifier.verify(token);
+
+        assertThat(verified.get("iss")).isEqualTo("any-issuer");
+    }
+
+    @Test
+    @DisplayName("verify enforces aud claim when expectedAudience is set (TASK-BE-143)")
+    void verifyAudienceClaim() {
+        JwtSigner signer = new Rs256JwtSigner(keyPair.getPrivate(), "test-kid-1");
+        JwtVerifier verifier = new Rs256JwtVerifier(
+                keyPair.getPublic(), "global-account-platform", "community-service");
+
+        Instant now = Instant.now();
+        // matching audience passes
+        Map<String, Object> matchingClaims = Map.of(
+                "sub", "user-123",
+                "iss", "global-account-platform",
+                "aud", "community-service",
+                "exp", now.plusSeconds(1800)
+        );
+        Map<String, Object> verified = verifier.verify(signer.sign(matchingClaims));
+        // JJWT 0.12.x normalizes aud claim to a list per RFC 7519
+        assertThat(verified.get("aud").toString()).contains("community-service");
+
+        // mismatched audience fails
+        Map<String, Object> wrongAud = Map.of(
+                "sub", "user-123",
+                "iss", "global-account-platform",
+                "aud", "admin-service",
+                "exp", now.plusSeconds(1800)
+        );
+        String wrongToken = signer.sign(wrongAud);
+        assertThatThrownBy(() -> verifier.verify(wrongToken))
+                .isInstanceOf(JwtVerificationException.class);
+    }
 }

@@ -28,6 +28,8 @@ import static org.mockito.BDDMockito.given;
 @DisplayName("TokenValidator 단위 테스트")
 class TokenValidatorTest {
 
+    private static final String EXPECTED_ISSUER = "global-account-platform";
+
     @Mock
     private JwksCache jwksCache;
 
@@ -36,7 +38,7 @@ class TokenValidatorTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        tokenValidator = new TokenValidator(jwksCache);
+        tokenValidator = new TokenValidator(jwksCache, EXPECTED_ISSUER);
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
         keyGen.initialize(2048);
         keyPair = keyGen.generateKeyPair();
@@ -48,6 +50,7 @@ class TokenValidatorTest {
         String token = Jwts.builder()
                 .header().keyId("test-kid").and()
                 .subject("account-123")
+                .issuer(EXPECTED_ISSUER)
                 .claim("email", "test@example.com")
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
@@ -61,6 +64,7 @@ class TokenValidatorTest {
                 .assertNext(claims -> {
                     assertThat(claims.get("sub")).isEqualTo("account-123");
                     assertThat(claims.get("email")).isEqualTo("test@example.com");
+                    assertThat(claims.get("iss")).isEqualTo(EXPECTED_ISSUER);
                 })
                 .verifyComplete();
     }
@@ -71,6 +75,7 @@ class TokenValidatorTest {
         String token = Jwts.builder()
                 .header().keyId("test-kid").and()
                 .subject("account-123")
+                .issuer(EXPECTED_ISSUER)
                 .issuedAt(Date.from(Instant.now().minusSeconds(7200)))
                 .expiration(Date.from(Instant.now().minusSeconds(3600)))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
@@ -95,6 +100,7 @@ class TokenValidatorTest {
         String token = Jwts.builder()
                 .header().keyId("test-kid").and()
                 .subject("account-123")
+                .issuer(EXPECTED_ISSUER)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(otherKeyPair.getPrivate(), Jwts.SIG.RS256)
@@ -115,6 +121,7 @@ class TokenValidatorTest {
         String token = Jwts.builder()
                 .header().keyId("new-kid").and()
                 .subject("account-456")
+                .issuer(EXPECTED_ISSUER)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
@@ -141,6 +148,7 @@ class TokenValidatorTest {
         String token = Jwts.builder()
                 .header().keyId("unknown-kid").and()
                 .subject("account-789")
+                .issuer(EXPECTED_ISSUER)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
@@ -151,6 +159,45 @@ class TokenValidatorTest {
 
         given(jwksCache.refreshJwks())
                 .willReturn(Mono.just(Map.of()));
+
+        StepVerifier.create(tokenValidator.validate(token))
+                .expectError(JwtVerificationException.class)
+                .verify();
+    }
+
+    @Test
+    @DisplayName("iss claim 불일치 시 검증 실패 (TASK-BE-143)")
+    void validate_wrongIssuer_throwsJwtVerificationException() {
+        String token = Jwts.builder()
+                .header().keyId("test-kid").and()
+                .subject("account-123")
+                .issuer("attacker-issuer")
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(Instant.now().plusSeconds(3600)))
+                .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
+                .compact();
+
+        given(jwksCache.getPublicKey("test-kid"))
+                .willReturn(Mono.just(Optional.of(keyPair.getPublic())));
+
+        StepVerifier.create(tokenValidator.validate(token))
+                .expectError(JwtVerificationException.class)
+                .verify();
+    }
+
+    @Test
+    @DisplayName("iss claim 누락 시 검증 실패 (TASK-BE-143)")
+    void validate_missingIssuer_throwsJwtVerificationException() {
+        String token = Jwts.builder()
+                .header().keyId("test-kid").and()
+                .subject("account-123")
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(Instant.now().plusSeconds(3600)))
+                .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
+                .compact();
+
+        given(jwksCache.getPublicKey("test-kid"))
+                .willReturn(Mono.just(Optional.of(keyPair.getPublic())));
 
         StepVerifier.create(tokenValidator.validate(token))
                 .expectError(JwtVerificationException.class)

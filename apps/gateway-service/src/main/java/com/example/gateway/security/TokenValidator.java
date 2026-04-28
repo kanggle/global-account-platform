@@ -23,9 +23,12 @@ import java.util.Map;
 public class TokenValidator {
 
     private final JwksCache jwksCache;
+    private final String expectedIssuer;
 
-    public TokenValidator(JwksCache jwksCache) {
+    public TokenValidator(JwksCache jwksCache,
+                          @org.springframework.beans.factory.annotation.Value("${gateway.jwt.expected-issuer}") String expectedIssuer) {
         this.jwksCache = jwksCache;
+        this.expectedIssuer = expectedIssuer;
     }
 
     /**
@@ -79,7 +82,7 @@ public class TokenValidator {
 
     private Mono<Map<String, Object>> verifyWithKey(String token, PublicKey publicKey) {
         return Mono.fromCallable(() -> {
-            Rs256JwtVerifier verifier = new Rs256JwtVerifier(publicKey);
+            Rs256JwtVerifier verifier = new Rs256JwtVerifier(publicKey, expectedIssuer);
             return verifier.verify(token);
         });
     }

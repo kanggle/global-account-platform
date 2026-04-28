@@ -71,6 +71,8 @@ management:
 community:
   jwt:
     public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:keys/public.pem}
+    # TASK-BE-143: enforce iss claim. Must match auth.jwt.issuer in auth-service.
+    expected-issuer: ${JWT_EXPECTED_ISSUER:global-account-platform}
   membership-service:
     base-url: ${MEMBERSHIP_SERVICE_URL:http://localhost:8087}
     connect-timeout-ms: 2000
