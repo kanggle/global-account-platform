@@ -4,6 +4,7 @@ import com.example.auth.application.command.RefreshTokenCommand;
 import com.example.auth.application.event.AuthEventPublisher;
 import com.example.auth.application.exception.SessionRevokedException;
 import com.example.auth.application.exception.TokenExpiredException;
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.exception.TokenReuseDetectedException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.RefreshTokenResult;
@@ -51,7 +52,7 @@ public class RefreshTokenUseCase {
         try {
             jti = tokenGeneratorPort.extractJti(command.refreshToken());
             accountId = tokenGeneratorPort.extractAccountId(command.refreshToken());
-        } catch (Exception e) {
+        } catch (TokenParseException e) {
             log.warn("Failed to parse refresh token: {}", e.getMessage());
             throw new TokenExpiredException();
         }
@@ -84,7 +85,7 @@ public class RefreshTokenUseCase {
             Instant tokenIat;
             try {
                 tokenIat = tokenGeneratorPort.extractIssuedAt(command.refreshToken());
-            } catch (Exception e) {
+            } catch (TokenParseException e) {
                 // If we can't read iat, we can't prove the token is newer than the marker — deny.
                 log.warn("Failed to extract iat for invalidate-all check, fail-closed: {}", e.getMessage());
                 throw new SessionRevokedException();

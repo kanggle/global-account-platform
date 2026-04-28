@@ -1,5 +1,7 @@
 package com.example.auth.application.port;
 
+import com.example.auth.application.exception.EmailSendException;
+
 /**
  * Port interface for outbound transactional email.
  *
@@ -21,10 +23,15 @@ public interface EmailSenderPort {
      * a link from {@code resetToken} (e.g. {@code /password-reset?token=...})
      * before sending.
      *
-     * <p>Callers must treat send failures as best-effort: the use case should
-     * catch and log exceptions rather than aborting the request, since the
-     * controller surfaces a uniform 204 regardless of whether the address
-     * exists.</p>
+     * <p>Callers treat send failures as best-effort and catch
+     * {@link EmailSendException} — the controller surfaces a uniform 204
+     * regardless of whether the address exists or the send succeeds.</p>
+     *
+     * <p><strong>Adapter contract:</strong> production implementations must
+     * wrap all send-path failures in {@link EmailSendException} so the
+     * caller's {@code catch (EmailSendException)} guard fires correctly.</p>
+     *
+     * @throws EmailSendException if the underlying transport fails
      */
     void sendPasswordResetEmail(String toEmail, String resetToken);
 }

@@ -4,6 +4,7 @@ import com.example.auth.application.command.RefreshTokenCommand;
 import com.example.auth.application.event.AuthEventPublisher;
 import com.example.auth.application.exception.SessionRevokedException;
 import com.example.auth.application.exception.TokenExpiredException;
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.exception.TokenReuseDetectedException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.RefreshTokenResult;
@@ -224,6 +225,41 @@ class RefreshTokenUseCaseTest {
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
         when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.of(markerAt));
         when(tokenGeneratorPort.extractIssuedAt(refreshTokenStr)).thenReturn(tokenIat);
+
+        assertThatThrownBy(() -> refreshTokenUseCase.execute(
+                new RefreshTokenCommand(refreshTokenStr, CTX)))
+                .isInstanceOf(SessionRevokedException.class);
+    }
+
+    @Test
+    @DisplayName("JWT 파싱 실패 시 TokenExpiredException 으로 매핑된다 (fail-closed)")
+    void refreshFailsWhenTokenParseFails() {
+        String refreshTokenStr = "malformed-token";
+        when(tokenGeneratorPort.extractJti(refreshTokenStr))
+                .thenThrow(new TokenParseException("JWT parse error"));
+
+        assertThatThrownBy(() -> refreshTokenUseCase.execute(
+                new RefreshTokenCommand(refreshTokenStr, CTX)))
+                .isInstanceOf(TokenExpiredException.class);
+    }
+
+    @Test
+    @DisplayName("invalidate-all 마커 존재 시 iat 추출 실패하면 SessionRevokedException (fail-closed)")
+    void refreshFailsWhenIatExtractFails() {
+        String refreshTokenStr = "valid-but-iat-fails";
+        Instant markerAt = Instant.now().minusSeconds(60);
+        when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
+        when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+
+        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
+                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
+                null, false, "fp-123");
+        when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
+        when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
+        when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.of(markerAt));
+        when(tokenGeneratorPort.extractIssuedAt(refreshTokenStr))
+                .thenThrow(new TokenParseException("iat parse error"));
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
                 new RefreshTokenCommand(refreshTokenStr, CTX)))

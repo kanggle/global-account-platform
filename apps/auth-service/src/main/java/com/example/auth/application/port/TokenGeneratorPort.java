@@ -1,5 +1,6 @@
 package com.example.auth.application.port;
 
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.domain.token.TokenPair;
 
 import java.time.Instant;
@@ -41,16 +42,22 @@ public interface TokenGeneratorPort {
 
     /**
      * Extracts the JTI from a refresh token string.
+     *
+     * @throws TokenParseException if the token is null, blank, malformed, expired, or has an invalid signature
      */
     String extractJti(String refreshToken);
 
     /**
      * Extracts the account ID (sub) from a refresh token string.
+     *
+     * @throws TokenParseException if the token is null, blank, malformed, expired, or has an invalid signature
      */
     String extractAccountId(String refreshToken);
 
     /**
      * Extracts the issued-at (iat) instant from a refresh token string.
+     *
+     * @throws TokenParseException if the token is unparseable or does not contain an {@code iat} claim
      */
     Instant extractIssuedAt(String refreshToken);
 }

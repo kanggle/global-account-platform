@@ -1,9 +1,11 @@
 package com.example.auth.infrastructure.jwt;
 
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.domain.token.TokenPair;
 import com.gap.security.jwt.JwtSigner;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -85,31 +87,32 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
 
     @Override
     public String extractJti(String refreshToken) {
-        Claims claims = Jwts.parser()
-                .verifyWith(publicKey)
-                .build()
-                .parseSignedClaims(refreshToken)
-                .getPayload();
-        return claims.getId();
+        return parseClaims(refreshToken).getId();
     }
 
     @Override
     public String extractAccountId(String refreshToken) {
-        Claims claims = Jwts.parser()
-                .verifyWith(publicKey)
-                .build()
-                .parseSignedClaims(refreshToken)
-                .getPayload();
-        return claims.getSubject();
+        return parseClaims(refreshToken).getSubject();
     }
 
     @Override
     public Instant extractIssuedAt(String refreshToken) {
-        Claims claims = Jwts.parser()
-                .verifyWith(publicKey)
-                .build()
-                .parseSignedClaims(refreshToken)
-                .getPayload();
-        return claims.getIssuedAt().toInstant();
+        java.util.Date iat = parseClaims(refreshToken).getIssuedAt();
+        if (iat == null) {
+            throw new TokenParseException("JWT missing iat claim");
+        }
+        return iat.toInstant();
+    }
+
+    private Claims parseClaims(String token) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(publicKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new TokenParseException(e.getMessage(), e);
+        }
     }
 }

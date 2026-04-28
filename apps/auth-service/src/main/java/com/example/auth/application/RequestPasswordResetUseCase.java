@@ -1,6 +1,7 @@
 package com.example.auth.application;
 
 import com.example.auth.application.command.RequestPasswordResetCommand;
+import com.example.auth.application.exception.EmailSendException;
 import com.example.auth.application.exception.PasswordResetRateLimitedException;
 import com.example.auth.application.port.EmailSenderPort;
 import com.example.auth.domain.credentials.Credential;
@@ -94,7 +95,7 @@ public class RequestPasswordResetUseCase {
 
         try {
             emailSenderPort.sendPasswordResetEmail(normalizedEmail, token);
-        } catch (Exception e) {
+        } catch (EmailSendException e) {
             // Best-effort: Redis write already succeeded so the user will be
             // able to use the token if they receive it via another channel
             // (e.g. retry from the client). Do NOT log the token here — only

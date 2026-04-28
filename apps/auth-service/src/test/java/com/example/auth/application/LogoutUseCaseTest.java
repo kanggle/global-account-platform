@@ -2,6 +2,7 @@ package com.example.auth.application;
 
 import com.example.auth.application.command.LogoutCommand;
 import com.example.auth.application.event.AuthEventPublisher;
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.domain.repository.DeviceSessionRepository;
 import com.example.auth.domain.repository.RefreshTokenRepository;
@@ -146,7 +147,7 @@ class LogoutUseCaseTest {
     @DisplayName("Logout is no-op when token parsing fails")
     void logoutNoEventWhenTokenParsingFails() {
         String refreshTokenStr = "malformed-token";
-        when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenThrow(new RuntimeException("Invalid token"));
+        when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenThrow(new TokenParseException("Invalid token"));
 
         logoutUseCase.execute(new LogoutCommand(refreshTokenStr, DEVICE_ID));
 

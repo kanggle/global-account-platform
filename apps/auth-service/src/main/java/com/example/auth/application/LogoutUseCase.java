@@ -2,6 +2,7 @@ package com.example.auth.application;
 
 import com.example.auth.application.command.LogoutCommand;
 import com.example.auth.application.event.AuthEventPublisher;
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.domain.repository.DeviceSessionRepository;
 import com.example.auth.domain.repository.RefreshTokenRepository;
@@ -38,7 +39,7 @@ public class LogoutUseCase {
         try {
             jti = tokenGeneratorPort.extractJti(command.refreshToken());
             accountId = tokenGeneratorPort.extractAccountId(command.refreshToken());
-        } catch (Exception e) {
+        } catch (TokenParseException e) {
             log.warn("Failed to parse refresh token during logout: {}", e.getMessage());
             return; // graceful - token may already be invalid
         }

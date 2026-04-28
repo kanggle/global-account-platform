@@ -1,6 +1,7 @@
 package com.example.auth.application;
 
 import com.example.auth.application.command.RequestPasswordResetCommand;
+import com.example.auth.application.exception.EmailSendException;
 import com.example.auth.application.port.EmailSenderPort;
 import com.example.auth.domain.credentials.Credential;
 import com.example.auth.domain.repository.CredentialRepository;
@@ -135,7 +136,7 @@ class RequestPasswordResetUseCaseTest {
         );
         given(credentialRepository.findByAccountIdEmail(email))
                 .willReturn(Optional.of(credential));
-        willThrow(new RuntimeException("smtp down"))
+        willThrow(new EmailSendException("smtp down"))
                 .given(emailSenderPort).sendPasswordResetEmail(eq(email), anyString());
 
         // when / then — must not propagate; controller still surfaces 204
