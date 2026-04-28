@@ -8,7 +8,7 @@ auth-service — ConfirmPasswordResetUseCase 가 access token 도 즉시 무효�
 
 # Status
 
-review
+done
 
 # Owner
 

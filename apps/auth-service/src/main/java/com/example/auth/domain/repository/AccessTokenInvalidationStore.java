@@ -10,7 +10,10 @@ import java.time.Instant;
  * reject any access token whose {@code iat} precedes the marker timestamp.
  *
  * <p>The marker key + TTL must align with the gateway's read path
- * ({@code access:invalidate-before:{accountId}}, TTL ≤ access-token TTL).
+ * ({@code access:invalidate-before:{accountId}}). TTL must be at least as
+ * long as the access-token TTL — otherwise the marker can expire while a
+ * pre-reset access token is still presentable, defeating the guarantee
+ * (TASK-BE-146 Failure Scenarios).
  * Implementations are responsible for fail-soft semantics — a Redis outage
  * MUST NOT propagate to the caller (the password reset itself has already
  * committed a new credential hash by the time this is called; refusing to
