@@ -70,6 +70,8 @@ oauth:
     scopes: openid,email,profile
     token-uri: https://oauth2.googleapis.com/token
     auth-uri: https://accounts.google.com/o/oauth2/v2/auth
+    jwks-uri: https://www.googleapis.com/oauth2/v3/certs
+    expected-issuer-pattern: ^(https://)?accounts\.google\.com$
   kakao:
     client-id: test-kakao-client-id
     client-secret: test-kakao-client-secret
@@ -85,6 +87,8 @@ oauth:
     scopes: openid,email,profile
     token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
     auth-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+    jwks-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
+    expected-issuer-pattern: ^https://login\.microsoftonline\.com/[^/]+/v2\.0$
 
 server:
   port: 0

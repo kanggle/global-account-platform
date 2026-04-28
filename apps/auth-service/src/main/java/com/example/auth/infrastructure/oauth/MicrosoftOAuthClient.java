@@ -10,12 +10,15 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 
-import java.util.Base64;
+import java.util.Map;
 
 /**
  * Microsoft Identity Platform (Azure AD v2.0) OAuth 2.0 / OpenID Connect client.
- * Exchanges authorization code via POST to the Microsoft token endpoint,
- * then parses the id_token (JWT) to extract user information.
+ *
+ * <p>Exchanges authorization code via POST to the Microsoft token endpoint,
+ * then cryptographically verifies the id_token (RS256 against Microsoft's
+ * tenant-aware JWKS, {@code iss} regex match for multi-tenant flows,
+ * {@code aud} == client_id, {@code exp}) before extracting user information.
  *
  * <p>Email fallback: Microsoft returns {@code email} only when the user has
  * verified email on their account. When absent, {@code preferred_username} is
@@ -29,11 +32,25 @@ public class MicrosoftOAuthClient implements OAuthClient {
     private final RestClient restClient;
     private final OAuthProperties.ProviderProperties props;
     private final ObjectMapper objectMapper;
+    private final OidcJwksVerifier idTokenVerifier;
 
     public MicrosoftOAuthClient(OAuthProperties oAuthProperties, ObjectMapper objectMapper) {
+        this(oAuthProperties, objectMapper, RestClient.builder().build());
+    }
+
+    MicrosoftOAuthClient(OAuthProperties oAuthProperties,
+                         ObjectMapper objectMapper,
+                         RestClient restClient) {
         this.props = oAuthProperties.getMicrosoft();
         this.objectMapper = objectMapper;
-        this.restClient = RestClient.builder().build();
+        this.restClient = restClient;
+        this.idTokenVerifier = new OidcJwksVerifier(
+                props.getJwksUri(),
+                props.getExpectedIssuerPattern(),
+                props.getClientId(),
+                restClient,
+                objectMapper,
+                props.getJwksCacheTtlMillis());
     }
 
     @Override
@@ -60,30 +77,26 @@ public class MicrosoftOAuthClient implements OAuthClient {
                 throw new OAuthProviderException("Microsoft token response missing id_token");
             }
 
-            String[] parts = idToken.split("\\.");
-            if (parts.length < 2) {
-                throw new OAuthProviderException("Malformed Microsoft id_token");
-            }
+            // TASK-BE-145: cryptographic verification before trusting claims.
+            Map<String, Object> claims = idTokenVerifier.verify(idToken);
 
-            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]));
-            JsonNode payload = objectMapper.readTree(payloadJson);
-
-            String sub = payload.path("sub").asText(null);
+            String sub = stringClaim(claims, "sub");
             if (sub == null || sub.isBlank()) {
                 throw new OAuthProviderException("Microsoft id_token missing 'sub' claim");
             }
 
-            String email = payload.path("email").asText(null);
+            String email = stringClaim(claims, "email");
             if (email == null || email.isBlank()) {
-                String preferredUsername = payload.path("preferred_username").asText(null);
-                if (preferredUsername != null && !preferredUsername.isBlank() && preferredUsername.contains("@")) {
+                String preferredUsername = stringClaim(claims, "preferred_username");
+                if (preferredUsername != null && !preferredUsername.isBlank()
+                        && preferredUsername.contains("@")) {
                     email = preferredUsername;
                 } else {
                     email = null;
                 }
             }
 
-            String name = payload.path("name").asText(null);
+            String name = stringClaim(claims, "name");
 
             return new OAuthUserInfo(sub, email, name, OAuthProvider.MICROSOFT);
 
@@ -93,5 +106,10 @@ public class MicrosoftOAuthClient implements OAuthClient {
             log.error("Microsoft OAuth code exchange failed: {}", e.getMessage());
             throw new OAuthProviderException("Microsoft OAuth provider error", e);
         }
+    }
+
+    private static String stringClaim(Map<String, Object> claims, String key) {
+        Object v = claims.get(key);
+        return v == null ? null : v.toString();
     }
 }

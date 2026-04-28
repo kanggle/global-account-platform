@@ -33,6 +33,23 @@ public class OAuthProperties {
         private String tokenUri;
         private String authUri;
         private String userInfoUri;
+        /**
+         * JWKS endpoint URL for OIDC id_token signature verification (TASK-BE-145).
+         * Empty/null disables JWKS-backed verification — only Kakao should leave
+         * this unset since it does not return an id_token.
+         */
+        private String jwksUri;
+        /**
+         * Regex that the {@code iss} claim of a verified id_token must match.
+         * Regex is used instead of an exact string so multi-tenant providers
+         * (Microsoft tenant=common) can match issuer values that embed the
+         * actual tenant identifier.
+         */
+        private String expectedIssuerPattern;
+        /**
+         * JWKS cache TTL in milliseconds (default 1 hour).
+         */
+        private long jwksCacheTtlMillis = 3_600_000L;
 
         public List<String> resolveAllowedRedirectUris() {
             if (allowedRedirectUris != null && !allowedRedirectUris.isEmpty()) {

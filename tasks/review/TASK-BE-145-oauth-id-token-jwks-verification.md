@@ -8,7 +8,7 @@ auth-service — Google/Microsoft id_token JWKS 서명 검증 추가 (High H-3)
 
 # Status
 
-ready
+review
 
 # Owner
 

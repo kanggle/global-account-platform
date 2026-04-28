@@ -26,22 +26,21 @@ import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMoc
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class MicrosoftOAuthClientTest {
+class GoogleOAuthClientTest {
 
     private static final String REDIRECT_URI = "http://localhost:3000/oauth/callback";
-    private static final String CLIENT_ID = "test-client-id";
-    private static final String JWKS_PATH = "/discovery/v2.0/keys";
-    private static final String TOKEN_PATH = "/oauth2/v2.0/token";
-    private static final String KID = "test-kid-1";
-    private static final String ISSUER_PATTERN = "^https://login\\.microsoftonline\\.com/[^/]+/v2\\.0$";
-    private static final String ISSUER_VALUE =
-            "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0";
+    private static final String CLIENT_ID = "test-google-client-id";
+    private static final String JWKS_PATH = "/oauth2/v3/certs";
+    private static final String TOKEN_PATH = "/oauth2/v4/token";
+    private static final String KID = "google-kid-1";
+    private static final String ISSUER_PATTERN = "^(https://)?accounts\\.google\\.com$";
+    private static final String ISSUER_VALUE = "https://accounts.google.com";
 
     private static KeyPair providerKp;
     private static KeyPair attackerKp;
 
     private WireMockServer wireMockServer;
-    private MicrosoftOAuthClient client;
+    private GoogleOAuthClient client;
 
     @BeforeAll
     static void generateKeys() throws Exception {
@@ -57,17 +56,17 @@ class MicrosoftOAuthClientTest {
         wireMockServer.start();
 
         OAuthProperties props = new OAuthProperties();
-        OAuthProperties.ProviderProperties msProps = props.getMicrosoft();
-        msProps.setClientId(CLIENT_ID);
-        msProps.setClientSecret("test-client-secret");
-        msProps.setTokenUri(wireMockServer.baseUrl() + TOKEN_PATH);
-        msProps.setJwksUri(wireMockServer.baseUrl() + JWKS_PATH);
-        msProps.setExpectedIssuerPattern(ISSUER_PATTERN);
-        msProps.setJwksCacheTtlMillis(3_600_000L);
+        OAuthProperties.ProviderProperties googleProps = props.getGoogle();
+        googleProps.setClientId(CLIENT_ID);
+        googleProps.setClientSecret("test-google-client-secret");
+        googleProps.setTokenUri(wireMockServer.baseUrl() + TOKEN_PATH);
+        googleProps.setJwksUri(wireMockServer.baseUrl() + JWKS_PATH);
+        googleProps.setExpectedIssuerPattern(ISSUER_PATTERN);
+        googleProps.setJwksCacheTtlMillis(3_600_000L);
 
         stubJwks((RSAPublicKey) providerKp.getPublic());
 
-        client = new MicrosoftOAuthClient(props, new ObjectMapper(), RestClient.builder().build());
+        client = new GoogleOAuthClient(props, new ObjectMapper(), RestClient.builder().build());
     }
 
     @AfterEach
@@ -78,49 +77,15 @@ class MicrosoftOAuthClientTest {
     @Test
     @DisplayName("정상 서명 + iss + aud → OAuthUserInfo 반환")
     void happyPath() {
-        String idToken = signedIdToken("ms-user-123", "alice@contoso.com", null, "Alice");
+        String idToken = signedIdToken("google-user-001", "alice@gmail.com", "Alice");
         stubTokenEndpoint(idToken);
 
         OAuthUserInfo info = client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI);
 
-        assertThat(info.providerUserId()).isEqualTo("ms-user-123");
-        assertThat(info.email()).isEqualTo("alice@contoso.com");
+        assertThat(info.providerUserId()).isEqualTo("google-user-001");
+        assertThat(info.email()).isEqualTo("alice@gmail.com");
         assertThat(info.name()).isEqualTo("Alice");
-        assertThat(info.provider()).isEqualTo(OAuthProvider.MICROSOFT);
-    }
-
-    @Test
-    @DisplayName("email 누락 시 preferred_username 으로 폴백")
-    void emailFallbackToPreferredUsername() {
-        String idToken = signedIdToken("ms-user-456", null, "bob@fabrikam.com", "Bob");
-        stubTokenEndpoint(idToken);
-
-        OAuthUserInfo info = client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI);
-
-        assertThat(info.email()).isEqualTo("bob@fabrikam.com");
-    }
-
-    @Test
-    @DisplayName("email + preferred_username 둘 다 누락 시 email=null")
-    void emailNullWhenBothMissing() {
-        String idToken = signedIdToken("ms-user-789", null, null, "Carol");
-        stubTokenEndpoint(idToken);
-
-        OAuthUserInfo info = client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI);
-
-        assertThat(info.email()).isNull();
-        assertThat(info.providerUserId()).isEqualTo("ms-user-789");
-    }
-
-    @Test
-    @DisplayName("preferred_username 에 @ 없으면 email 폴백 안 함 (UPN)")
-    void preferredUsernameWithoutAtIsIgnored() {
-        String idToken = signedIdToken("ms-user-000", null, "external-user#EXT", "Dave");
-        stubTokenEndpoint(idToken);
-
-        OAuthUserInfo info = client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI);
-
-        assertThat(info.email()).isNull();
+        assertThat(info.provider()).isEqualTo(OAuthProvider.GOOGLE);
     }
 
     @Test
@@ -138,36 +103,41 @@ class MicrosoftOAuthClientTest {
     }
 
     @Test
+    @DisplayName("id_token 의 sub claim 누락 → OAuthProviderException")
+    void idTokenMissingSub() {
+        // sub-less claims still pass JWKS verify (iss/aud/exp valid), but client-level guard rejects
+        String idToken = Jwts.builder()
+                .header().keyId(KID).and()
+                .issuer(ISSUER_VALUE)
+                .audience().add(CLIENT_ID).and()
+                .issuedAt(new Date())
+                .expiration(Date.from(Instant.now().plusSeconds(600)))
+                .claim("email", "x@y.com")
+                .signWith(providerKp.getPrivate(), Jwts.SIG.RS256)
+                .compact();
+        stubTokenEndpoint(idToken);
+
+        assertThatThrownBy(() -> client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI))
+                .isInstanceOf(OAuthProviderException.class)
+                .hasMessageContaining("missing 'sub'");
+    }
+
+    @Test
     @DisplayName("token endpoint 5xx → OAuthProviderException")
     void tokenEndpoint5xx() {
         wireMockServer.stubFor(post(urlEqualTo(TOKEN_PATH))
                 .willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI))
-                .isInstanceOf(OAuthProviderException.class)
-                .hasMessageContaining("Microsoft OAuth provider error");
-    }
-
-    @Test
-    @DisplayName("id_token 형식 불량 (점 분리 안됨) → OAuthProviderException")
-    void malformedIdToken() {
-        wireMockServer.stubFor(post(urlEqualTo(TOKEN_PATH))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("{\"id_token\":\"notajwt\"}")));
-
-        assertThatThrownBy(() -> client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI))
                 .isInstanceOf(OAuthProviderException.class);
     }
 
     @Test
-    @DisplayName("TASK-BE-145 — 잘못된 키로 서명된 id_token 거부")
+    @DisplayName("TASK-BE-145 — 잘못된 키로 서명된 id_token 거부 (서명 검증)")
     void verify_forgedSignature_rejected() {
-        // Token signed with attacker's key, JWKS still publishes provider's key
         String forged = Jwts.builder()
                 .header().keyId(KID).and()
-                .subject("ms-user-attacker")
+                .subject("attacker-sub")
                 .issuer(ISSUER_VALUE)
                 .audience().add(CLIENT_ID).and()
                 .issuedAt(new Date())
@@ -181,12 +151,12 @@ class MicrosoftOAuthClientTest {
     }
 
     @Test
-    @DisplayName("TASK-BE-145 — iss 가 Microsoft 패턴과 다른 id_token 거부")
+    @DisplayName("TASK-BE-145 — Google 이 아닌 iss 의 id_token 거부")
     void verify_wrongIssuer_rejected() {
         String wrongIss = Jwts.builder()
                 .header().keyId(KID).and()
-                .subject("ms-user-1")
-                .issuer("https://accounts.google.com")
+                .subject("user-1")
+                .issuer("https://login.microsoftonline.com/x/v2.0")
                 .audience().add(CLIENT_ID).and()
                 .issuedAt(new Date())
                 .expiration(Date.from(Instant.now().plusSeconds(600)))
@@ -199,13 +169,13 @@ class MicrosoftOAuthClientTest {
     }
 
     @Test
-    @DisplayName("TASK-BE-145 — aud 가 client_id 와 다른 id_token 거부")
+    @DisplayName("TASK-BE-145 — aud 가 다른 client_id 인 id_token 거부 (token confusion 차단)")
     void verify_wrongAudience_rejected() {
         String wrongAud = Jwts.builder()
                 .header().keyId(KID).and()
-                .subject("ms-user-1")
+                .subject("user-1")
                 .issuer(ISSUER_VALUE)
-                .audience().add("other-client-id").and()
+                .audience().add("different-app-client-id").and()
                 .issuedAt(new Date())
                 .expiration(Date.from(Instant.now().plusSeconds(600)))
                 .signWith(providerKp.getPrivate(), Jwts.SIG.RS256)
@@ -217,11 +187,30 @@ class MicrosoftOAuthClientTest {
     }
 
     @Test
+    @DisplayName("TASK-BE-145 — Google 의 'accounts.google.com' (스킴 없는 iss) 도 통과")
+    void verify_issuerWithoutScheme_passes() {
+        String token = Jwts.builder()
+                .header().keyId(KID).and()
+                .subject("user-2")
+                .issuer("accounts.google.com")
+                .audience().add(CLIENT_ID).and()
+                .issuedAt(new Date())
+                .expiration(Date.from(Instant.now().plusSeconds(600)))
+                .claim("email", "x@gmail.com")
+                .signWith(providerKp.getPrivate(), Jwts.SIG.RS256)
+                .compact();
+        stubTokenEndpoint(token);
+
+        OAuthUserInfo info = client.exchangeCodeForUserInfo("auth-code", REDIRECT_URI);
+        assertThat(info.providerUserId()).isEqualTo("user-2");
+    }
+
+    @Test
     @DisplayName("TASK-BE-145 — 만료된 id_token 거부")
     void verify_expired_rejected() {
         String expired = Jwts.builder()
                 .header().keyId(KID).and()
-                .subject("ms-user-1")
+                .subject("user-1")
                 .issuer(ISSUER_VALUE)
                 .audience().add(CLIENT_ID).and()
                 .issuedAt(Date.from(Instant.now().minusSeconds(7200)))
@@ -243,7 +232,7 @@ class MicrosoftOAuthClientTest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("{\"id_token\":\"" + idToken + "\",\"access_token\":\"ms-access-token\"}")));
+                        .withBody("{\"id_token\":\"" + idToken + "\",\"access_token\":\"google-access-token\"}")));
     }
 
     private void stubJwks(RSAPublicKey key) {
@@ -260,24 +249,18 @@ class MicrosoftOAuthClientTest {
                         .withBody(body)));
     }
 
-    private String signedIdToken(String sub, String email, String preferredUsername, String name) {
-        var builder = Jwts.builder()
+    private String signedIdToken(String sub, String email, String name) {
+        return Jwts.builder()
                 .header().keyId(KID).and()
                 .subject(sub)
                 .issuer(ISSUER_VALUE)
                 .audience().add(CLIENT_ID).and()
                 .issuedAt(new Date())
-                .expiration(Date.from(Instant.now().plusSeconds(600)));
-        if (email != null) {
-            builder.claim("email", email);
-        }
-        if (preferredUsername != null) {
-            builder.claim("preferred_username", preferredUsername);
-        }
-        if (name != null) {
-            builder.claim("name", name);
-        }
-        return builder.signWith(providerKp.getPrivate(), Jwts.SIG.RS256).compact();
+                .expiration(Date.from(Instant.now().plusSeconds(600)))
+                .claim("email", email)
+                .claim("name", name)
+                .signWith(providerKp.getPrivate(), Jwts.SIG.RS256)
+                .compact();
     }
 
     private static byte[] toUnsignedByteArray(java.math.BigInteger value) {

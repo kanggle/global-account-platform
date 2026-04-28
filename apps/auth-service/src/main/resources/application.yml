@@ -87,6 +87,10 @@ oauth:
     scopes: openid,email,profile
     token-uri: https://oauth2.googleapis.com/token
     auth-uri: https://accounts.google.com/o/oauth2/v2/auth
+    # TASK-BE-145: id_token signature + iss + aud + exp verification.
+    # Google publishes both 'https://accounts.google.com' and 'accounts.google.com' as iss.
+    jwks-uri: ${OAUTH_GOOGLE_JWKS_URI:https://www.googleapis.com/oauth2/v3/certs}
+    expected-issuer-pattern: ${OAUTH_GOOGLE_ISSUER_PATTERN:^(https://)?accounts\.google\.com$}
   kakao:
     client-id: ${OAUTH_KAKAO_CLIENT_ID:test-kakao-client-id}
     client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:test-kakao-client-secret}
@@ -96,6 +100,7 @@ oauth:
     token-uri: https://kauth.kakao.com/oauth/token
     auth-uri: https://kauth.kakao.com/oauth/authorize
     user-info-uri: https://kapi.kakao.com/v2/user/me
+    # Kakao does not return an id_token — JWKS verification is not applied.
   microsoft:
     client-id: ${OAUTH_MICROSOFT_CLIENT_ID:test-microsoft-client-id}
     client-secret: ${OAUTH_MICROSOFT_CLIENT_SECRET:test-microsoft-client-secret}
@@ -104,6 +109,10 @@ oauth:
     scopes: openid,email,profile
     token-uri: https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/oauth2/v2.0/token
     auth-uri: https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/oauth2/v2.0/authorize
+    # TASK-BE-145: id_token JWKS verification. Microsoft tenant=common returns
+    # iss containing the actual user tenant guid — regex pattern below allows that.
+    jwks-uri: ${OAUTH_MICROSOFT_JWKS_URI:https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/discovery/v2.0/keys}
+    expected-issuer-pattern: ${OAUTH_MICROSOFT_ISSUER_PATTERN:^https://login\.microsoftonline\.com/[^/]+/v2\.0$}
 
 auth:
   jwt:
