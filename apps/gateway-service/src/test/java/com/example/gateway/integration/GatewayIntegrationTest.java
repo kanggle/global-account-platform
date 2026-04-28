@@ -240,6 +240,7 @@ class GatewayIntegrationTest {
         String expiredToken = Jwts.builder()
                 .header().keyId("test-kid-1").and()
                 .subject("account-123")
+                .issuer(EXPECTED_ISSUER)
                 .issuedAt(Date.from(Instant.now().minusSeconds(7200)))
                 .expiration(Date.from(Instant.now().minusSeconds(3600)))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
@@ -263,6 +264,7 @@ class GatewayIntegrationTest {
         String tamperedToken = Jwts.builder()
                 .header().keyId("test-kid-1").and()
                 .subject("account-123")
+                .issuer(EXPECTED_ISSUER)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(otherKeyPair.getPrivate(), Jwts.SIG.RS256)
@@ -367,10 +369,13 @@ class GatewayIntegrationTest {
         adminServiceMock.verify(getRequestedFor(urlEqualTo("/api/admin/audit")));
     }
 
+    private static final String EXPECTED_ISSUER = "global-account-platform";
+
     private String createValidToken(String accountId) {
         return Jwts.builder()
                 .header().keyId("test-kid-1").and()
                 .subject(accountId)
+                .issuer(EXPECTED_ISSUER)
                 .claim("email", "test@example.com")
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
