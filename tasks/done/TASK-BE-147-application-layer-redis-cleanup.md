@@ -8,7 +8,7 @@ auth-service — application 레이어 Redis 직접 사용 제거 (BE-146 후속
 
 # Status
 
-review
+done
 
 # Owner
 
