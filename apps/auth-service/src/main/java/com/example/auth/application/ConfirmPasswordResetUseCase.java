@@ -13,9 +13,11 @@ import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.gap.security.password.PasswordHasher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 
 /**
@@ -52,12 +54,15 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class ConfirmPasswordResetUseCase {
 
+    static final String ACCESS_INVALIDATE_KEY_PREFIX = "access:invalidate-before:";
+
     private final PasswordResetTokenStore passwordResetTokenStore;
     private final CredentialRepository credentialRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final BulkInvalidationStore bulkInvalidationStore;
     private final TokenGeneratorPort tokenGeneratorPort;
     private final PasswordHasher passwordHasher;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Transactional
     public void execute(ConfirmPasswordResetCommand command) {
@@ -87,15 +92,34 @@ public class ConfirmPasswordResetUseCase {
         //    a token issued before this instant fail closed. Both calls are
         //    idempotent and independently safe (see ForceLogoutUseCase).
         int revokedCount = refreshTokenRepository.revokeAllByAccountId(accountId);
+        Instant revokedAt = Instant.now();
         bulkInvalidationStore.invalidateAll(
                 accountId, tokenGeneratorPort.refreshTokenTtlSeconds());
 
-        // 6) Single-use enforcement: delete the token AFTER all DB writes have
+        // 6) TASK-BE-146: write access-token invalidation marker so the gateway
+        //    rejects any access token issued before this instant for up to one
+        //    access-token TTL window. Fail-soft — Redis outage must not block
+        //    the password reset path (the new credential hash is already
+        //    persisted at this point).
+        setAccessInvalidation(accountId, revokedAt);
+
+        // 7) Single-use enforcement: delete the token AFTER all DB writes have
         //    succeeded. If any of steps 4–5 fails the transaction rolls back
         //    and the token must remain valid for retry.
         passwordResetTokenStore.delete(command.token());
 
         log.info("Password reset confirmed for accountId={}, revokedTokens={}",
                 accountId, revokedCount);
+    }
+
+    private void setAccessInvalidation(String accountId, Instant at) {
+        try {
+            stringRedisTemplate.opsForValue().set(
+                    ACCESS_INVALIDATE_KEY_PREFIX + accountId,
+                    String.valueOf(at.toEpochMilli()),
+                    Duration.ofSeconds(tokenGeneratorPort.accessTokenTtlSeconds()));
+        } catch (Exception e) {
+            log.warn("Redis unavailable for access invalidation write: {}", e.getMessage());
+        }
     }
 }
