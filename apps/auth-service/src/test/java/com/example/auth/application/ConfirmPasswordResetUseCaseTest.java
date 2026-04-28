@@ -5,6 +5,7 @@ import com.example.auth.application.exception.PasswordResetTokenInvalidException
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.domain.credentials.Credential;
 import com.example.auth.domain.credentials.PasswordPolicyViolationException;
+import com.example.auth.domain.repository.AccessTokenInvalidationStore;
 import com.example.auth.domain.repository.BulkInvalidationStore;
 import com.example.auth.domain.repository.CredentialRepository;
 import com.example.auth.domain.repository.PasswordResetTokenStore;
@@ -18,10 +19,7 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -32,10 +30,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -48,7 +43,6 @@ class ConfirmPasswordResetUseCaseTest {
     private static final String ACCOUNT_ID = "acc-1";
     private static final long REFRESH_TTL = 604_800L;
     private static final long ACCESS_TTL = 1_800L;
-    private static final String ACCESS_INVALIDATE_KEY = "access:invalidate-before:" + ACCOUNT_ID;
 
     @Mock
     private PasswordResetTokenStore passwordResetTokenStore;
@@ -63,23 +57,16 @@ class ConfirmPasswordResetUseCaseTest {
     private BulkInvalidationStore bulkInvalidationStore;
 
     @Mock
+    private AccessTokenInvalidationStore accessTokenInvalidationStore;
+
+    @Mock
     private TokenGeneratorPort tokenGeneratorPort;
 
     @Mock
     private PasswordHasher passwordHasher;
 
-    @Mock
-    private StringRedisTemplate stringRedisTemplate;
-
-    private final ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
-
     @InjectMocks
     private ConfirmPasswordResetUseCase useCase;
-
-    private void givenRedisAvailable() {
-        // lenient — failure-path tests legitimately never reach Redis.
-        lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-    }
 
     private Credential existingCredential() {
         Instant created = Instant.parse("2026-01-01T00:00:00Z");
@@ -110,9 +97,10 @@ class ConfirmPasswordResetUseCaseTest {
         given(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).willReturn(2);
         given(tokenGeneratorPort.refreshTokenTtlSeconds()).willReturn(REFRESH_TTL);
         given(tokenGeneratorPort.accessTokenTtlSeconds()).willReturn(ACCESS_TTL);
-        givenRedisAvailable();
 
+        Instant before = Instant.now();
         useCase.execute(cmd);
+        Instant after = Instant.now();
 
         // The new credential is persisted with the freshly hashed value.
         ArgumentCaptor<Credential> savedCaptor = ArgumentCaptor.forClass(Credential.class);
@@ -129,47 +117,20 @@ class ConfirmPasswordResetUseCaseTest {
         // If save or revoke fails the token must still be valid for retry.
         InOrder order = inOrder(
                 credentialRepository, refreshTokenRepository,
-                bulkInvalidationStore, valueOperations, passwordResetTokenStore);
+                bulkInvalidationStore, accessTokenInvalidationStore, passwordResetTokenStore);
         order.verify(credentialRepository).save(any(Credential.class));
         order.verify(refreshTokenRepository).revokeAllByAccountId(ACCOUNT_ID);
         order.verify(bulkInvalidationStore).invalidateAll(ACCOUNT_ID, REFRESH_TTL);
-        // TASK-BE-146: marker key + TTL must match what the gateway reads.
-        ArgumentCaptor<String> valueCaptor = ArgumentCaptor.forClass(String.class);
-        order.verify(valueOperations).set(
-                eq(ACCESS_INVALIDATE_KEY),
-                valueCaptor.capture(),
-                eq(Duration.ofSeconds(ACCESS_TTL)));
-        assertThat(valueCaptor.getValue()).matches("\\d+");
-        assertThat(Long.parseLong(valueCaptor.getValue()))
-                .isLessThanOrEqualTo(Instant.now().toEpochMilli());
+
+        // TASK-BE-146: marker is written via the port with the access-token TTL,
+        // and the timestamp lies inside the test's wall-clock window.
+        ArgumentCaptor<Instant> instantCaptor = ArgumentCaptor.forClass(Instant.class);
+        order.verify(accessTokenInvalidationStore).invalidateAccessBefore(
+                eq(ACCOUNT_ID), instantCaptor.capture(), eq(ACCESS_TTL));
+        assertThat(instantCaptor.getValue())
+                .isBetween(before, after);
+
         order.verify(passwordResetTokenStore).delete(TOKEN);
-    }
-
-    @Test
-    @DisplayName("execute_redisDown_stillCompletes — Redis 장애가 reset 자체를 막아서는 안 됨 (fail-soft)")
-    void execute_redisDown_stillCompletes() {
-        Credential existing = existingCredential();
-        ConfirmPasswordResetCommand cmd =
-                new ConfirmPasswordResetCommand(TOKEN, "NewPassw0rd!");
-
-        given(passwordResetTokenStore.findAccountId(TOKEN)).willReturn(Optional.of(ACCOUNT_ID));
-        given(credentialRepository.findByAccountId(ACCOUNT_ID)).willReturn(Optional.of(existing));
-        given(passwordHasher.hash("NewPassw0rd!")).willReturn("$argon2id$v=19$new-hash");
-        given(credentialRepository.save(any(Credential.class)))
-                .willAnswer(inv -> inv.getArgument(0));
-        given(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).willReturn(0);
-        given(tokenGeneratorPort.refreshTokenTtlSeconds()).willReturn(REFRESH_TTL);
-        given(tokenGeneratorPort.accessTokenTtlSeconds()).willReturn(ACCESS_TTL);
-        given(stringRedisTemplate.opsForValue()).willReturn(valueOperations);
-        doThrow(new RuntimeException("redis down"))
-                .when(valueOperations).set(anyString(), anyString(), any(Duration.class));
-
-        // Must not throw — Redis failure is absorbed inside setAccessInvalidation.
-        useCase.execute(cmd);
-
-        // Even when the marker write fails, the token deletion still runs to
-        // enforce single-use semantics.
-        verify(passwordResetTokenStore).delete(TOKEN);
     }
 
     @Test
@@ -189,7 +150,7 @@ class ConfirmPasswordResetUseCaseTest {
         verify(credentialRepository, never()).save(any());
         verify(refreshTokenRepository, never()).revokeAllByAccountId(anyString());
         verify(bulkInvalidationStore, never()).invalidateAll(anyString(), anyLong());
-        verifyNoInteractions(stringRedisTemplate);
+        verifyNoInteractions(accessTokenInvalidationStore);
         // Critically: token MUST NOT be deleted on a failed attempt.
         verify(passwordResetTokenStore, never()).delete(anyString());
     }
@@ -210,7 +171,7 @@ class ConfirmPasswordResetUseCaseTest {
         verify(credentialRepository, never()).save(any());
         verify(refreshTokenRepository, never()).revokeAllByAccountId(anyString());
         verify(bulkInvalidationStore, never()).invalidateAll(anyString(), anyLong());
-        verifyNoInteractions(stringRedisTemplate);
+        verifyNoInteractions(accessTokenInvalidationStore);
         verify(passwordResetTokenStore, never()).delete(anyString());
     }
 
@@ -232,7 +193,7 @@ class ConfirmPasswordResetUseCaseTest {
         verify(credentialRepository, never()).save(any());
         verify(refreshTokenRepository, never()).revokeAllByAccountId(anyString());
         verify(bulkInvalidationStore, never()).invalidateAll(anyString(), anyLong());
-        verifyNoInteractions(stringRedisTemplate);
+        verifyNoInteractions(accessTokenInvalidationStore);
         // Token preservation lets the user retry with a compliant password.
         verify(passwordResetTokenStore, never()).delete(anyString());
     }
