@@ -6,6 +6,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -39,7 +40,7 @@ public class OutboxLagMetric {
                     Double.class
             );
             return lag != null ? lag : 0.0;
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             log.warn("Failed to calculate outbox lag metric: {}", e.getMessage());
             return -1.0;
         }

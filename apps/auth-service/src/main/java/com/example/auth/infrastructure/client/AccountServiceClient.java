@@ -62,7 +62,7 @@ public class AccountServiceClient implements AccountServicePort {
             log.warn("Account service status lookup returned client error {}: {}",
                     e.getStatusCode(), e.getMessage());
             return Optional.empty();
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Account service status lookup failed after retries: {}", e.getMessage());
             throw new AccountServiceUnavailableException("Account service is unavailable", e);
         }
@@ -101,7 +101,7 @@ public class AccountServiceClient implements AccountServicePort {
             return Optional.empty();
         } catch (HttpClientErrorException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             throw new RuntimeException("Account service communication error", e);
         }
     }
@@ -122,7 +122,7 @@ public class AccountServiceClient implements AccountServicePort {
             log.warn("Account service social-signup returned client error {}: {}",
                     e.getStatusCode(), e.getMessage());
             throw new AccountServiceUnavailableException("Account service social-signup failed", e);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("Account service social-signup failed after retries: {}", e.getMessage());
             throw new AccountServiceUnavailableException("Account service is unavailable", e);
         }
@@ -146,7 +146,7 @@ public class AccountServiceClient implements AccountServicePort {
                     .body(SocialSignupResult.class);
         } catch (HttpClientErrorException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             throw new RuntimeException("Account service communication error", e);
         }
     }

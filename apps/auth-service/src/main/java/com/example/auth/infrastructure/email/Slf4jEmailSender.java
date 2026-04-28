@@ -56,7 +56,7 @@ public class Slf4jEmailSender implements EmailSenderPort {
                 return "[masked]";
             }
             return local.charAt(0) + "***" + domain;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             return "[masked]";
         }
     }

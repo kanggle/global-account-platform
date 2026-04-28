@@ -3,6 +3,7 @@ package com.example.auth.infrastructure.redis;
 import com.example.auth.domain.repository.PasswordResetAttemptCounter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -56,7 +57,7 @@ public class RedisPasswordResetAttemptCounter implements PasswordResetAttemptCou
                 redisTemplate.expire(key, Duration.ofSeconds(windowSeconds));
             }
             return count <= maxAttempts;
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             log.warn("Redis unavailable for password-reset rate counter: {}", e.getMessage());
             return true;
         }

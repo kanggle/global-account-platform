@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -91,7 +92,7 @@ class RedisPasswordResetAttemptCounterTest {
     @Test
     @DisplayName("Redis 예외 발생 시 fail-open 으로 true 반환 (LoginAttemptCounter 패턴 일관)")
     void redisException_failsOpen() {
-        given(valueOps.increment(EXPECTED_KEY)).willThrow(new RuntimeException("redis down"));
+        given(valueOps.increment(EXPECTED_KEY)).willThrow(new RedisConnectionFailureException("redis down"));
 
         assertThat(counter.tryAcquire(EMAIL_HASH)).isTrue();
     }

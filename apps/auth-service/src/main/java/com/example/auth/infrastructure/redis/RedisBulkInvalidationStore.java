@@ -3,6 +3,7 @@ package com.example.auth.infrastructure.redis;
 import com.example.auth.domain.repository.BulkInvalidationStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +31,7 @@ public class RedisBulkInvalidationStore implements BulkInvalidationStore {
                     KEY_PREFIX + accountId,
                     Long.toString(Instant.now().toEpochMilli()),
                     Duration.ofSeconds(ttlSeconds));
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             log.warn("Redis unavailable while setting bulk invalidation marker for account={}: {}",
                     accountId, e.getMessage());
         }
@@ -40,7 +41,7 @@ public class RedisBulkInvalidationStore implements BulkInvalidationStore {
     public boolean isInvalidated(String accountId) {
         try {
             return Boolean.TRUE.equals(redisTemplate.hasKey(KEY_PREFIX + accountId));
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             // fail-closed: DB revoked flag is still the authoritative defence-in-depth guard
             log.warn("Redis unavailable while checking bulk invalidation marker, fail-closed: {}",
                     e.getMessage());
@@ -60,7 +61,7 @@ public class RedisBulkInvalidationStore implements BulkInvalidationStore {
             log.warn("Malformed bulk invalidation marker for account={}, fail-closed: {}",
                     accountId, e.getMessage());
             return Optional.of(Instant.now());
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
             // fail-closed: treat as invalidated now to reject all in-flight tokens
             log.warn("Redis unavailable while reading bulk invalidation marker, fail-closed: {}",
                     e.getMessage());
