@@ -29,14 +29,16 @@ import java.util.regex.Pattern;
  * <p>Performs full validation per OpenID Connect Core §3.1.3.7:
  * <ol>
  *   <li>RS256 signature against the JWK whose {@code kid} matches the JWT
- *       header's {@code kid}.</li>
+ *       header's {@code kid}. Algorithm is pinned to {@code RS256} only —
+ *       {@code alg: none} / {@code alg: HS256} confusion attacks are rejected
+ *       both by JJWT's unsecured-disabled default and by this explicit pin.</li>
  *   <li>{@code iss} matches the configured issuer pattern (regex — supports
  *       Microsoft multi-tenant patterns like
  *       {@code https://login.microsoftonline.com/<tenantId>/v2.0}).</li>
  *   <li>{@code aud} contains the configured audience (typically the OAuth
  *       client_id).</li>
- *   <li>{@code exp} is in the future (60s clock skew tolerated, JJWT
- *       default-equivalent).</li>
+ *   <li>{@code exp} is in the future, with a 60s clock-skew tolerance for
+ *       provider/host clock drift.</li>
  * </ol>
  *
  * <p>JWKS keys are cached for {@code cacheTtlMillis} (default 1 hour). On a
@@ -89,6 +91,7 @@ public class OidcJwksVerifier {
         try {
             claims = Jwts.parser()
                     .keyLocator(new JwksKeyLocator())
+                    .clockSkewSeconds(60)
                     .build()
                     .parseSignedClaims(idToken)
                     .getPayload();
@@ -114,6 +117,17 @@ public class OidcJwksVerifier {
         public Key locate(io.jsonwebtoken.Header header) {
             if (!(header instanceof JwsHeader jws)) {
                 throw new OAuthProviderException("id_token missing JWS header");
+            }
+            // TASK-BE-145 W-1: explicit algorithm pinning. JJWT 0.12.x has no
+            // builder-level sigAlgorithms() API in this release, so we enforce
+            // RS256 here before the JWS subsystem ever uses the resolved key.
+            // Defense-in-depth on top of JJWT's implicit guards:
+            //  - alg:none is rejected by unsecured-disabled default
+            //  - alg:HS256 is rejected when DefaultMacAlgorithm sees an RSAPublicKey
+            // Pinning here makes the policy explicit and survives library upgrades.
+            String alg = jws.getAlgorithm();
+            if (!"RS256".equals(alg)) {
+                throw new OAuthProviderException("id_token alg must be RS256");
             }
             String kid = jws.getKeyId();
             if (kid == null || kid.isBlank()) {

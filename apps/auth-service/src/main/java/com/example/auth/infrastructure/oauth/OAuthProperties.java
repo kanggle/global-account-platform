@@ -47,9 +47,14 @@ public class OAuthProperties {
          */
         private String expectedIssuerPattern;
         /**
-         * JWKS cache TTL in milliseconds (default 1 hour).
+         * JWKS cache TTL in milliseconds. Default 10 minutes — short enough that a
+         * provider-side key rotation propagates within one cache window, long
+         * enough that JWKS endpoint load stays modest. Spec recommendation
+         * (TASK-BE-145, implementation note line 117): 5–10 minutes for normal
+         * caching; provider failure backoff is a separate 60-second guard inside
+         * {@link OidcJwksVerifier}.
          */
-        private long jwksCacheTtlMillis = 3_600_000L;
+        private long jwksCacheTtlMillis = 600_000L;
 
         public List<String> resolveAllowedRedirectUris() {
             if (allowedRedirectUris != null && !allowedRedirectUris.isEmpty()) {

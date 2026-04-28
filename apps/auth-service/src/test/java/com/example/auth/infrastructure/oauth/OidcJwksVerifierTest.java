@@ -183,6 +183,55 @@ class OidcJwksVerifierTest {
     }
 
     @Test
+    @DisplayName("alg:none 토큰 거부 (algorithm confusion 방어)")
+    void verify_algNoneToken_throws() {
+        stubJwksWith(CONFIGURED_KID, (RSAPublicKey) primaryKp.getPublic());
+
+        // Hand-craft alg:none token: header.payload. (empty signature segment)
+        String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(("{\"alg\":\"none\",\"typ\":\"JWT\",\"kid\":\""
+                        + CONFIGURED_KID + "\"}").getBytes());
+        String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(("{\"sub\":\"attacker\",\"iss\":\"https://accounts.google.com\","
+                        + "\"aud\":\"" + AUDIENCE + "\",\"exp\":9999999999}").getBytes());
+        String unsecuredToken = header + "." + payload + ".";
+
+        assertThatThrownBy(() -> verifier.verify(unsecuredToken))
+                .isInstanceOf(OAuthProviderException.class);
+    }
+
+    @Test
+    @DisplayName("alg:HS256 토큰 거부 (HMAC-with-public-key confusion 방어)")
+    void verify_algHs256Token_throws() {
+        stubJwksWith(CONFIGURED_KID, (RSAPublicKey) primaryKp.getPublic());
+
+        // Hand-craft an HS256-style token signed with the public key as HMAC secret.
+        // The verifier MUST reject this — the explicit alg=RS256 pin in
+        // JwksKeyLocator is the primary safety net (defense-in-depth on top of
+        // JJWT's implicit type-mismatch guard).
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            byte[] keyBytes = ((RSAPublicKey) primaryKp.getPublic()).getEncoded();
+            mac.init(new javax.crypto.spec.SecretKeySpec(keyBytes, "HmacSHA256"));
+
+            String header = Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(("{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\""
+                            + CONFIGURED_KID + "\"}").getBytes());
+            String payload = Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(("{\"sub\":\"attacker\",\"iss\":\"https://accounts.google.com\","
+                            + "\"aud\":\"" + AUDIENCE + "\",\"exp\":9999999999}").getBytes());
+            String signingInput = header + "." + payload;
+            byte[] signature = mac.doFinal(signingInput.getBytes());
+            String token = signingInput + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
+
+            assertThatThrownBy(() -> verifier.verify(token))
+                    .isInstanceOf(OAuthProviderException.class);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Test
     @DisplayName("정상 발급 토큰의 kid 가 비어 있으면 거부 (header bypass 방지)")
     void verify_missingKid_throws() {
         stubJwksWith(CONFIGURED_KID, (RSAPublicKey) primaryKp.getPublic());
