@@ -1,6 +1,7 @@
 package com.example.auth.application;
 
 import com.example.auth.application.command.RequestPasswordResetCommand;
+import com.example.auth.application.exception.PasswordResetRateLimitedException;
 import com.example.auth.application.port.EmailSenderPort;
 import com.example.auth.domain.credentials.Credential;
 import com.example.auth.domain.repository.CredentialRepository;
@@ -70,8 +71,12 @@ public class RequestPasswordResetUseCase {
         // Rate limit FIRST — counter increments regardless of credential
         // existence. Mirrors the silent-no-op pattern below to avoid leaking
         // account existence via response timing or status differences.
+        // The exception is thrown + locally absorbed so future metrics hooks
+        // can observe the event without changing the response shape.
         String emailHash = hashEmail(normalizedEmail);
-        if (!rateLimitCounter.tryAcquire(emailHash)) {
+        try {
+            requireRateSlot(emailHash);
+        } catch (PasswordResetRateLimitedException e) {
             log.info("password-reset rate limit exceeded for emailHash={}", emailHash);
             return;
         }
@@ -99,11 +104,23 @@ public class RequestPasswordResetUseCase {
         }
     }
 
+    private void requireRateSlot(String emailHash) {
+        if (!rateLimitCounter.tryAcquire(emailHash)) {
+            throw new PasswordResetRateLimitedException(emailHash);
+        }
+    }
+
     /**
-     * 10-character SHA-256 truncation of the lower-cased email. Mirrors
-     * {@code LoginUseCase.hashEmail} so a single login-flood key prefix and a
-     * single password-reset-flood key prefix can both reference the same
-     * stable identifier without storing the raw email.
+     * 10-character SHA-256 truncation of the (already-normalized) email.
+     * Re-applies {@code toLowerCase()} for defensive idempotence — the canonical
+     * input is the output of {@link Credential#normalizeEmail(String)}.
+     *
+     * <p>The algorithm matches {@code LoginUseCase.hashEmail} but the input
+     * preconditions differ: {@code LoginUseCase} hashes the raw command input
+     * (no trim), while this use case hashes the normalized form. The two
+     * counters therefore live in independent key namespaces and are NOT
+     * interchangeable. See PasswordResetAttemptCounter Javadoc for the
+     * security review M-1 fail-open policy that both share.
      */
     static String hashEmail(String email) {
         try {

@@ -186,4 +186,20 @@ class RequestPasswordResetUseCaseTest {
 
         verify(rateLimitCounter).tryAcquire(anyString());
     }
+
+    @Test
+    @DisplayName("rate limit 카운터는 정규화된 이메일의 해시로 호출된다 (대소문자/공백 변형이 동일 키)")
+    void execute_counterReceivesNormalizedHash() {
+        // given — two equivalent inputs after normalization
+        given(credentialRepository.findByAccountIdEmail(anyString()))
+                .willReturn(Optional.empty());
+
+        // when
+        useCase.execute(new RequestPasswordResetCommand("  USER@Example.com  "));
+        useCase.execute(new RequestPasswordResetCommand("user@example.com"));
+
+        // then — both invocations must reach the counter with the SAME hash
+        String expectedHash = RequestPasswordResetUseCase.hashEmail("user@example.com");
+        verify(rateLimitCounter, org.mockito.Mockito.times(2)).tryAcquire(expectedHash);
+    }
 }
