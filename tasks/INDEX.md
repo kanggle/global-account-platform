@@ -48,6 +48,11 @@ Allowed only after review approval.
 - Fix tasks must include the original task ID in their Goal section (e.g. "Fix issue found in TASK-BE-002").
 - Do not modify a task file after it moves to `review/` or `done/`.
 
+## Move Method (all transitions)
+All task file moves between directories must use `git mv`, never copy-then-delete or Write-new-file.
+Example: `git mv tasks/review/TASK-BE-001.md tasks/done/TASK-BE-001.md`
+Rationale: preserves git history and prevents duplicate files across directories.
+
 ## done → archive
 Allowed when no further active change is expected.
 
