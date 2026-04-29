@@ -262,6 +262,27 @@ services:
     ports: ["18085:8085"]
     networks: [gap-e2e]
 
+  # ---------------------------------------------------------------------------
+  # Gateway — edge proxy; routes to auth/account/admin services
+  # ---------------------------------------------------------------------------
+  gateway-service:
+    build:
+      context: .
+      dockerfile: apps/gateway-service/Dockerfile
+    environment:
+      <<: *service-env
+      AUTH_SERVICE_URL: http://auth-service:8081
+      ACCOUNT_SERVICE_URL: http://account-service:8082
+      ADMIN_SERVICE_URL: http://admin-service:8085
+      JWKS_URL: http://auth-service:8081/internal/auth/jwks
+    depends_on:
+      redis: { condition: service_healthy }
+      auth-service: { condition: service_started }
+      account-service: { condition: service_started }
+      admin-service: { condition: service_started }
+    ports: ["18080:8080"]
+    networks: [gap-e2e]
+
 networks:
   gap-e2e:
     driver: bridge

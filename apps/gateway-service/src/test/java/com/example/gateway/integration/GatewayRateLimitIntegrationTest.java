@@ -117,7 +117,7 @@ class GatewayRateLimitIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        redisTemplate.keys("ratelimit:*")
+        redisTemplate.keys("rate:*")
                 .flatMap(redisTemplate::delete)
                 .collectList()
                 .block();
@@ -210,7 +210,7 @@ class GatewayRateLimitIntegrationTest {
                 .expectStatus().isEqualTo(429);
 
         // Redis 키 삭제 (window 만료 시뮬레이션)
-        redisTemplate.keys("ratelimit:login:10.3.3.0/24:*")
+        redisTemplate.keys("rate:login:*")
                 .flatMap(redisTemplate::delete)
                 .collectList()
                 .block();
@@ -231,19 +231,20 @@ class GatewayRateLimitIntegrationTest {
                 .willReturn(aResponse()
                         .withFault(com.github.tomakehurst.wiremock.http.Fault.CONNECTION_RESET_BY_PEER)));
 
-        String token = createValidToken("account-123");
+        String token = createValidToken("account-123", "fan-platform");
         webTestClient.get().uri("/api/accounts/downstream-fail")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().is5xxServerError();
     }
 
-    private String createValidToken(String accountId) {
+    private String createValidToken(String accountId, String tenantId) {
         return Jwts.builder()
                 .header().keyId("rl-test-kid").and()
                 .subject(accountId)
                 .issuer("global-account-platform")
                 .claim("email", "test@example.com")
+                .claim("tenant_id", tenantId)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
