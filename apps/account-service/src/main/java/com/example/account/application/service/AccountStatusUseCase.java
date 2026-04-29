@@ -11,6 +11,7 @@ import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.*;
+import com.example.account.domain.tenant.TenantId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +42,8 @@ public class AccountStatusUseCase {
 
     @Transactional(readOnly = true)
     public AccountStatusResult getStatus(String accountId) {
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         var latestHistory = historyRepository.findTopByAccountIdOrderByOccurredAtDesc(accountId);
@@ -56,7 +58,8 @@ public class AccountStatusUseCase {
 
     @Transactional
     public StatusChangeResult changeStatus(ChangeStatusCommand command) {
-        Account account = accountRepository.findById(command.accountId())
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, command.accountId())
                 .orElseThrow(() -> new AccountNotFoundException(command.accountId()));
 
         AccountStatus previousStatus = account.getStatus();
@@ -115,7 +118,8 @@ public class AccountStatusUseCase {
     @Transactional
     public DeleteAccountResult deleteAccount(String accountId, StatusChangeReason reason,
                                               String actorType, String actorId) {
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         AccountStatus previousStatus = account.getStatus();

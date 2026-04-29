@@ -9,6 +9,7 @@ import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,7 +47,7 @@ class ProfileUseCaseTest {
     void getMe_existingAccountAndProfile_returnsResult() {
         Account account = account(ACCOUNT_ID);
         Profile profile = profile(ACCOUNT_ID, "홍길동");
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(profileRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(profile));
 
         AccountMeResult result = useCase.getMe(ACCOUNT_ID);
@@ -59,7 +60,7 @@ class ProfileUseCaseTest {
     @Test
     @DisplayName("getMe — 계정 없음 → AccountNotFoundException")
     void getMe_accountNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.empty());
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.getMe(ACCOUNT_ID))
                 .isInstanceOf(AccountNotFoundException.class);
@@ -68,7 +69,7 @@ class ProfileUseCaseTest {
     @Test
     @DisplayName("getMe — 프로필 없음 → AccountNotFoundException")
     void getMe_profileNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account(ACCOUNT_ID)));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).thenReturn(Optional.of(account(ACCOUNT_ID)));
         when(profileRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.getMe(ACCOUNT_ID))
@@ -81,7 +82,7 @@ class ProfileUseCaseTest {
     @DisplayName("updateProfile — 정상 업데이트 → 저장 후 ProfileUpdateResult 반환")
     void updateProfile_existing_savesAndReturnsResult() {
         Profile profile = profile(ACCOUNT_ID, "기존 이름");
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account(ACCOUNT_ID)));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).thenReturn(Optional.of(account(ACCOUNT_ID)));
         when(profileRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(profile));
         when(profileRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -98,7 +99,7 @@ class ProfileUseCaseTest {
     @Test
     @DisplayName("updateProfile — 계정 없음 → AccountNotFoundException")
     void updateProfile_accountNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.empty());
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).thenReturn(Optional.empty());
 
         UpdateProfileCommand cmd = new UpdateProfileCommand(
                 ACCOUNT_ID, "이름", null, null, null, null, null);
@@ -110,7 +111,7 @@ class ProfileUseCaseTest {
     @Test
     @DisplayName("updateProfile — 프로필 없음 → AccountNotFoundException")
     void updateProfile_profileNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account(ACCOUNT_ID)));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).thenReturn(Optional.of(account(ACCOUNT_ID)));
         when(profileRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.empty());
 
         UpdateProfileCommand cmd = new UpdateProfileCommand(
@@ -124,7 +125,7 @@ class ProfileUseCaseTest {
 
     private static Account account(String id) {
         Instant now = Instant.now();
-        return Account.reconstitute(id, "test@example.com", null,
+        return Account.reconstitute(id, TenantId.FAN_PLATFORM, "test@example.com", null,
                 AccountStatus.ACTIVE, now, now, null, null, null, 0);
     }
 

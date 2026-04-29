@@ -2,6 +2,7 @@ package com.example.account.application.service;
 
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.ProcessedEventJpaEntity;
 import com.example.messaging.outbox.ProcessedEventJpaRepository;
 import lombok.RequiredArgsConstructor;
@@ -62,7 +63,9 @@ public class UpdateLastLoginUseCase {
             return;
         }
 
-        Optional<Account> maybeAccount = accountRepository.findById(accountId);
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229.
+        // The auth.login.succeeded event does not yet carry tenant_id (TASK-BE-229).
+        Optional<Account> maybeAccount = accountRepository.findById(TenantId.FAN_PLATFORM, accountId);
         if (maybeAccount.isEmpty()) {
             // Poison-pill guard — log and return without throwing so that the
             // consumer commits the offset and moves on. Missing accounts can

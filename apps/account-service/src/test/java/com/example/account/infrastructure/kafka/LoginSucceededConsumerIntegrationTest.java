@@ -3,6 +3,7 @@ package com.example.account.infrastructure.kafka;
 import com.example.account.application.port.AuthServicePort;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.ProcessedEventJpaRepository;
 import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -90,10 +91,10 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("auth.login.succeeded 이벤트 발행 → accounts.last_login_succeeded_at 갱신, processed_events 1행 적재")
     void consume_updatesLastLoginAndPersistsDedupRow() {
         String email = "login-success-" + UUID.randomUUID() + "@example.com";
-        Account account = accountRepository.save(Account.create(email));
+        Account account = accountRepository.save(Account.create(TenantId.FAN_PLATFORM, email));
         String accountId = account.getId();
         // Sanity: brand-new account has no last login.
-        assertThat(accountRepository.findById(accountId).orElseThrow().getLastLoginSucceededAt())
+        assertThat(accountRepository.findById(TenantId.FAN_PLATFORM, accountId).orElseThrow().getLastLoginSucceededAt())
                 .isNull();
 
         String eventId = UUID.randomUUID().toString();
@@ -103,7 +104,7 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
         kafkaTemplate.send(new ProducerRecord<>("auth.login.succeeded", accountId, envelope));
 
         await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> {
-            Account reloaded = accountRepository.findById(accountId).orElseThrow();
+            Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, accountId).orElseThrow();
             assertThat(reloaded.getLastLoginSucceededAt()).isEqualTo(occurredAt);
             assertThat(processedEventRepository.existsByEventId(eventId)).isTrue();
         });
@@ -113,7 +114,7 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("동일 eventId 재발행 → processed_events 1행 유지 (DB-level 멱등성)")
     void consume_duplicateEventId_processedOnce() {
         String email = "login-dup-" + UUID.randomUUID() + "@example.com";
-        Account account = accountRepository.save(Account.create(email));
+        Account account = accountRepository.save(Account.create(TenantId.FAN_PLATFORM, email));
         String accountId = account.getId();
 
         String eventId = UUID.randomUUID().toString();
@@ -147,7 +148,7 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
                 });
 
         // Account remains advanced to the event timestamp (max semantics).
-        Account reloaded = accountRepository.findById(accountId).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, accountId).orElseThrow();
         assertThat(reloaded.getLastLoginSucceededAt()).isEqualTo(occurredAt);
     }
 
@@ -171,7 +172,7 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
                 .atMost(15, TimeUnit.SECONDS)
                 .untilAsserted(() -> {
                     assertThat(processedEventRepository.existsByEventId(eventId)).isTrue();
-                    assertThat(accountRepository.findById(unknownAccountId)).isEmpty();
+                    assertThat(accountRepository.findById(TenantId.FAN_PLATFORM, unknownAccountId)).isEmpty();
                 });
     }
 
@@ -199,6 +200,6 @@ class LoginSucceededConsumerIntegrationTest extends AbstractIntegrationTest {
 
     @SuppressWarnings("unused")
     private static Optional<Account> findById(AccountRepository repository, String id) {
-        return repository.findById(id);
+        return repository.findById(TenantId.FAN_PLATFORM, id);
     }
 }

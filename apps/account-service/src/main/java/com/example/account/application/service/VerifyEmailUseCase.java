@@ -6,6 +6,7 @@ import com.example.account.application.result.VerifyEmailResult;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.EmailVerificationTokenStore;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -55,7 +56,8 @@ public class VerifyEmailUseCase {
                 .orElseThrow(EmailVerificationTokenInvalidException::new);
 
         // 2) Load account. Vanished accounts surface as the same uniform 400.
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229.
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(EmailVerificationTokenInvalidException::new);
 
         // 3) Domain rule: emailVerifiedAt is a write-once field. Already-verified

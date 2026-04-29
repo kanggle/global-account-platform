@@ -7,6 +7,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.EmailVerificationTokenStore;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,7 +51,7 @@ class VerifyEmailUseCaseTest {
 
     private Account unverifiedAccount() {
         return Account.reconstitute(
-                ACCOUNT_ID, EMAIL, null,
+                ACCOUNT_ID, TenantId.FAN_PLATFORM, EMAIL, null,
                 AccountStatus.ACTIVE,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-01T00:00:00Z"),
@@ -60,7 +61,7 @@ class VerifyEmailUseCaseTest {
 
     private Account verifiedAccount(Instant verifiedAt) {
         return Account.reconstitute(
-                ACCOUNT_ID, EMAIL, null,
+                ACCOUNT_ID, TenantId.FAN_PLATFORM, EMAIL, null,
                 AccountStatus.ACTIVE,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-01T00:00:00Z"),
@@ -72,7 +73,7 @@ class VerifyEmailUseCaseTest {
     @DisplayName("정상 인증 — 토큰 조회 → verifyEmail → save → token delete 순서, emailVerifiedAt 반환")
     void execute_validToken_verifiesAndDeletesToken() {
         given(tokenStore.findAccountId(TOKEN)).willReturn(Optional.of(ACCOUNT_ID));
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(unverifiedAccount()));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(unverifiedAccount()));
         given(accountRepository.save(any(Account.class))).willAnswer(inv -> inv.getArgument(0));
 
         VerifyEmailResult result = useCase.execute(TOKEN);
@@ -89,7 +90,7 @@ class VerifyEmailUseCaseTest {
         // a transient delete failure does not leave us with no token + no flag.
         InOrder order = inOrder(tokenStore, accountRepository);
         order.verify(tokenStore).findAccountId(TOKEN);
-        order.verify(accountRepository).findById(ACCOUNT_ID);
+        order.verify(accountRepository).findById(TenantId.FAN_PLATFORM, ACCOUNT_ID);
         order.verify(accountRepository).save(any(Account.class));
         order.verify(tokenStore).delete(TOKEN);
     }
@@ -102,7 +103,7 @@ class VerifyEmailUseCaseTest {
         assertThatThrownBy(() -> useCase.execute(TOKEN))
                 .isInstanceOf(EmailVerificationTokenInvalidException.class);
 
-        verify(accountRepository, never()).findById(anyString());
+        verify(accountRepository, never()).findById(any(), anyString());
         verify(accountRepository, never()).save(any());
         verify(tokenStore, never()).delete(anyString());
     }
@@ -111,7 +112,7 @@ class VerifyEmailUseCaseTest {
     @DisplayName("토큰은 유효하나 account 가 사라진 경우 동일하게 EmailVerificationTokenInvalidException")
     void execute_accountVanished_throwsAndDoesNotDeleteToken() {
         given(tokenStore.findAccountId(TOKEN)).willReturn(Optional.of(ACCOUNT_ID));
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.empty());
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.execute(TOKEN))
                 .isInstanceOf(EmailVerificationTokenInvalidException.class);
@@ -126,7 +127,7 @@ class VerifyEmailUseCaseTest {
     void execute_alreadyVerified_throwsEmailAlreadyVerified() {
         Instant priorVerification = Instant.parse("2026-04-01T00:00:00Z");
         given(tokenStore.findAccountId(TOKEN)).willReturn(Optional.of(ACCOUNT_ID));
-        given(accountRepository.findById(ACCOUNT_ID))
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID))
                 .willReturn(Optional.of(verifiedAccount(priorVerification)));
 
         assertThatThrownBy(() -> useCase.execute(TOKEN))

@@ -9,6 +9,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -25,14 +26,18 @@ public class SignupUseCase {
 
     @Transactional
     public SignupResult execute(SignupCommand command) {
-        // Check email uniqueness (primary defense: DB unique constraint)
-        if (accountRepository.existsByEmail(command.email().trim().toLowerCase())) {
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        // introduces dynamic tenant injection from the JWT claim / X-Tenant-Id header.
+        TenantId tenantId = TenantId.FAN_PLATFORM;
+
+        // Check email uniqueness within this tenant (primary defense: DB unique constraint)
+        if (accountRepository.existsByEmail(tenantId, command.email().trim().toLowerCase())) {
             throw new AccountAlreadyExistsException(command.email());
         }
 
         try {
             // Create account (Email value object validates and normalizes)
-            Account account = Account.create(command.email());
+            Account account = Account.create(tenantId, command.email());
             account = accountRepository.save(account);
 
             // Create profile

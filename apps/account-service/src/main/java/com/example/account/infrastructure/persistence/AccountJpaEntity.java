@@ -2,6 +2,7 @@ package com.example.account.infrastructure.persistence;
 
 import com.example.account.domain.account.Account;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -19,7 +20,10 @@ public class AccountJpaEntity {
     @Column(length = 36)
     private String id;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId;
+
+    @Column(nullable = false)
     private String email;
 
     @Column(name = "email_hash", length = 64)
@@ -55,6 +59,7 @@ public class AccountJpaEntity {
     public static AccountJpaEntity fromDomain(Account account) {
         AccountJpaEntity entity = new AccountJpaEntity();
         entity.id = account.getId();
+        entity.tenantId = account.getTenantId().value();
         entity.email = account.getEmail();
         entity.emailHash = account.getEmailHash();
         entity.status = account.getStatus();
@@ -68,7 +73,7 @@ public class AccountJpaEntity {
     }
 
     public Account toDomain() {
-        return Account.reconstitute(id, email, emailHash, status, createdAt, updatedAt,
-                deletedAt, lastLoginSucceededAt, emailVerifiedAt, version);
+        return Account.reconstitute(id, new TenantId(tenantId), email, emailHash, status,
+                createdAt, updatedAt, deletedAt, lastLoginSucceededAt, emailVerifiedAt, version);
     }
 }

@@ -6,6 +6,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +26,8 @@ public class DataExportUseCase {
 
     @Transactional(readOnly = true)
     public DataExportResult execute(String accountId) {
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         DataExportResult.ProfileData profileData = profileRepository.findByAccountId(accountId)

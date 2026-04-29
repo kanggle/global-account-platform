@@ -9,6 +9,7 @@ import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.domain.tenant.TenantId;
 import com.example.account.infrastructure.anonymizer.PiiAnonymizer;
 import com.example.account.infrastructure.persistence.AccountJpaEntity;
 import com.example.account.infrastructure.persistence.AccountJpaRepository;
@@ -102,7 +103,7 @@ class AccountAnonymizationSchedulerUnitTest {
 
     private Account deletedAccount(String accountId, String email) {
         return Account.reconstitute(
-                accountId, email, null,
+                accountId, TenantId.FAN_PLATFORM, email, null,
                 AccountStatus.DELETED,
                 Instant.parse("2025-12-01T00:00:00Z"),
                 Instant.parse("2025-12-01T00:00:00Z"),
@@ -114,7 +115,7 @@ class AccountAnonymizationSchedulerUnitTest {
 
     private Account activeAccount(String accountId, String email) {
         return Account.reconstitute(
-                accountId, email, null,
+                accountId, TenantId.FAN_PLATFORM, email, null,
                 AccountStatus.ACTIVE,
                 Instant.parse("2025-12-01T00:00:00Z"),
                 Instant.parse("2025-12-01T00:00:00Z"),

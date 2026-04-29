@@ -19,6 +19,9 @@ public class ProfileJpaEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId;
+
     @Column(name = "account_id", nullable = false, unique = true, length = 36)
     private String accountId;
 
@@ -49,6 +52,10 @@ public class ProfileJpaEntity {
     public static ProfileJpaEntity fromDomain(Profile profile) {
         ProfileJpaEntity entity = new ProfileJpaEntity();
         entity.id = profile.getId();
+        // TASK-BE-228: tenant_id is required (NOT NULL, no DEFAULT after V0011).
+        // Profile domain object does not carry tenantId yet; use the single-tenant
+        // placeholder until TASK-BE-229 introduces dynamic tenant resolution.
+        entity.tenantId = "fan-platform";
         entity.accountId = profile.getAccountId();
         entity.displayName = profile.getDisplayName();
         entity.phoneNumber = profile.getPhoneNumber();

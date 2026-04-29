@@ -1,6 +1,7 @@
 package com.example.account.integration;
 
 import com.example.account.domain.repository.AccountRepository;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.account.infrastructure.persistence.ProfileJpaRepository;
 import com.example.testsupport.integration.AbstractIntegrationTest;
@@ -125,7 +126,7 @@ class SignupRollbackIntegrationTest extends AbstractIntegrationTest {
 
         // @Transactional rollback proof:
         // 1) no account row persisted for the submitted email
-        assertThat(accountRepository.findByEmail(email)).isEmpty();
+        assertThat(accountRepository.findByEmail(TenantId.FAN_PLATFORM, email)).isEmpty();
         // 2) overall profile row count is unchanged — this signup added no profile row
         assertThat(profileJpaRepository.count()).isEqualTo(profileCountBefore);
     }

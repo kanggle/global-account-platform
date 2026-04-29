@@ -20,6 +20,9 @@ public class AccountStatusHistoryJpaEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId;
+
     @Column(name = "account_id", nullable = false, length = 36)
     private String accountId;
 
@@ -50,6 +53,10 @@ public class AccountStatusHistoryJpaEntity {
     public static AccountStatusHistoryJpaEntity fromDomain(AccountStatusHistoryEntry entry) {
         AccountStatusHistoryJpaEntity entity = new AccountStatusHistoryJpaEntity();
         entity.id = entry.getId();
+        // TASK-BE-228: tenant_id required (NOT NULL, no DEFAULT after V0011).
+        // AccountStatusHistoryEntry does not carry tenantId yet; use placeholder until
+        // TASK-BE-229 introduces dynamic resolution.
+        entity.tenantId = "fan-platform";
         entity.accountId = entry.getAccountId();
         entity.fromStatus = entry.getFromStatus();
         entity.toStatus = entry.getToStatus();

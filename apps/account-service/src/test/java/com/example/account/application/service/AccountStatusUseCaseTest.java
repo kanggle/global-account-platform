@@ -13,6 +13,7 @@ import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.AccountStatusMachine;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.domain.tenant.TenantId;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,7 +63,7 @@ class AccountStatusUseCaseTest {
         Account account = activeAccount("acc-1");
         AccountStatusHistoryEntry entry = historyEntry("acc-1", AccountStatus.LOCKED,
                 AccountStatus.ACTIVE, StatusChangeReason.ADMIN_UNLOCK);
-        when(accountRepository.findById("acc-1")).thenReturn(Optional.of(account));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, "acc-1")).thenReturn(Optional.of(account));
         when(historyRepository.findTopByAccountIdOrderByOccurredAtDesc("acc-1"))
                 .thenReturn(Optional.of(entry));
 
@@ -76,7 +78,7 @@ class AccountStatusUseCaseTest {
     @DisplayName("getStatus — 히스토리 없음 → createdAt 반환, reasonCode null")
     void getStatus_noHistory_returnsCreatedAtAndNullReason() {
         Account account = activeAccount("acc-2");
-        when(accountRepository.findById("acc-2")).thenReturn(Optional.of(account));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, "acc-2")).thenReturn(Optional.of(account));
         when(historyRepository.findTopByAccountIdOrderByOccurredAtDesc("acc-2"))
                 .thenReturn(Optional.empty());
 
@@ -89,7 +91,8 @@ class AccountStatusUseCaseTest {
     @Test
     @DisplayName("getStatus — 계정 없음 → AccountNotFoundException")
     void getStatus_accountNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById("missing")).thenReturn(Optional.empty());
+        when(accountRepository.findById(eq(TenantId.FAN_PLATFORM), eq("missing")))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.getStatus("missing"))
                 .isInstanceOf(AccountNotFoundException.class);
@@ -101,7 +104,7 @@ class AccountStatusUseCaseTest {
     @DisplayName("changeStatus ACTIVE→LOCKED — publishAccountLocked 이벤트 발행")
     void changeStatus_activeToLocked_publishesLockedEvent() {
         Account account = activeAccount("acc-3");
-        when(accountRepository.findById("acc-3")).thenReturn(Optional.of(account));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, "acc-3")).thenReturn(Optional.of(account));
         when(historyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ChangeStatusCommand cmd = new ChangeStatusCommand(
@@ -121,7 +124,7 @@ class AccountStatusUseCaseTest {
     @DisplayName("changeStatus LOCKED→ACTIVE — publishAccountUnlocked 이벤트 발행")
     void changeStatus_lockedToActive_publishesUnlockedEvent() {
         Account account = lockedAccount("acc-4");
-        when(accountRepository.findById("acc-4")).thenReturn(Optional.of(account));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, "acc-4")).thenReturn(Optional.of(account));
         when(historyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         ChangeStatusCommand cmd = new ChangeStatusCommand(
@@ -139,7 +142,8 @@ class AccountStatusUseCaseTest {
     @Test
     @DisplayName("changeStatus — 계정 없음 → AccountNotFoundException")
     void changeStatus_accountNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById("no-acc")).thenReturn(Optional.empty());
+        when(accountRepository.findById(eq(TenantId.FAN_PLATFORM), eq("no-acc")))
+                .thenReturn(Optional.empty());
 
         ChangeStatusCommand cmd = new ChangeStatusCommand(
                 "no-acc", AccountStatus.LOCKED, StatusChangeReason.ADMIN_LOCK,
@@ -155,7 +159,7 @@ class AccountStatusUseCaseTest {
     @DisplayName("deleteAccount — 정상 삭제 후 gracePeriodEndsAt 반환 및 이벤트 발행")
     void deleteAccount_existing_returnsGracePeriodAndPublishesEvents() {
         Account account = activeAccount("acc-5");
-        when(accountRepository.findById("acc-5")).thenReturn(Optional.of(account));
+        when(accountRepository.findById(TenantId.FAN_PLATFORM, "acc-5")).thenReturn(Optional.of(account));
         when(historyRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         DeleteAccountResult result = useCase.deleteAccount(
@@ -170,7 +174,8 @@ class AccountStatusUseCaseTest {
     @Test
     @DisplayName("deleteAccount — 계정 없음 → AccountNotFoundException")
     void deleteAccount_accountNotFound_throwsAccountNotFoundException() {
-        when(accountRepository.findById("gone")).thenReturn(Optional.empty());
+        when(accountRepository.findById(eq(TenantId.FAN_PLATFORM), eq("gone")))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> useCase.deleteAccount(
                 "gone", StatusChangeReason.ADMIN_DELETE, "ADMIN", "admin-1"))
@@ -181,13 +186,13 @@ class AccountStatusUseCaseTest {
 
     private static Account activeAccount(String id) {
         Instant now = Instant.now();
-        return Account.reconstitute(id, "test@example.com", null,
+        return Account.reconstitute(id, TenantId.FAN_PLATFORM, "test@example.com", null,
                 AccountStatus.ACTIVE, now, now, null, null, null, 0);
     }
 
     private static Account lockedAccount(String id) {
         Instant now = Instant.now();
-        return Account.reconstitute(id, "locked@example.com", null,
+        return Account.reconstitute(id, TenantId.FAN_PLATFORM, "locked@example.com", null,
                 AccountStatus.LOCKED, now, now, null, null, null, 0);
     }
 

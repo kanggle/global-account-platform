@@ -19,10 +19,13 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 
 **Topic**: `account.created`
 
+**Schema version**: 2 (TASK-BE-228: `tenant_id` 필드 추가)
+
 **Payload**:
 ```json
 {
   "accountId": "string (UUID)",
+  "tenantId": "string (slug, e.g. 'fan-platform')",
   "emailHash": "string (SHA256[:10], PII 마스킹)",
   "status": "ACTIVE",
   "locale": "ko-KR",
@@ -40,10 +43,13 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 
 **Topic**: `account.status.changed`
 
+**Schema version**: 2 (TASK-BE-228: `tenant_id` 필드 추가)
+
 **Payload**:
 ```json
 {
   "accountId": "string",
+  "tenantId": "string (slug, e.g. 'fan-platform')",
   "previousStatus": "ACTIVE",
   "currentStatus": "LOCKED",
   "reasonCode": "ADMIN_LOCK | AUTO_DETECT | USER_REQUEST | DORMANT_365D | REGULATED_DELETION | ADMIN_UNLOCK | USER_RECOVERY",
@@ -63,11 +69,14 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 
 **Topic**: `account.locked`
 
+**Schema version**: 2 (TASK-BE-228: `tenant_id` 필드 추가)
+
 **Payload**:
 ```json
 {
   "eventId": "string (UUID v7)",
   "accountId": "string",
+  "tenantId": "string (slug, e.g. 'fan-platform')",
   "reasonCode": "ADMIN_LOCK | AUTO_DETECT | PASSWORD_FAILURE_THRESHOLD",
   "actorType": "operator | system",
   "actorId": "string | null",
@@ -81,6 +90,7 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 - `actorId` → `locked_by` (누락 시 `00000000-0000-0000-0000-000000000000` system 관례값)
 - `actorType=operator` → `source=admin`, `actorType=system` → `source=system`
 - payload의 대체 필드 `reason`, `lockedBy`, `source`도 허용 (forward compatibility)
+- `tenant_id`는 additive field — 기존 컨슈머는 무시해도 무방 (forward-compatible)
 
 **Consumers**: auth-service (해당 계정 로그인 즉시 차단), security-service (`account_lock_history` append-only 이력 적재)
 
@@ -92,10 +102,13 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 
 **Topic**: `account.unlocked`
 
+**Schema version**: 2 (TASK-BE-228: `tenant_id` 필드 추가)
+
 **Payload**:
 ```json
 {
   "accountId": "string",
+  "tenantId": "string (slug, e.g. 'fan-platform')",
   "reasonCode": "ADMIN_UNLOCK | USER_RECOVERY",
   "actorType": "operator | user",
   "actorId": "string | null",
@@ -113,10 +126,13 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 
 **Topic**: `account.deleted`
 
+**Schema version**: 2 (TASK-BE-228: `tenant_id` 필드 추가)
+
 **Payload**:
 ```json
 {
   "accountId": "string",
+  "tenantId": "string (slug, e.g. 'fan-platform')",
   "reasonCode": "USER_REQUEST | ADMIN_DELETE | REGULATED_DELETION",
   "actorType": "user | operator",
   "actorId": "string | null",
@@ -139,3 +155,7 @@ account-service가 발행하는 Kafka 이벤트. 계정 생성 및 상태 변경
 - forward-compatible schema
 - DLQ: `<topic>.dlq`, 3회 재시도
 - trace propagation
+
+### Additive Change Policy (TASK-BE-228)
+
+`tenant_id` 필드는 **additive** 변경이다. 기존 컨슈머(security-service, auth-service)는 이 필드를 무시해도 정상 동작한다. 신규 컨슈머는 반드시 `tenant_id`를 페이로드에서 읽어 테넌트별 처리를 수행해야 한다.

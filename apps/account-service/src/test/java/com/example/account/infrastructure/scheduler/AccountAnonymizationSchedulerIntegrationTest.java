@@ -8,6 +8,7 @@ import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.messaging.outbox.OutboxJpaEntity;
 import com.example.messaging.outbox.OutboxJpaRepository;
@@ -113,7 +114,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
         scheduler.runAnonymizationBatch();
 
         // accounts.email rewritten to anon_<sha256[:12]>@deleted.local; email_hash full hex.
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.DELETED);
         assertThat(reloaded.getEmail()).startsWith("anon_");
         assertThat(reloaded.getEmail()).endsWith("@deleted.local");
@@ -162,7 +163,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
         scheduler.runAnonymizationBatch();
 
         // Email + profile remain untouched.
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getEmail()).isEqualTo(email);
         assertThat(reloaded.getEmailHash()).isNull();
 
@@ -203,7 +204,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
         scheduler.runAnonymizationBatch();
 
         // Email and email_hash unchanged — no second masking pass corrupted the values.
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getEmail()).isEqualTo(preAnonEmail);
         assertThat(reloaded.getEmailHash()).isEqualTo(preAnonHash);
 
@@ -229,7 +230,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
                 account.getId(), AccountStatus.ACTIVE, StatusChangeReason.WITHIN_GRACE_PERIOD,
                 "admin", "op-1", null));
 
-        Account beforeBatch = accountRepository.findById(account.getId()).orElseThrow();
+        Account beforeBatch = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         // Sanity: account is back to ACTIVE and deleted_at was cleared by Account.changeStatus().
         assertThat(beforeBatch.getStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(beforeBatch.getDeletedAt()).isNull();
@@ -239,7 +240,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
         scheduler.runAnonymizationBatch();
 
         // PII intact: email unchanged, hash still NULL, profile fields preserved.
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getEmail()).isEqualTo(email);
         assertThat(reloaded.getEmailHash()).isNull();
 
@@ -257,7 +258,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
      * state-machine path (history + initial outbox event included).
      */
     private Account createDeletedAccountWithProfile(String email) {
-        Account account = Account.create(email);
+        Account account = Account.create(TenantId.FAN_PLATFORM, email);
         Account saved = accountRepository.save(account);
 
         Profile profile = Profile.create(saved.getId(), "John Doe", "ko-KR", "Asia/Seoul");
@@ -267,7 +268,7 @@ class AccountAnonymizationSchedulerIntegrationTest extends AbstractIntegrationTe
 
         accountStatusUseCase.deleteAccount(saved.getId(),
                 StatusChangeReason.USER_REQUEST, "user", saved.getId());
-        return accountRepository.findById(saved.getId()).orElseThrow();
+        return accountRepository.findById(TenantId.FAN_PLATFORM, saved.getId()).orElseThrow();
     }
 
     /** Push {@code deleted_at} to a fixed past instant so the anonymization-candidate query matches. */

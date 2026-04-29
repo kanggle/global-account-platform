@@ -5,6 +5,7 @@ import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.AccountStatusMachine;
 import com.example.account.domain.status.StatusChangeReason;
 import com.example.account.domain.status.StatusTransition;
+import com.example.account.domain.tenant.TenantId;
 import com.example.common.id.UuidV7;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -16,12 +17,17 @@ import java.util.Map;
 
 /**
  * Aggregate root for account domain.
+ *
+ * <p>Every account belongs to exactly one tenant ({@link TenantId}). The tenant
+ * determines the data isolation boundary — all repository queries must pass the
+ * tenantId to prevent cross-tenant leaks.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Account {
 
     private String id;
+    private TenantId tenantId;
     private String email;
     private String emailHash;
     private AccountStatus status;
@@ -40,11 +46,18 @@ public class Account {
     private Instant emailVerifiedAt;
     private int version;
 
-    public static Account create(String email) {
+    /**
+     * Create a new account under the given tenant.
+     *
+     * @param tenantId the owning tenant (must not be null)
+     * @param email    the account's email address (validated by {@link Email})
+     */
+    public static Account create(TenantId tenantId, String email) {
         Email validatedEmail = new Email(email);
 
         Account account = new Account();
         account.id = AccountId.generate().value();
+        account.tenantId = tenantId;
         account.email = validatedEmail.value();
         account.status = AccountStatus.ACTIVE;
         account.createdAt = Instant.now();
@@ -56,7 +69,7 @@ public class Account {
     /**
      * Reconstitute an Account from persisted state. Used by infrastructure mappers.
      */
-    public static Account reconstitute(String id, String email, String emailHash,
+    public static Account reconstitute(String id, TenantId tenantId, String email, String emailHash,
                                         AccountStatus status,
                                         Instant createdAt, Instant updatedAt,
                                         Instant deletedAt,
@@ -65,6 +78,7 @@ public class Account {
                                         int version) {
         Account account = new Account();
         account.id = id;
+        account.tenantId = tenantId;
         account.email = email;
         account.emailHash = emailHash;
         account.status = status;
@@ -154,6 +168,7 @@ public class Account {
     public AccountDomainEvent buildCreatedEvent(String emailHash, String locale) {
         return new AccountDomainEvent("account.created", Map.of(
                 "accountId", id,
+                "tenantId", tenantId.value(),
                 "emailHash", emailHash,
                 "status", status.name(),
                 "locale", locale,
@@ -166,6 +181,7 @@ public class Account {
                                                        Instant occurredAt) {
         Map<String, Object> payload = new HashMap<>(Map.of(
                 "accountId", id,
+                "tenantId", tenantId.value(),
                 "previousStatus", previousStatus,
                 "currentStatus", status.name(),
                 "reasonCode", reasonCode,
@@ -186,6 +202,7 @@ public class Account {
         Map<String, Object> payload = new HashMap<>(Map.of(
                 "eventId", UuidV7.randomString(),
                 "accountId", id,
+                "tenantId", tenantId.value(),
                 "reasonCode", reasonCode,
                 "actorType", actorType,
                 "lockedAt", lockedAt.toString()
@@ -200,6 +217,7 @@ public class Account {
                                                   String actorId, Instant unlockedAt) {
         Map<String, Object> payload = new HashMap<>(Map.of(
                 "accountId", id,
+                "tenantId", tenantId.value(),
                 "reasonCode", reasonCode,
                 "actorType", actorType,
                 "unlockedAt", unlockedAt.toString()
@@ -215,6 +233,7 @@ public class Account {
                                                  Instant gracePeriodEndsAt, boolean anonymized) {
         Map<String, Object> payload = new HashMap<>(Map.of(
                 "accountId", id,
+                "tenantId", tenantId.value(),
                 "reasonCode", reasonCode,
                 "actorType", actorType,
                 "deletedAt", deletedAt.toString(),

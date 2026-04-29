@@ -7,6 +7,7 @@ import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,7 +42,7 @@ class DataExportUseCaseTest {
 
     private Account sampleAccount() {
         return Account.reconstitute(
-                ACCOUNT_ID, EMAIL, null,
+                ACCOUNT_ID, TenantId.FAN_PLATFORM, EMAIL, null,
                 AccountStatus.ACTIVE,
                 CREATED_AT, CREATED_AT, null, null, null, 0);
     }
@@ -56,7 +57,7 @@ class DataExportUseCaseTest {
     @Test
     @DisplayName("계정과 프로필이 모두 존재 — 프로필 데이터 포함된 DataExportResult 반환")
     void execute_accountAndProfileExist_returnsResultWithProfile() {
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(sampleAccount()));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(sampleAccount()));
         given(profileRepository.findByAccountId(ACCOUNT_ID)).willReturn(Optional.of(sampleProfile()));
 
         DataExportResult result = dataExportUseCase.execute(ACCOUNT_ID);
@@ -78,7 +79,7 @@ class DataExportUseCaseTest {
     @Test
     @DisplayName("계정은 존재하지만 프로필이 없는 경우 — profile=null 인 DataExportResult 반환")
     void execute_accountWithoutProfile_returnsResultWithNullProfile() {
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(sampleAccount()));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(sampleAccount()));
         given(profileRepository.findByAccountId(ACCOUNT_ID)).willReturn(Optional.empty());
 
         DataExportResult result = dataExportUseCase.execute(ACCOUNT_ID);
@@ -94,7 +95,7 @@ class DataExportUseCaseTest {
     @Test
     @DisplayName("계정 미존재 — AccountNotFoundException 발생")
     void execute_accountNotFound_throwsAccountNotFoundException() {
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.empty());
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> dataExportUseCase.execute(ACCOUNT_ID))
                 .isInstanceOf(AccountNotFoundException.class)

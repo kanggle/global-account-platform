@@ -6,6 +6,7 @@ import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
@@ -89,7 +90,7 @@ class AccountSignupIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.accountId").exists());
 
-        Optional<Account> saved = accountRepository.findByEmail(uniqueEmail);
+        Optional<Account> saved = accountRepository.findByEmail(TenantId.FAN_PLATFORM, uniqueEmail);
         assertThat(saved).isPresent();
         assertThat(saved.get().getStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
@@ -164,7 +165,7 @@ class AccountSignupIntegrationTest extends AbstractIntegrationTest {
         assertThat(history.get(0).getToStatus()).isEqualTo(AccountStatus.LOCKED);
 
         // Verify account status
-        Account account = accountRepository.findById(accountId).orElseThrow();
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId).orElseThrow();
         assertThat(account.getStatus()).isEqualTo(AccountStatus.LOCKED);
     }
 

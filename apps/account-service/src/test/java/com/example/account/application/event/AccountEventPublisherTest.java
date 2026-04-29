@@ -2,6 +2,7 @@ package com.example.account.application.event;
 
 import com.example.account.domain.account.Account;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.OutboxWriter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,8 +45,8 @@ class AccountEventPublisherTest {
     private AccountEventPublisher publisher;
 
     private Account account(String id) {
-        return Account.reconstitute(id, "user@example.com", null, AccountStatus.ACTIVE,
-                Instant.now(), Instant.now(), null, null, null, 0);
+        return Account.reconstitute(id, TenantId.FAN_PLATFORM, "user@example.com", null,
+                AccountStatus.ACTIVE, Instant.now(), Instant.now(), null, null, null, 0);
     }
 
     @Test

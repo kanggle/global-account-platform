@@ -1,6 +1,7 @@
 package com.example.account.domain.account;
 
 import com.example.account.domain.event.AccountDomainEvent;
+import com.example.account.domain.tenant.TenantId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -21,11 +22,11 @@ class AccountDomainEventTest {
     private static final String REASON_CODE = "ADMIN_LOCK";
 
     private Account newActiveAccount() {
-        return Account.create(EMAIL);
+        return Account.create(TenantId.FAN_PLATFORM, EMAIL);
     }
 
     @Test
-    @DisplayName("buildCreatedEvent — 계약 필드(accountId, emailHash, status, locale, createdAt)가 포함된다")
+    @DisplayName("buildCreatedEvent — 계약 필드(accountId, tenantId, emailHash, status, locale, createdAt)가 포함된다")
     void buildCreatedEvent_containsAllContractFields() {
         Account account = newActiveAccount();
 
@@ -34,6 +35,7 @@ class AccountDomainEventTest {
         assertThat(event.eventType()).isEqualTo("account.created");
         Map<String, Object> p = event.payload();
         assertThat(p.get("accountId")).isEqualTo(account.getId());
+        assertThat(p.get("tenantId")).isEqualTo("fan-platform");
         assertThat(p.get("emailHash")).isEqualTo(EMAIL_HASH);
         assertThat(p.get("status")).isEqualTo("ACTIVE");
         assertThat(p.get("locale")).isEqualTo(LOCALE);

@@ -1,6 +1,7 @@
 package com.example.account.infrastructure.persistence;
 
 import com.example.account.domain.account.Account;
+import com.example.account.domain.tenant.TenantId;
 import com.example.testsupport.integration.DockerAvailableCondition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -98,15 +99,15 @@ class ProfileJpaRepositoryTest {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private String saveAccount(String email) {
-        Account account = Account.create(email);
+        Account account = Account.create(TenantId.FAN_PLATFORM, email);
         AccountJpaEntity entity = AccountJpaEntity.fromDomain(account);
         return accountRepo.saveAndFlush(entity).getId();
     }
 
     private void insertProfile(String accountId, String displayName) {
         jdbc.update(
-                "INSERT INTO profiles (account_id, display_name, locale, timezone, updated_at)" +
-                " VALUES (?, ?, 'ko', 'Asia/Seoul', NOW(6))",
+                "INSERT INTO profiles (tenant_id, account_id, display_name, locale, timezone, updated_at)" +
+                " VALUES ('fan-platform', ?, ?, 'ko', 'Asia/Seoul', NOW(6))",
                 accountId, displayName);
     }
 }

@@ -13,6 +13,7 @@ import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.AccountStatusMachine;
 import com.example.account.domain.status.StateTransitionException;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.domain.tenant.TenantId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -70,7 +71,7 @@ class GdprDeleteUseCaseTest {
 
     private Account activeAccount() {
         return Account.reconstitute(
-                ACCOUNT_ID, ORIGINAL_EMAIL, null,
+                ACCOUNT_ID, TenantId.FAN_PLATFORM, ORIGINAL_EMAIL, null,
                 AccountStatus.ACTIVE,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-01T00:00:00Z"),
@@ -79,7 +80,7 @@ class GdprDeleteUseCaseTest {
 
     private Account deletedAccount() {
         return Account.reconstitute(
-                ACCOUNT_ID, ORIGINAL_EMAIL, null,
+                ACCOUNT_ID, TenantId.FAN_PLATFORM, ORIGINAL_EMAIL, null,
                 AccountStatus.DELETED,
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-01T00:00:00Z"),
@@ -114,7 +115,7 @@ class GdprDeleteUseCaseTest {
         Account account = activeAccount();
         Profile profile = profileWithPii();
 
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(account));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(account));
         given(profileRepository.findByAccountId(ACCOUNT_ID)).willReturn(Optional.of(profile));
 
         GdprDeleteResult result = gdprDeleteUseCase.execute(ACCOUNT_ID, OPERATOR_ID);
@@ -173,7 +174,7 @@ class GdprDeleteUseCaseTest {
         gdprDeleteUseCase = newUseCase();
         Account account = activeAccount();
 
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(account));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(account));
         given(profileRepository.findByAccountId(ACCOUNT_ID)).willReturn(Optional.empty());
 
         GdprDeleteResult result = gdprDeleteUseCase.execute(ACCOUNT_ID, OPERATOR_ID);
@@ -198,7 +199,7 @@ class GdprDeleteUseCaseTest {
         gdprDeleteUseCase = newUseCase();
         Account account = deletedAccount();
 
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(account));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(account));
 
         assertThatThrownBy(() -> gdprDeleteUseCase.execute(ACCOUNT_ID, OPERATOR_ID))
                 .isInstanceOf(StateTransitionException.class);
@@ -217,7 +218,7 @@ class GdprDeleteUseCaseTest {
     void execute_accountNotFound_throwsAccountNotFoundException() {
         gdprDeleteUseCase = newUseCase();
 
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.empty());
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> gdprDeleteUseCase.execute(ACCOUNT_ID, OPERATOR_ID))
                 .isInstanceOf(AccountNotFoundException.class)

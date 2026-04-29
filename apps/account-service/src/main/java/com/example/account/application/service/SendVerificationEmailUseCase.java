@@ -7,6 +7,7 @@ import com.example.account.application.port.EmailVerificationNotifier;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.EmailVerificationTokenStore;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,7 +57,8 @@ public class SendVerificationEmailUseCase {
     @Transactional(readOnly = true)
     public void execute(String accountId) {
         // 1) Account must exist.
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229.
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         // 2) Idempotent guard: don't issue a token that cannot be consumed.

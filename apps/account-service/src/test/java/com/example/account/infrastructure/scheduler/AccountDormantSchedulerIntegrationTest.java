@@ -6,6 +6,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.account.infrastructure.persistence.AccountStatusHistoryJpaRepository;
 import com.example.messaging.outbox.OutboxJpaEntity;
@@ -113,7 +114,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         scheduler.runDormantBatch();
 
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.DORMANT);
 
         // History append (account_status_history): exactly one row for this account.
@@ -151,7 +152,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         scheduler.runDormantBatch();
 
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.ACTIVE);
 
         // No history row created for this account.
@@ -182,7 +183,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         scheduler.runDormantBatch();
 
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         // Stays LOCKED — the dormant query filters status='ACTIVE' so this row is never picked up,
         // and even if it were, the state machine forbids LOCKED → DORMANT (account-lifecycle.md).
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.LOCKED);
@@ -217,7 +218,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         scheduler.runDormantBatch();
 
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.DORMANT);
 
         // History append: 1행, ACTIVE → DORMANT, DORMANT_365D, system.
@@ -257,7 +258,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         scheduler.runDormantBatch();
 
-        Account reloaded = accountRepository.findById(account.getId()).orElseThrow();
+        Account reloaded = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(AccountStatus.ACTIVE);
 
         // history에 추가된 행이 없어야 한다.
@@ -280,7 +281,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
 
         // First batch run: ACTIVE → DORMANT.
         scheduler.runDormantBatch();
-        Account afterFirstRun = accountRepository.findById(account.getId()).orElseThrow();
+        Account afterFirstRun = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(afterFirstRun.getStatus()).isEqualTo(AccountStatus.DORMANT);
 
         long historyCountAfterFirst = historyRepository.findByAccountIdOrderByOccurredAtDesc(account.getId()).size();
@@ -289,7 +290,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
         // Second batch run: should be a no-op for this account because it is no longer ACTIVE.
         scheduler.runDormantBatch();
 
-        Account afterSecondRun = accountRepository.findById(account.getId()).orElseThrow();
+        Account afterSecondRun = accountRepository.findById(TenantId.FAN_PLATFORM, account.getId()).orElseThrow();
         assertThat(afterSecondRun.getStatus()).isEqualTo(AccountStatus.DORMANT);
 
         // History count unchanged — no duplicate transition row.
@@ -301,7 +302,7 @@ class AccountDormantSchedulerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private Account createActiveAccount(String email) {
-        Account account = Account.create(email);
+        Account account = Account.create(TenantId.FAN_PLATFORM, email);
         return accountRepository.save(account);
     }
 

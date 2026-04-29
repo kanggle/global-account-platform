@@ -3,6 +3,7 @@ package com.example.account.application.service;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.status.AccountStatus;
+import com.example.account.domain.tenant.TenantId;
 import com.example.messaging.outbox.ProcessedEventJpaEntity;
 import com.example.messaging.outbox.ProcessedEventJpaRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -55,7 +56,7 @@ class UpdateLastLoginUseCaseTest {
         Account account = activeAccount(ACCOUNT_ID, null);
 
         given(processedEventRepository.existsByEventId(EVENT_ID)).willReturn(false);
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(account));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(account));
 
         useCase.execute(EVENT_ID, ACCOUNT_ID, occurredAt);
 
@@ -81,7 +82,7 @@ class UpdateLastLoginUseCaseTest {
 
         useCase.execute(EVENT_ID, ACCOUNT_ID, Instant.parse("2026-04-26T10:00:00Z"));
 
-        verify(accountRepository, never()).findById(any());
+        verify(accountRepository, never()).findById(any(), any());
         verify(accountRepository, never()).save(any());
         verify(processedEventRepository, never()).saveAndFlush(any());
     }
@@ -90,7 +91,7 @@ class UpdateLastLoginUseCaseTest {
     @DisplayName("계정 미존재: findById empty → save 미수행, 예외 미전파 (dedup row는 이미 저장됨)")
     void execute_accountNotFound_returnsWithoutSideEffects() {
         given(processedEventRepository.existsByEventId(EVENT_ID)).willReturn(false);
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.empty());
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.empty());
 
         useCase.execute(EVENT_ID, ACCOUNT_ID, Instant.parse("2026-04-26T10:00:00Z"));
 
@@ -109,7 +110,7 @@ class UpdateLastLoginUseCaseTest {
         Account account = activeAccount(ACCOUNT_ID, newer);
 
         given(processedEventRepository.existsByEventId(EVENT_ID)).willReturn(false);
-        given(accountRepository.findById(ACCOUNT_ID)).willReturn(Optional.of(account));
+        given(accountRepository.findById(TenantId.FAN_PLATFORM, ACCOUNT_ID)).willReturn(Optional.of(account));
 
         useCase.execute(EVENT_ID, ACCOUNT_ID, older);
 
@@ -137,13 +138,14 @@ class UpdateLastLoginUseCaseTest {
         // Dedup-first ordering: when the dedup INSERT loses the redelivery
         // race, the concurrent winner already updated the account, so we must
         // NOT touch the account at all.
-        verify(accountRepository, never()).findById(any());
+        verify(accountRepository, never()).findById(any(), any());
         verify(accountRepository, never()).save(any());
     }
 
     private static Account activeAccount(String id, Instant lastLoginSucceededAt) {
         return Account.reconstitute(
                 id,
+                TenantId.FAN_PLATFORM,
                 "user@example.com",
                 "hash",
                 AccountStatus.ACTIVE,

@@ -12,9 +12,11 @@ import java.util.Optional;
 
 public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, String> {
 
-    Optional<AccountJpaEntity> findByEmail(String email);
+    Optional<AccountJpaEntity> findByTenantIdAndEmail(String tenantId, String email);
 
-    boolean existsByEmail(String email);
+    Optional<AccountJpaEntity> findByTenantIdAndId(String tenantId, String id);
+
+    boolean existsByTenantIdAndEmail(String tenantId, String email);
 
     @Query("SELECT a FROM AccountJpaEntity a")
     Page<AccountJpaEntity> findAllAccounts(Pageable pageable);

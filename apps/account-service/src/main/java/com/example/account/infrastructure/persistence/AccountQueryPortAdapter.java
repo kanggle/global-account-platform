@@ -3,6 +3,7 @@ package com.example.account.infrastructure.persistence;
 import com.example.account.application.port.AccountQueryPort;
 import com.example.account.application.result.AccountDetailResult;
 import com.example.account.application.result.AccountSearchResult;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,7 +32,9 @@ public class AccountQueryPortAdapter implements AccountQueryPort {
 
     @Override
     public Optional<AccountSearchResult.Item> findByEmail(String email) {
-        return accountJpaRepository.findByEmail(email)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229.
+        // The admin search query port returns results within the default tenant.
+        return accountJpaRepository.findByTenantIdAndEmail(TenantId.FAN_PLATFORM.value(), email)
                 .map(e -> new AccountSearchResult.Item(
                         e.getId(), e.getEmail(), e.getStatus().name(), e.getCreatedAt()));
     }

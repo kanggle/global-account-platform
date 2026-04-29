@@ -5,6 +5,7 @@ import com.example.account.application.service.AccountStatusUseCase;
 import com.example.account.domain.account.Account;
 import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.status.StatusChangeReason;
+import com.example.account.domain.tenant.TenantId;
 import com.example.account.infrastructure.persistence.AccountJpaEntity;
 import com.example.account.infrastructure.persistence.AccountJpaRepository;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -110,7 +111,7 @@ class AccountDormantSchedulerUnitTest {
 
     private AccountJpaEntity buildEntity(String id) {
         Account account = Account.reconstitute(
-                id, "user@example.com", "hash",
+                id, TenantId.FAN_PLATFORM, "user@example.com", "hash",
                 AccountStatus.ACTIVE,
                 Instant.now().minusSeconds(400L * 86400),
                 Instant.now(),
