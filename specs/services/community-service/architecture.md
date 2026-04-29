@@ -126,6 +126,7 @@ presentation → application → domain
 
 - **HTTP 컨트랙트 (외부)**: [specs/contracts/http/community-api.md](../../contracts/http/community-api.md)
 - **HTTP 컨트랙트 (내부 발신)**: [specs/contracts/http/internal/community-to-membership.md](../../contracts/http/internal/community-to-membership.md)
+- **HTTP 컨트랙트 (내부 발신, account-service)**: [specs/contracts/http/internal/community-to-account.md](../../contracts/http/internal/community-to-account.md)
 - **이벤트 발행**: [specs/contracts/events/community-events.md](../../contracts/events/community-events.md) — `community.post.published`, `community.comment.created`, `community.reaction.added`
 - **퍼시스턴스**: MySQL (`community_db`) — `posts`, `post_status_history`, `comments`, `reactions`, `feed_subscriptions`, `outbox_events`
 

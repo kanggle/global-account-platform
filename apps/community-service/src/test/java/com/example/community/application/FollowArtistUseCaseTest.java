@@ -1,7 +1,9 @@
 package com.example.community.application;
 
 import com.example.community.application.exception.AlreadyFollowingException;
+import com.example.community.application.exception.ArtistNotFoundException;
 import com.example.community.application.exception.NotFollowingException;
+import com.example.community.domain.access.ArtistAccountChecker;
 import com.example.community.domain.feed.FeedSubscription;
 import com.example.community.domain.feed.FeedSubscriptionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +20,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,17 +29,19 @@ import static org.mockito.Mockito.when;
 class FollowArtistUseCaseTest {
 
     @Mock FeedSubscriptionRepository subscriptionRepository;
+    @Mock ArtistAccountChecker artistAccountChecker;
 
     FollowArtistUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new FollowArtistUseCase(subscriptionRepository);
+        useCase = new FollowArtistUseCase(subscriptionRepository, artistAccountChecker);
     }
 
     @Test
     @DisplayName("팬이 아티스트를 팔로우하면 구독 정보가 저장된다")
     void follow_validPair_savesSubscription() {
+        // no stub needed — doNothing by default for void mock
         FeedSubscription sub = FeedSubscription.create("fan-1", "artist-1");
         when(subscriptionRepository.exists("fan-1", "artist-1")).thenReturn(false);
         when(subscriptionRepository.save(any(FeedSubscription.class))).thenReturn(sub);
@@ -51,6 +56,7 @@ class FollowArtistUseCaseTest {
     @Test
     @DisplayName("자기 자신을 팔로우하면 IllegalArgumentException 이 발생한다")
     void follow_selfFollow_throwsIllegalArgumentException() {
+        // no stub needed (self-check happens before artist check)
         assertThatThrownBy(() -> useCase.follow("fan-1", "fan-1"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
@@ -58,10 +64,21 @@ class FollowArtistUseCaseTest {
     @Test
     @DisplayName("이미 팔로우 중인 아티스트를 다시 팔로우하면 AlreadyFollowingException 이 발생한다")
     void follow_alreadyFollowing_throwsAlreadyFollowingException() {
+        // no stub needed — doNothing by default for void mock (artistAccountChecker)
         when(subscriptionRepository.exists("fan-1", "artist-1")).thenReturn(true);
 
         assertThatThrownBy(() -> useCase.follow("fan-1", "artist-1"))
                 .isInstanceOf(AlreadyFollowingException.class);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 아티스트 팔로우 시 ArtistNotFoundException 이 발생한다")
+    void follow_artistNotFound_throwsArtistNotFoundException() {
+        doThrow(new ArtistNotFoundException("artist-ghost"))
+                .when(artistAccountChecker).assertExists("artist-ghost");
+
+        assertThatThrownBy(() -> useCase.follow("fan-1", "artist-ghost"))
+                .isInstanceOf(ArtistNotFoundException.class);
     }
 
     @Test

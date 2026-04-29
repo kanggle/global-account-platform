@@ -1,6 +1,7 @@
 package com.example.community.presentation.exception;
 
 import com.example.community.application.exception.AlreadyFollowingException;
+import com.example.community.application.exception.ArtistNotFoundException;
 import com.example.community.application.exception.MembershipRequiredException;
 import com.example.community.application.exception.NotFollowingException;
 import com.example.community.application.exception.PermissionDeniedException;
@@ -49,6 +50,12 @@ public class GlobalExceptionHandler extends CommonGlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleNotFollowing(NotFollowingException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorResponse.of("NOT_FOLLOWING", "Not currently following this artist"));
+    }
+
+    @ExceptionHandler(ArtistNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleArtistNotFound(ArtistNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("ARTIST_NOT_FOUND", "Artist account not found"));
     }
 
     @ExceptionHandler(IllegalStateException.class)
