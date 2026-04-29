@@ -1,6 +1,8 @@
 package com.example.auth.presentation.exception;
 
 import com.example.auth.application.exception.*;
+import com.example.auth.application.exception.LoginTenantAmbiguousException;
+import com.example.auth.application.exception.TokenTenantMismatchException;
 import com.example.auth.domain.credentials.PasswordPolicyViolationException;
 import com.example.web.dto.ErrorResponse;
 import com.example.web.exception.CommonGlobalExceptionHandler;
@@ -18,6 +20,21 @@ public class AuthExceptionHandler extends CommonGlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCredentialsInvalid(CredentialsInvalidException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("CREDENTIALS_INVALID", "Invalid email or password"));
+    }
+
+    @ExceptionHandler(LoginTenantAmbiguousException.class)
+    public ResponseEntity<ErrorResponse> handleLoginTenantAmbiguous(LoginTenantAmbiguousException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("LOGIN_TENANT_AMBIGUOUS",
+                        "Email exists in multiple tenants. Please specify tenantId."));
+    }
+
+    @ExceptionHandler(TokenTenantMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTokenTenantMismatch(TokenTenantMismatchException e) {
+        log.warn("Token tenant mismatch detected");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("TOKEN_TENANT_MISMATCH",
+                        "Refresh token tenant does not match; rotation denied"));
     }
 
     /**

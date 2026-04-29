@@ -9,7 +9,9 @@ import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.repository.TokenBlacklist;
 import com.example.auth.domain.session.DeviceSession;
 import com.example.auth.domain.session.RevokeReason;
+import com.example.auth.domain.tenant.TenantContext;
 import com.example.auth.domain.token.RefreshToken;
+import com.example.auth.infrastructure.redis.RedisTokenBlacklist;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -50,18 +52,22 @@ public class LogoutUseCase {
         }
         RefreshToken token = tokenOpt.get();
 
+        // Use tenant_id from DB row (authoritative) for Redis key (TASK-BE-229).
+        String tenantId = token.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) {
+            tenantId = TenantContext.DEFAULT_TENANT_ID;
+        }
+
         long remainingTtl = token.getExpiresAt().getEpochSecond() - Instant.now().getEpochSecond();
         if (remainingTtl > 0) {
-            tokenBlacklist.blacklist(jti, remainingTtl);
+            blacklist(tenantId, jti, remainingTtl);
         }
         token.revoke();
         refreshTokenRepository.save(token);
 
         Instant revokedAt = Instant.now();
 
-        // Resolve the caller's device_id: prefer the gateway-provided X-Device-Id header,
-        // fall back to the refresh token's own device_id column. If neither is available
-        // the token pre-dates D5 — we still revoke the token but cannot emit a session event.
+        // Resolve the caller's device_id
         String deviceId = command.deviceId();
         if (deviceId == null || deviceId.isBlank()) {
             deviceId = token.getDeviceId();
@@ -98,5 +104,13 @@ public class LogoutUseCase {
                 ACTOR_TYPE_USER,
                 accountId
         );
+    }
+
+    private void blacklist(String tenantId, String jti, long ttlSeconds) {
+        if (tokenBlacklist instanceof RedisTokenBlacklist tenantAware) {
+            tenantAware.blacklist(tenantId, jti, ttlSeconds);
+        } else {
+            tokenBlacklist.blacklist(jti, ttlSeconds);
+        }
     }
 }

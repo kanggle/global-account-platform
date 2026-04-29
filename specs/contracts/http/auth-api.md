@@ -14,7 +14,8 @@
 ```json
 {
   "email": "string (required, email format)",
-  "password": "string (required, min 8)"
+  "password": "string (required, min 8)",
+  "tenantId": "string (optional, tenant slug e.g. 'fan-platform', 'wms')"
 }
 ```
 
@@ -33,6 +34,7 @@
 | Status | Code | 조건 |
 |---|---|---|
 | 401 | `CREDENTIALS_INVALID` | 이메일 미존재 또는 패스워드 불일치. **구체 원인 노출 금지** ([rules/domains/saas.md](../../../rules/domains/saas.md)) |
+| 400 | `LOGIN_TENANT_AMBIGUOUS` | 같은 이메일이 여러 테넌트에 등록되어 있고 `tenantId` 미지정. 사용자는 `tenantId`를 명시하여 재시도해야 한다 |
 | 403 | `ACCOUNT_LOCKED` | 계정 잠김 상태 |
 | 403 | `ACCOUNT_DORMANT` | 휴면 상태 (별도 복구 흐름 필요) |
 | 403 | `ACCOUNT_DELETED` | 삭제된 계정 |
@@ -68,7 +70,7 @@
 | 401 | `TOKEN_INVALID` | access token 만료/변조 |
 | 400 | `VALIDATION_ERROR` | refreshToken 누락 |
 
-**Side Effects**: `refresh:blacklist:{jti}` Redis SET
+**Side Effects**: `refresh:blacklist:{tenant_id}:{jti}` Redis SET
 
 ---
 
@@ -101,6 +103,7 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 |---|---|---|
 | 401 | `TOKEN_EXPIRED` | refresh token 만료 |
 | 401 | `TOKEN_REUSE_DETECTED` | 이미 rotation된 refresh token 재사용. **해당 account의 모든 세션 즉시 무효화** |
+| 401 | `TOKEN_TENANT_MISMATCH` | refresh token의 `tenant_id`와 계정의 현재 `tenant_id`가 불일치. 조작·버그 의심 → 보안 이벤트 발행 |
 | 401 | `SESSION_REVOKED` | 명시적으로 revoke된 세션 |
 | 403 | `ACCOUNT_LOCKED` | 계정 잠김 (refresh 차단) |
 
@@ -122,6 +125,8 @@ Refresh token rotation. 기존 refresh token을 소비하고 새 access/refresh 
 | `exp` | `iat + 1800` (30분) |
 | `jti` | UUID |
 | `scope` | `user` (일반 사용자) 또는 `admin` (운영자) |
+| `tenant_id` | 토큰을 발급한 테넌트의 slug (예: `fan-platform`, `wms`). **필수** — 누락 시 JwtSigner가 발급 거부 (fail-closed) |
+| `tenant_type` | `B2C_CONSUMER` \| `B2B_ENTERPRISE`. **필수** |
 | `device_id` | 이 access token이 속한 device session의 opaque UUID v7. 로그인 성공 시 `device_sessions.device_id`에서 채워지며, refresh rotation으로 새 access token이 발급될 때도 동일 값을 유지한다. `GET /api/accounts/me/sessions/current`, `DELETE /api/accounts/me/sessions` (bulk) 등 "현재 세션" 해석의 단일 소스 |
 
 서명: RS256. 공개 키는 JWKS 엔드포인트로 배포.

@@ -41,7 +41,8 @@ public class InternalCredentialController {
                 new CreateCredentialCommand(
                         request.accountId(),
                         request.email(),
-                        request.password()
+                        request.password(),
+                        request.tenantId()  // TASK-BE-229: pass optional tenant context
                 )
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(CreateCredentialResponse.from(result));

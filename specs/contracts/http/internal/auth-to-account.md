@@ -8,6 +8,38 @@ auth-service가 로그인/refresh 플로우에서 계정의 현재 상태를 조
 
 > **TASK-BE-063 (credential ownership)** — credential 데이터는 이제 auth-service 가 소유한다. 과거의 `GET /internal/accounts/credentials` 엔드포인트는 제거되었다. auth-service 는 로그인 시 로컬 `CredentialRepository` 로 credential 을 조회하고, 본 문서의 status 엔드포인트로 계정 활성 여부만 확인한다. credential 쓰기 경로는 [auth-internal.md](./auth-internal.md) 참조.
 
+> **TASK-BE-229 (tenant-aware login)** — `GET /internal/accounts/tenant-info` 엔드포인트를 추가한다. auth-service 가 로그인 시 이메일·`tenant_id`(선택)로 계정의 `tenant_id`·`tenant_type`·`accountId`를 조회한다. 다중 매칭 가능 응답 형태: 0건 → credential 없음, 1건 → 정상, 2건 이상 → `LOGIN_TENANT_AMBIGUOUS` (presentation layer에서 변환).
+
+---
+
+## GET /internal/accounts/tenant-info
+
+이메일과 선택적 `tenant_id` 파라미터로 계정의 tenant 정보를 조회한다. auth-service 가 로그인 시 `tenant_id`·`tenant_type`·`accountId`를 얻기 위해 호출한다.
+
+**Query Parameters**:
+
+| 파라미터 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `email` | string | Yes | 로그인 이메일 |
+| `tenantId` | string | No | 특정 테넌트 한정 조회. 지정 시 단일 row 응답 강제. 미지정 시 다중 매칭 가능 |
+
+**Response 200** (단일 또는 다중 매칭):
+```json
+[
+  {
+    "accountId": "string (UUID)",
+    "tenantId": "string (slug)",
+    "tenantType": "B2C_CONSUMER | B2B_ENTERPRISE"
+  }
+]
+```
+
+- 빈 배열 `[]` → 해당 이메일로 등록된 계정 없음 (또는 `tenantId` 지정 시 해당 테넌트에 없음)
+- 배열 길이 1 → 단일 매칭 → 정상 로그인 흐름
+- 배열 길이 2 이상 → 다중 테넌트 매칭 → auth-service presentation에서 `LOGIN_TENANT_AMBIGUOUS` 400으로 변환
+
+**Response 404**: 요청 형식 오류 (email 누락 등) — `VALIDATION_ERROR`
+
 ---
 
 ## GET /internal/accounts/{accountId}/status

@@ -20,6 +20,7 @@
 - **프레임워크 친화성**: Spring Boot의 @Transactional 경계가 layered에서 가장 자연스러움. 토큰 회전 같은 원자적 연산이 트랜잭션으로 깔끔히 표현됨.
 - **이벤트 발행 경로**: application layer가 도메인 연산 후 outbox로 이벤트를 기록하는 패턴이 layered에서 가장 명확함 ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T3).
 - **테스트 가능성**: 도메인 로직을 infrastructure에서 격리하여 순수 단위 테스트 가능. `presentation` slice 테스트와 `@DataJpaTest` repository 테스트를 표준 패턴으로 사용.
+- **테넌트 컨텍스트의 운반자**: 본 서비스는 JWT 발급 책임을 지므로 [specs/features/multi-tenancy.md](../../features/multi-tenancy.md)에서 정의한 `tenant_id` claim을 access/refresh token에 실어 전체 플랫폼에 전파한다. 로그인 입력의 tenant 컨텍스트는 account-service의 credential lookup 응답에서 받은 `tenant_id`로 결정한다.
 
 ## Internal Structure Rule
 
@@ -105,6 +106,8 @@ presentation → application → domain
 - ❌ `application`에서 JPA 엔터티·Redis 키 직접 사용 — 반드시 `domain`의 포트 인터페이스 경유
 - ❌ 다른 서비스의 도메인 모델 import — 내부 HTTP `AccountServiceClient`로만 통신
 - ❌ 도메인 로직을 `infrastructure`에 두기 (예: 토큰 회전 결정을 `RefreshTokenJpaRepository` 안에서 수행)
+- ❌ refresh token rotation·logout·force-logout에서 `tenant_id` 검증 누락 — 다른 테넌트의 token으로 rotation 시도는 401 `TOKEN_TENANT_MISMATCH`로 거부 ([specs/features/multi-tenancy.md](../../features/multi-tenancy.md))
+- ❌ `tenant_id` claim 없이 access token 발급 (서명 단계에서 fail-closed)
 
 ## Boundary Rules
 
@@ -118,6 +121,8 @@ presentation → application → domain
 - 여러 도메인 서비스를 조합하여 사용 사례 흐름을 조율
 - 이벤트 발행은 **반드시 outbox 경유** ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T3)
 - use-case 결과는 도메인 결과를 presentation-friendly DTO로 매핑
+- **로그인 흐름의 tenant 컨텍스트 결정**: `LoginUseCase`는 (1) account-service `AccountServiceClient.lookupCredential(email)`을 호출하여 응답에서 `tenant_id`·`tenant_type`·`accountId`를 받음, (2) 비밀번호 검증 통과 시 `tenant_id`·`tenant_type`을 access token claim과 `refresh_tokens.tenant_id` 컬럼에 동시에 영속, (3) 발행 이벤트(`auth.login.succeeded` 등)에도 `tenant_id` 포함. 같은 이메일이 두 테넌트에 등록될 수 있으므로 lookup 응답이 다중 row가 가능 → 프로토콜은 `(email, tenant_id?)` 입력으로 단일 row 응답을 강제하거나, 다중 매칭 시 `LOGIN_TENANT_AMBIGUOUS` 400으로 명시적 tenant 선택을 요구한다(상세는 [specs/contracts/http/internal/auth-to-account.md](../../contracts/http/internal/) 갱신 시 확정)
+- **Refresh rotation의 tenant 무결성**: `RefreshTokenUseCase`는 제출된 refresh token의 `tenant_id`(JWT claim 또는 DB row)와 새로 발급할 token의 `tenant_id`가 일치해야 한다. 불일치 시 `TOKEN_TENANT_MISMATCH` 401 + reuse-detection과 동일 수준의 보안 이벤트 발행
 - **모든 HTTP는 `@Transactional` 밖에서 수행** (TASK-BE-069 + TASK-BE-072): OAuth 콜백처럼 외부 provider HTTP, 내부 account-service HTTP, DB 쓰기가 섞인 경로는 use-case(`OAuthLoginUseCase#callback`)가 먼저 (1) provider token+userinfo exchange, (2) 로컬 `SocialIdentityJpaRepository` 비-트랜잭션 조회, (3) `accountServicePort.socialSignup`(신규 identity 경로에만), (4) `accountServicePort.getAccountStatus`를 모두 수행한 뒤, 결과를 extended `OAuthCallbackTxnCommand` (accountId, isNewAccount, accountStatus)로 `@Transactional` 빈(`OAuthLoginTransactionalStep#persistLogin`)에 전달한다. 트랜잭션 내부에는 **어떠한 HTTP 호출도 없다** — Hikari connection pinning 제거가 목적(TASK-BE-062 #18 CI에서 관측). 보상 노트: provider HTTP + account-service HTTP가 성공한 뒤 DB 커밋이 실패하면 사용자는 로그인 실패로 인식하고 outbox 롤백으로 downstream 이벤트는 발행되지 않는다. account-service `socialSignup`은 (email, provider) 기준으로 멱등이므로 retry 시에도 중복 계정을 만들지 않는다. provider-side revoke 보상은 수행하지 않는다. TOCTOU: identity 존재 체크가 비-트랜잭션으로 이동했지만 트랜잭션 내 upsert와 DB unique key `(provider, provider_user_id)`가 동시 삽입을 막는다.
 
 ### domain/
@@ -127,15 +132,16 @@ presentation → application → domain
 
 ### infrastructure/
 - 기술 상세의 어댑터. JPA, Redis, Kafka, WebClient, JWT 라이브러리 모두 여기
-- `client/AccountServiceClient`는 account-service를 내부 HTTP로 호출 ([specs/contracts/http/internal/auth-to-account.md](../../contracts/http/internal/)) — 응답은 내부 DTO로 번역 후 `domain`으로 전달
+- `client/AccountServiceClient`는 account-service를 내부 HTTP로 호출 ([specs/contracts/http/internal/auth-to-account.md](../../contracts/http/internal/)) — 응답은 내부 DTO로 번역 후 `domain`으로 전달. **credential lookup 응답에 `tenant_id` 포함**, 로그인 use-case가 이를 토큰 발급에 사용
+- `jwt/JwtSigner`는 access token payload에 `tenant_id`, `tenant_type` claim을 포함하여 서명. claim 누락 시 발급 실패(fail-closed)
 
 ## Integration Rules
 
-- **HTTP 컨트랙트 (외부)**: [specs/contracts/http/auth-api.md](../../contracts/http/) — `/api/auth/login`, `/api/auth/logout`, `/api/auth/refresh`, `/api/auth/jwks`
-- **HTTP 컨트랙트 (내부)**: [specs/contracts/http/internal/auth-to-account.md](../../contracts/http/internal/) — credential lookup, 계정 상태 조회
-- **이벤트 발행**: [specs/contracts/events/auth-events.md](../../contracts/events/) — `auth.login.attempted`, `auth.login.failed`, `auth.login.succeeded`, `auth.token.refreshed`, `auth.token.reuse.detected`. 모두 **outbox 경유**
-- **퍼시스턴스**: MySQL — `credentials`, `refresh_tokens`, `outbox_events`, `processed_events` (idempotency)
-- **Redis**: `login:fail:{email}` 카운터 (`rules/traits/transactional.md` T1), `refresh:blacklist:{jti}`, `jwks:cache` (서명 키 캐시)
+- **HTTP 컨트랙트 (외부)**: [specs/contracts/http/auth-api.md](../../contracts/http/) — `/api/auth/login`, `/api/auth/logout`, `/api/auth/refresh`, `/api/auth/jwks`. 로그인 응답·refresh 응답에 `tenant_id` 노출
+- **HTTP 컨트랙트 (내부)**: [specs/contracts/http/internal/auth-to-account.md](../../contracts/http/internal/) — credential lookup(응답에 `tenant_id`·`tenant_type` 포함), 계정 상태 조회
+- **이벤트 발행**: [specs/contracts/events/auth-events.md](../../contracts/events/) — `auth.login.attempted`, `auth.login.failed`, `auth.login.succeeded`, `auth.token.refreshed`, `auth.token.reuse.detected`. 모두 **outbox 경유**, 페이로드에 `tenant_id` 포함
+- **퍼시스턴스**: MySQL — `credentials`, `refresh_tokens`, `social_identities`, `outbox_events`, `processed_events` (idempotency). 모두 `tenant_id` NOT NULL. `credentials.email`은 `(tenant_id, email)` unique
+- **Redis**: `login:fail:{tenant_id}:{email}` 카운터 (`rules/traits/transactional.md` T1), `refresh:blacklist:{tenant_id}:{jti}`, `jwks:cache` (서명 키는 테넌트 공통)
 
 ## Testing Expectations
 
@@ -147,7 +153,7 @@ presentation → application → domain
 | Controller slice | DTO validation · 에러 포맷 | `@WebMvcTest` |
 | Contract | 응답이 [specs/contracts/http/auth-api.md](../../contracts/http/)와 일치 | 계약 테스트 |
 
-**필수 시나리오**: 5회 실패 → 429 → Redis 카운터 증가 / 만료된 access token → 401 / refresh rotation 성공 / 이미 사용된 refresh token → `token.reuse.detected` 이벤트 + 해당 세션 전체 invalidate ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T8과 [rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A1 교차).
+**필수 시나리오**: 5회 실패 → 429 → Redis 카운터 증가 / 만료된 access token → 401 / refresh rotation 성공 / 이미 사용된 refresh token → `token.reuse.detected` 이벤트 + 해당 세션 전체 invalidate ([rules/traits/transactional.md](../../../rules/traits/transactional.md) T8과 [rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A1 교차) / **tenant 격리 회귀**: 발급된 access token의 `tenant_id` claim 존재 검증, 다른 테넌트의 refresh로 rotation 시도 시 `TOKEN_TENANT_MISMATCH` 401 / 같은 이메일이 두 테넌트에 등록된 상태에서 tenant 명시 없는 로그인 → `LOGIN_TENANT_AMBIGUOUS` 400.
 
 ## Change Rule
 
@@ -156,3 +162,4 @@ presentation → application → domain
 3. 이벤트 페이로드 변경은 [specs/contracts/events/auth-events.md](../../contracts/events/) + 스키마 버전 증가
 4. credentials 테이블 스키마 변경은 Flyway migration + [specs/services/auth-service/data-model.md](./data-model.md) 업데이트
 5. 모든 변경은 테스트 추가와 함께 이루어져야 함 ([rules/traits/audit-heavy.md](../../../rules/traits/audit-heavy.md) A7 fail-closed 원칙)
+6. JWT claim 스키마(`tenant_id`, `tenant_type` 등) 또는 tenant 컨텍스트 확정 프로토콜 변경은 [specs/features/multi-tenancy.md](../../features/multi-tenancy.md) 업데이트 선행

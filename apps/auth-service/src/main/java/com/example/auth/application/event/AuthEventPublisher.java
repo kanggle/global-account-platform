@@ -21,10 +21,12 @@ public class AuthEventPublisher extends BaseEventPublisher {
         super(outboxWriter, objectMapper);
     }
 
-    public void publishLoginAttempted(String accountId, String emailHash, SessionContext ctx) {
+    public void publishLoginAttempted(String accountId, String emailHash, String tenantId,
+                                       SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("accountId", accountId);
         payload.put("emailHash", emailHash);
+        payload.put("tenantId", tenantId);
         payload.put("ipMasked", ctx.ipMasked());
         payload.put("userAgentFamily", ctx.userAgentFamily());
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
@@ -34,11 +36,21 @@ public class AuthEventPublisher extends BaseEventPublisher {
         write("auth.login.attempted", accountId != null ? accountId : emailHash, payload);
     }
 
-    public void publishLoginFailed(String accountId, String emailHash, String failureReason,
-                                    int failCount, SessionContext ctx) {
+    /**
+     * @deprecated Use {@link #publishLoginAttempted(String, String, String, SessionContext)}.
+     *             Retained for backwards compatibility; omits tenantId from payload.
+     */
+    @Deprecated
+    public void publishLoginAttempted(String accountId, String emailHash, SessionContext ctx) {
+        publishLoginAttempted(accountId, emailHash, null, ctx);
+    }
+
+    public void publishLoginFailed(String accountId, String emailHash, String tenantId,
+                                    String failureReason, int failCount, SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("accountId", accountId);
         payload.put("emailHash", emailHash);
+        payload.put("tenantId", tenantId);
         payload.put("failureReason", failureReason);
         payload.put("failCount", failCount);
         payload.put("ipMasked", ctx.ipMasked());
@@ -51,76 +63,74 @@ public class AuthEventPublisher extends BaseEventPublisher {
     }
 
     /**
+     * @deprecated Use {@link #publishLoginFailed(String, String, String, String, int, SessionContext)}.
+     *             Retained for backwards compatibility; omits tenantId from payload.
+     */
+    @Deprecated
+    public void publishLoginFailed(String accountId, String emailHash, String failureReason,
+                                    int failCount, SessionContext ctx) {
+        publishLoginFailed(accountId, emailHash, null, failureReason, failCount, ctx);
+    }
+
+    /**
      * Legacy 3-arg form kept for integration tests and any pre-TASK-BE-025 call site.
-     * Emits a payload that <b>omits</b> {@code deviceId} and {@code isNewDevice} entirely
-     * (field absence, not explicit nulls) so consumers correctly treat the event as legacy
-     * and fall back to fingerprint logic via {@code JsonNode#isMissingNode()}.
-     * The shared {@link #buildLoginSucceededBase} helper is intentionally limited to the
-     * 7 common fields and never inserts the additive TASK-BE-025/OAuth fields, preserving
-     * the "no null keys" contract for legacy consumers.
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx) {
-        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, ctx);
-
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, null, ctx);
         write("auth.login.succeeded", accountId, payload);
     }
 
     /**
-     * Extended form (TASK-BE-025): carries {@code deviceId} and {@code isNewDevice} so
-     * security-service's DeviceChangeRule can evaluate on the authoritative
-     * device_sessions signal instead of fingerprint churn. Both fields are additive
-     * (nullable) for backward-compat with legacy consumers.
-     *
-     * @param deviceId     device_sessions.device_id stamped on this login (nullable)
-     * @param isNewDevice  true iff the device_sessions row was created in this login
-     *                     transaction; false iff an existing active row was touched.
-     *                     null signals "unknown" (consumers fall back to fingerprint).
+     * Extended form (TASK-BE-025 + TASK-BE-229): carries {@code deviceId}, {@code isNewDevice},
+     * and {@code tenantId}.
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx,
                                       String deviceId, Boolean isNewDevice) {
-        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, ctx);
-        // Preserve documented field order: deviceId/isNewDevice come BEFORE timestamp.
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, null, ctx);
         Object timestamp = payload.remove("timestamp");
         payload.put("deviceId", deviceId);
         payload.put("isNewDevice", isNewDevice);
         payload.put("timestamp", timestamp);
+        write("auth.login.succeeded", accountId, payload);
+    }
 
+    /**
+     * Full form with tenantId (TASK-BE-229).
+     */
+    public void publishLoginSucceeded(String accountId, String sessionJti, String tenantId,
+                                      SessionContext ctx, String deviceId, Boolean isNewDevice) {
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, tenantId, ctx);
+        Object timestamp = payload.remove("timestamp");
+        payload.put("deviceId", deviceId);
+        payload.put("isNewDevice", isNewDevice);
+        payload.put("timestamp", timestamp);
         write("auth.login.succeeded", accountId, payload);
     }
 
     /**
      * Extended form carrying {@code loginMethod} for OAuth social logins.
-     * The {@code loginMethod} field is additive (nullable) for backward-compat.
-     *
-     * @param loginMethod e.g. "EMAIL_PASSWORD", "OAUTH_GOOGLE", "OAUTH_KAKAO"
      */
     public void publishLoginSucceeded(String accountId, String sessionJti, SessionContext ctx,
                                       String deviceId, Boolean isNewDevice, String loginMethod) {
-        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, ctx);
-        // Preserve documented field order: deviceId/isNewDevice/loginMethod BEFORE timestamp.
+        Map<String, Object> payload = buildLoginSucceededBase(accountId, sessionJti, null, ctx);
         Object timestamp = payload.remove("timestamp");
         payload.put("deviceId", deviceId);
         payload.put("isNewDevice", isNewDevice);
         payload.put("loginMethod", loginMethod);
         payload.put("timestamp", timestamp);
-
         write("auth.login.succeeded", accountId, payload);
     }
 
     /**
-     * Builds the 7 common fields shared by every {@code publishLoginSucceeded} overload in
-     * the documented insertion order: accountId, ipMasked, userAgentFamily,
-     * deviceFingerprint, geoCountry, sessionJti, timestamp. Returned as a mutable
-     * {@link LinkedHashMap} so callers can append additional fields (extended overloads
-     * remove/re-insert {@code timestamp} to keep it last). Intentionally excludes
-     * {@code deviceId}, {@code isNewDevice}, and {@code loginMethod} so that the legacy
-     * 3-arg form never leaks null keys into the JSON envelope (TASK-BE-026 contract:
-     * field absence, not explicit nulls).
+     * Builds the common base fields for login.succeeded including tenantId (TASK-BE-229).
      */
     private Map<String, Object> buildLoginSucceededBase(String accountId, String sessionJti,
-                                                        SessionContext ctx) {
+                                                         String tenantId, SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("accountId", accountId);
+        if (tenantId != null) {
+            payload.put("tenantId", tenantId);
+        }
         payload.put("ipMasked", ctx.ipMasked());
         payload.put("userAgentFamily", ctx.userAgentFamily());
         payload.put("deviceFingerprint", ctx.deviceFingerprint());
@@ -130,10 +140,14 @@ public class AuthEventPublisher extends BaseEventPublisher {
         return payload;
     }
 
-    public void publishTokenRefreshed(String accountId, String previousJti, String newJti,
-                                       SessionContext ctx) {
+    /**
+     * Publishes auth.token.refreshed with tenantId (TASK-BE-229).
+     */
+    public void publishTokenRefreshed(String accountId, String tenantId,
+                                       String previousJti, String newJti, SessionContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("accountId", accountId);
+        payload.put("tenantId", tenantId);
         payload.put("previousJti", previousJti);
         payload.put("newJti", newJti);
         payload.put("ipMasked", ctx.ipMasked());
@@ -141,6 +155,16 @@ public class AuthEventPublisher extends BaseEventPublisher {
         payload.put("timestamp", Instant.now().toString());
 
         write("auth.token.refreshed", accountId, payload);
+    }
+
+    /**
+     * @deprecated Use {@link #publishTokenRefreshed(String, String, String, String, SessionContext)}.
+     *             Retained for backwards compatibility; omits tenantId.
+     */
+    @Deprecated
+    public void publishTokenRefreshed(String accountId, String previousJti, String newJti,
+                                       SessionContext ctx) {
+        publishTokenRefreshed(accountId, null, previousJti, newJti, ctx);
     }
 
     /**
@@ -162,6 +186,25 @@ public class AuthEventPublisher extends BaseEventPublisher {
         payload.put("revokedCount", revokedCount);
 
         write("auth.token.reuse.detected", accountId, payload);
+    }
+
+    /**
+     * Publishes auth.token.tenant.mismatch security event (TASK-BE-229).
+     * Emitted when a refresh token's tenant_id does not match the expected tenant during rotation.
+     */
+    public void publishTokenTenantMismatch(String accountId, String submittedTenantId,
+                                            String expectedTenantId, String jti,
+                                            String ipMasked, String deviceFingerprint) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("accountId", accountId);
+        payload.put("submittedTenantId", submittedTenantId);
+        payload.put("expectedTenantId", expectedTenantId);
+        payload.put("reusedJti", jti);
+        payload.put("ipMasked", ipMasked);
+        payload.put("deviceFingerprint", deviceFingerprint);
+        payload.put("detectedAt", Instant.now().toString());
+
+        write("auth.token.tenant.mismatch", accountId, payload);
     }
 
     /**
@@ -190,7 +233,7 @@ public class AuthEventPublisher extends BaseEventPublisher {
     }
 
     /**
-     * Publishes {@code auth.session.revoked} for a single device session per the new
+     * Publishes {@code auth.session.revoked} for a single device session per the
      * (TASK-BE-022) payload shape. Spec: specs/contracts/events/auth-events.md.
      *
      * @param reason       canonical {@code RevokeReason} name

@@ -55,7 +55,7 @@ class JwtTokenGeneratorDeviceIdTest {
     @Test
     @DisplayName("device_id claim is omitted when null (no null-valued claim)")
     void deviceIdClaimAbsentWhenNull() {
-        TokenPair pair = generator().generateTokenPair("acc-2", "user", null);
+        TokenPair pair = generator().generateTokenPair("acc-2", "user", (String) null);
 
         Claims claims = Jwts.parser().verifyWith(publicKey).build()
                 .parseSignedClaims(pair.accessToken()).getPayload();

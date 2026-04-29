@@ -6,6 +6,7 @@ import com.example.auth.application.exception.SessionRevokedException;
 import com.example.auth.application.exception.TokenExpiredException;
 import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.exception.TokenReuseDetectedException;
+import com.example.auth.application.exception.TokenTenantMismatchException;
 import com.example.auth.application.port.TokenGeneratorPort;
 import com.example.auth.application.result.RefreshTokenResult;
 import com.example.auth.domain.repository.BulkInvalidationStore;
@@ -15,6 +16,7 @@ import com.example.auth.domain.repository.TokenBlacklist;
 import com.example.auth.domain.session.DeviceSession;
 import com.example.auth.domain.session.RevokeReason;
 import com.example.auth.domain.session.SessionContext;
+import com.example.auth.domain.tenant.TenantContext;
 import com.example.auth.domain.token.RefreshToken;
 import com.example.auth.domain.token.TokenPair;
 import com.example.auth.domain.token.TokenReuseDetector;
@@ -58,26 +60,33 @@ class RefreshTokenUseCaseTest {
     private RefreshTokenUseCase refreshTokenUseCase;
 
     private static final String ACCOUNT_ID = "acc-123";
+    private static final String TENANT_ID = "fan-platform";
     private static final String OLD_JTI = "old-jti";
     private static final String NEW_JTI = "new-jti";
     private static final SessionContext CTX = new SessionContext("127.0.0.1", "Chrome/120", "fp-123");
 
+    private RefreshToken activeToken(String jti, String tenantId) {
+        return new RefreshToken(1L, jti, ACCOUNT_ID, tenantId,
+                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
+                null, false, "fp-123", null);
+    }
+
     @Test
-    @DisplayName("Refresh token rotation succeeds")
+    @DisplayName("Refresh token rotation succeeds (tenant_id matches)")
     void refreshSuccess() {
         // given
         String refreshTokenStr = "old-refresh-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
         when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
-        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
-                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
-                null, false, "fp-123");
+        RefreshToken existingToken = activeToken(OLD_JTI, TENANT_ID);
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
-        when(tokenGeneratorPort.generateTokenPair(eq(ACCOUNT_ID), eq("user"), nullable(String.class)))
+        when(tokenGeneratorPort.generateTokenPair(eq(ACCOUNT_ID), eq("user"),
+                nullable(String.class), any(TenantContext.class)))
                 .thenReturn(new TokenPair("new-access", "new-refresh", 1800));
         when(tokenGeneratorPort.extractJti("new-refresh")).thenReturn(NEW_JTI);
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
@@ -91,22 +100,44 @@ class RefreshTokenUseCaseTest {
         assertThat(result.accessToken()).isEqualTo("new-access");
         assertThat(result.refreshToken()).isEqualTo("new-refresh");
         verify(tokenBlacklist).blacklist(eq(OLD_JTI), anyLong());
-        verify(authEventPublisher).publishTokenRefreshed(ACCOUNT_ID, OLD_JTI, NEW_JTI, CTX);
+        verify(authEventPublisher).publishTokenRefreshed(ACCOUNT_ID, TENANT_ID, OLD_JTI, NEW_JTI, CTX);
         verify(bulkInvalidationStore, never()).invalidateAll(anyString(), anyLong());
+    }
+
+    @Test
+    @DisplayName("Refresh fails with TOKEN_TENANT_MISMATCH when JWT tenant_id differs from DB row")
+    void refreshFailsTokenTenantMismatch() {
+        // given
+        String refreshTokenStr = "cross-tenant-token";
+        when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
+        when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        // Token claims "wms" but DB row has "fan-platform"
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn("wms");
+
+        RefreshToken existingToken = activeToken(OLD_JTI, TENANT_ID); // DB has fan-platform
+        when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
+        when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
+
+        // when/then
+        assertThatThrownBy(() -> refreshTokenUseCase.execute(
+                new RefreshTokenCommand(refreshTokenStr, CTX)))
+                .isInstanceOf(TokenTenantMismatchException.class);
+
+        // Security event must be emitted
+        verify(authEventPublisher).publishTokenTenantMismatch(
+                eq(ACCOUNT_ID), eq("wms"), eq(TENANT_ID), eq(OLD_JTI),
+                eq(CTX.ipMasked()), eq(CTX.deviceFingerprint()));
     }
 
     @Test
     @DisplayName("Refresh fails when token is blacklisted (no reuse chain)")
     void refreshFailsBlacklisted() {
-        // TASK-BE-062 §B: reuse check runs BEFORE the blacklist lookup, so we must
-        // load a non-reused DB token to reach the blacklist branch.
         String refreshTokenStr = "blacklisted-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
 
-        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
-                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
-                null, false, "fp-123");
+        RefreshToken existingToken = activeToken(OLD_JTI, TENANT_ID);
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(true);
@@ -122,6 +153,7 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "unknown-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn("unknown-jti");
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
         when(refreshTokenRepository.findByJti("unknown-jti")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> refreshTokenUseCase.execute(
@@ -135,12 +167,13 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "revoked-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
         when(bulkInvalidationStore.getInvalidatedAt(ACCOUNT_ID)).thenReturn(Optional.empty());
 
-        RefreshToken revokedToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
+        RefreshToken revokedToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID, TENANT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
-                null, true, "fp-123");
+                null, true, "fp-123", null);
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(revokedToken));
         when(tokenReuseDetector.isReuse(revokedToken)).thenReturn(false);
 
@@ -155,10 +188,9 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "reused-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
 
-        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
-                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
-                null, false, "fp-123");
+        RefreshToken existingToken = activeToken(OLD_JTI, TENANT_ID);
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
         when(refreshTokenRepository.revokeAllByAccountId(ACCOUNT_ID)).thenReturn(3);
@@ -208,18 +240,15 @@ class RefreshTokenUseCaseTest {
     @Test
     @DisplayName("Refresh fails with SESSION_REVOKED when invalidate-all marker exists and token iat precedes it")
     void refreshFailsWhenInvalidateAllMarkerPredatesToken() {
-        // TASK-BE-062 §B: reordering — findByJti + isReuse run before the marker check,
-        // so the stub chain must include both. The token is NOT reused and NOT blacklisted;
-        // the bulk-invalidate marker is what causes the 401.
         String refreshTokenStr = "stale-token";
         Instant markerAt = Instant.now().minusSeconds(60);
-        Instant tokenIat = markerAt.minusSeconds(60); // issued before the marker
+        Instant tokenIat = markerAt.minusSeconds(60);
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
 
-        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
-                tokenIat, tokenIat.plusSeconds(600000),
-                null, false, "fp-123");
+        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID, TENANT_ID,
+                tokenIat, tokenIat.plusSeconds(600000), null, false, "fp-123", null);
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
@@ -250,10 +279,9 @@ class RefreshTokenUseCaseTest {
         Instant markerAt = Instant.now().minusSeconds(60);
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
 
-        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
-                Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
-                null, false, "fp-123");
+        RefreshToken existingToken = activeToken(OLD_JTI, TENANT_ID);
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(false);
         when(tokenBlacklist.isBlacklisted(OLD_JTI)).thenReturn(false);
@@ -272,10 +300,11 @@ class RefreshTokenUseCaseTest {
         String refreshTokenStr = "reused-revoked-token";
         when(tokenGeneratorPort.extractJti(refreshTokenStr)).thenReturn(OLD_JTI);
         when(tokenGeneratorPort.extractAccountId(refreshTokenStr)).thenReturn(ACCOUNT_ID);
+        when(tokenGeneratorPort.extractTenantId(refreshTokenStr)).thenReturn(TENANT_ID);
 
-        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID,
+        RefreshToken existingToken = new RefreshToken(1L, OLD_JTI, ACCOUNT_ID, TENANT_ID,
                 Instant.now().minusSeconds(3600), Instant.now().plusSeconds(600000),
-                null, true, "fp-123"); // already revoked
+                null, true, "fp-123", null); // already revoked
         when(refreshTokenRepository.findByJti(OLD_JTI)).thenReturn(Optional.of(existingToken));
         when(tokenReuseDetector.isReuse(existingToken)).thenReturn(true);
         when(deviceSessionRepository.findActiveByAccountId(ACCOUNT_ID)).thenReturn(List.of());

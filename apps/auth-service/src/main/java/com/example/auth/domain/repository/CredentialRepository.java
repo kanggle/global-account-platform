@@ -2,6 +2,7 @@ package com.example.auth.domain.repository;
 
 import com.example.auth.domain.credentials.Credential;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -12,12 +13,30 @@ public interface CredentialRepository {
     Optional<Credential> findByAccountId(String accountId);
 
     /**
-     * Resolve a credential by login email. Implementations normalize the email
-     * (lower-case + trim) before querying; callers may pass the raw input.
+     * Resolve a credential by login email within a specific tenant.
+     * Introduced by TASK-BE-229 for tenant-aware login.
      *
-     * <p>Introduced by TASK-BE-063 so the login path does not need to round-trip
-     * to account-service just to resolve email → accountId.</p>
+     * @param tenantId the tenant to scope the lookup to
+     * @param email    the login email (callers may pass raw input; implementations normalize)
      */
+    Optional<Credential> findByTenantIdAndEmail(String tenantId, String email);
+
+    /**
+     * Resolve all credentials matching the given email across all tenants.
+     * Used when no tenantId is supplied on login to detect multi-tenant ambiguity.
+     *
+     * @return empty list if no credential exists; 1-element list if unambiguous;
+     *         2+ elements if multiple tenants have the same email
+     */
+    List<Credential> findAllByEmail(String email);
+
+    /**
+     * Resolve a credential by login email (legacy, single-tenant).
+     * Implementations normalize the email (lower-case + trim) before querying.
+     *
+     * @deprecated Prefer {@link #findByTenantIdAndEmail(String, String)} for tenant-aware lookup.
+     */
+    @Deprecated
     Optional<Credential> findByAccountIdEmail(String email);
 
     Credential save(Credential credential);

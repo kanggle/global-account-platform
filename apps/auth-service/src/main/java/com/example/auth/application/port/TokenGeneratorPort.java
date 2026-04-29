@@ -1,6 +1,7 @@
 package com.example.auth.application.port;
 
 import com.example.auth.application.exception.TokenParseException;
+import com.example.auth.domain.tenant.TenantContext;
 import com.example.auth.domain.token.TokenPair;
 
 import java.time.Instant;
@@ -12,23 +13,47 @@ import java.time.Instant;
 public interface TokenGeneratorPort {
 
     /**
-     * Generates a new access + refresh token pair without an attached device session.
-     * Equivalent to {@link #generateTokenPair(String, String, String)} with {@code deviceId = null}.
+     * Generates a new access + refresh token pair with tenant context.
+     *
+     * <p>Tenant claims ({@code tenant_id}, {@code tenant_type}) are required per
+     * specs/features/multi-tenancy.md §JWT Changes. The implementation must
+     * fail-closed if {@code tenantContext} is null or carries blank values.
+     *
+     * @param accountId     the account ID to embed as {@code sub}
+     * @param scope         the {@code scope} claim (e.g. "user", "admin")
+     * @param deviceId      the {@code device_id} claim (opaque UUID v7); may be null
+     * @param tenantContext tenant_id and tenant_type — must not be null
+     * @return token pair with access token, refresh token, and access TTL
      */
-    default TokenPair generateTokenPair(String accountId, String scope) {
-        return generateTokenPair(accountId, scope, null);
+    TokenPair generateTokenPair(String accountId, String scope, String deviceId,
+                                TenantContext tenantContext);
+
+    /**
+     * Generates a new access + refresh token pair without an attached device session.
+     * Equivalent to {@link #generateTokenPair(String, String, String, TenantContext)}
+     * with {@code deviceId = null}.
+     */
+    default TokenPair generateTokenPair(String accountId, String scope, TenantContext tenantContext) {
+        return generateTokenPair(accountId, scope, null, tenantContext);
     }
 
     /**
-     * Generates a new access + refresh token pair.
-     *
-     * @param accountId the account ID to embed as {@code sub}
-     * @param scope     the {@code scope} claim (e.g. "user", "admin")
-     * @param deviceId  the {@code device_id} claim (opaque UUID v7 of the device session);
-     *                  may be {@code null} for legacy / pre-session-integration callers
-     * @return token pair with access token, refresh token, and access TTL
+     * @deprecated Use {@link #generateTokenPair(String, String, String, TenantContext)}.
+     *             Retained for legacy callers that have not yet adopted tenant context;
+     *             defaults to fan-platform / B2C_CONSUMER.
      */
-    TokenPair generateTokenPair(String accountId, String scope, String deviceId);
+    @Deprecated
+    default TokenPair generateTokenPair(String accountId, String scope, String deviceId) {
+        return generateTokenPair(accountId, scope, deviceId, TenantContext.defaultContext());
+    }
+
+    /**
+     * @deprecated Use {@link #generateTokenPair(String, String, TenantContext)}.
+     */
+    @Deprecated
+    default TokenPair generateTokenPair(String accountId, String scope) {
+        return generateTokenPair(accountId, scope, null, TenantContext.defaultContext());
+    }
 
     /**
      * Returns the access token TTL in seconds.
@@ -60,4 +85,12 @@ public interface TokenGeneratorPort {
      * @throws TokenParseException if the token is unparseable or does not contain an {@code iat} claim
      */
     Instant extractIssuedAt(String refreshToken);
+
+    /**
+     * Extracts the {@code tenant_id} claim from a token string.
+     * Returns null if the claim is absent (legacy token without tenant context).
+     *
+     * @throws TokenParseException if the token is unparseable
+     */
+    String extractTenantId(String token);
 }

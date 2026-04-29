@@ -20,6 +20,13 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * Unit tests for {@link RedisLoginAttemptCounter}.
+ *
+ * <p>TASK-BE-229: key pattern is now {@code login:fail:{tenantId}:{emailHash}}.
+ * The legacy single-arg overloads delegate to "fan-platform", so keys are
+ * {@code login:fail:fan-platform:{emailHash}}.
+ */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisLoginAttemptCounter 단위 테스트")
 class RedisLoginAttemptCounterUnitTest {
@@ -35,24 +42,24 @@ class RedisLoginAttemptCounterUnitTest {
         ReflectionTestUtils.setField(counter, "failureWindowSeconds", 900L);
     }
 
-    // ── getFailureCount ────────────────────────────────────────────────────────
+    // ── getFailureCount (tenant-aware) ─────────────────────────────────────────
 
     @Test
-    @DisplayName("getFailureCount — 키 존재 → 파싱된 카운트 반환")
-    void getFailureCount_keyExists_returnsCount() {
+    @DisplayName("getFailureCount(tenantId, emailHash) — 키 존재 → 파싱된 카운트 반환")
+    void getFailureCount_tenantAware_keyExists_returnsCount() {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get("login:fail:hash-1")).thenReturn("5");
+        when(valueOps.get("login:fail:fan-platform:hash-1")).thenReturn("5");
 
-        assertThat(counter.getFailureCount("hash-1")).isEqualTo(5);
+        assertThat(counter.getFailureCount("fan-platform", "hash-1")).isEqualTo(5);
     }
 
     @Test
-    @DisplayName("getFailureCount — 키 없음 → 0 반환")
-    void getFailureCount_keyAbsent_returnsZero() {
+    @DisplayName("getFailureCount(tenantId, emailHash) — 키 없음 → 0 반환")
+    void getFailureCount_tenantAware_keyAbsent_returnsZero() {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
-        when(valueOps.get("login:fail:hash-2")).thenReturn(null);
+        when(valueOps.get("login:fail:wms:hash-2")).thenReturn(null);
 
-        assertThat(counter.getFailureCount("hash-2")).isEqualTo(0);
+        assertThat(counter.getFailureCount("wms", "hash-2")).isEqualTo(0);
     }
 
     @Test
@@ -61,20 +68,42 @@ class RedisLoginAttemptCounterUnitTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         when(valueOps.get(any())).thenThrow(new QueryTimeoutException("Redis timeout"));
 
-        assertThat(counter.getFailureCount("hash-err")).isEqualTo(0);
+        assertThat(counter.getFailureCount("fan-platform", "hash-err")).isEqualTo(0);
+    }
+
+    // ── getFailureCount (legacy single-arg — delegates to fan-platform) ────────
+
+    @Test
+    @DisplayName("getFailureCount(emailHash) — 레거시: fan-platform 키 사용")
+    void getFailureCount_legacy_usesFanPlatformKey() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+        when(valueOps.get("login:fail:fan-platform:hash-1")).thenReturn("3");
+
+        assertThat(counter.getFailureCount("hash-1")).isEqualTo(3);
     }
 
     // ── incrementFailureCount ──────────────────────────────────────────────────
 
     @Test
-    @DisplayName("incrementFailureCount — 정상: increment 후 expire 호출")
-    void incrementFailureCount_normal_incrementsAndSetsExpiry() {
+    @DisplayName("incrementFailureCount(tenantId, emailHash) — 정상: increment 후 expire 호출")
+    void incrementFailureCount_tenantAware_incrementsAndSetsExpiry() {
+        when(redisTemplate.opsForValue()).thenReturn(valueOps);
+
+        counter.incrementFailureCount("fan-platform", "hash-3");
+
+        verify(valueOps).increment("login:fail:fan-platform:hash-3");
+        verify(redisTemplate).expire(eq("login:fail:fan-platform:hash-3"), eq(Duration.ofSeconds(900L)));
+    }
+
+    @Test
+    @DisplayName("incrementFailureCount(emailHash) — 레거시: fan-platform 키 사용")
+    void incrementFailureCount_legacy_usesFanPlatformKey() {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
 
         counter.incrementFailureCount("hash-3");
 
-        verify(valueOps).increment("login:fail:hash-3");
-        verify(redisTemplate).expire(eq("login:fail:hash-3"), eq(Duration.ofSeconds(900L)));
+        verify(valueOps).increment("login:fail:fan-platform:hash-3");
+        verify(redisTemplate).expire(eq("login:fail:fan-platform:hash-3"), eq(Duration.ofSeconds(900L)));
     }
 
     @Test
@@ -83,17 +112,25 @@ class RedisLoginAttemptCounterUnitTest {
         when(redisTemplate.opsForValue()).thenReturn(valueOps);
         doThrow(new QueryTimeoutException("Redis timeout")).when(valueOps).increment(any());
 
-        counter.incrementFailureCount("hash-err");
+        counter.incrementFailureCount("fan-platform", "hash-err");
     }
 
     // ── resetFailureCount ──────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("resetFailureCount — 정상: 키 삭제 호출")
-    void resetFailureCount_normal_deletesKey() {
+    @DisplayName("resetFailureCount(tenantId, emailHash) — 정상: 키 삭제 호출")
+    void resetFailureCount_tenantAware_deletesKey() {
+        counter.resetFailureCount("fan-platform", "hash-4");
+
+        verify(redisTemplate).delete("login:fail:fan-platform:hash-4");
+    }
+
+    @Test
+    @DisplayName("resetFailureCount(emailHash) — 레거시: fan-platform 키 사용")
+    void resetFailureCount_legacy_usesFanPlatformKey() {
         counter.resetFailureCount("hash-4");
 
-        verify(redisTemplate).delete("login:fail:hash-4");
+        verify(redisTemplate).delete("login:fail:fan-platform:hash-4");
     }
 
     @Test
@@ -101,6 +138,6 @@ class RedisLoginAttemptCounterUnitTest {
     void resetFailureCount_redisException_swallowed() {
         doThrow(new QueryTimeoutException("Redis timeout")).when(redisTemplate).delete(any(String.class));
 
-        counter.resetFailureCount("hash-err");
+        counter.resetFailureCount("fan-platform", "hash-err");
     }
 }

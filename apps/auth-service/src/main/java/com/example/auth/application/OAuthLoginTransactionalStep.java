@@ -10,6 +10,7 @@ import com.example.auth.application.result.RegisterDeviceSessionResult;
 import com.example.auth.domain.oauth.OAuthProvider;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
+import com.example.auth.domain.tenant.TenantContext;
 import com.example.auth.domain.token.RefreshToken;
 import com.example.auth.domain.token.TokenPair;
 import com.example.auth.infrastructure.oauth.OAuthUserInfo;
@@ -27,26 +28,11 @@ import java.util.Optional;
  * Transactional boundary for the OAuth callback flow.
  *
  * <p>All DB writes (social identity upsert, refresh token persist, outbox event writes)
- * happen inside a single {@code @Transactional} method on this bean. The enclosing
- * {@link OAuthLoginUseCase} performs ALL HTTP work BEFORE calling
- * {@link #persistLogin(OAuthCallbackTxnCommand)}:
- * <ul>
- *   <li>external provider token+userinfo exchange (TASK-BE-069)</li>
- *   <li>internal account-service {@code socialSignup} and {@code getAccountStatus}
- *       (TASK-BE-072)</li>
- * </ul>
- * so that no HTTP call holds a DB connection (resolves Hikari connection pinning
- * observed in TASK-BE-062 #18 CI runs).
+ * happen inside a single {@code @Transactional} method on this bean.
  *
- * <p>This bean therefore has NO dependency on {@code AccountServicePort} — all
- * account-service calls live in the orchestrator.
- *
- * <p>Compensation note: HTTP (external + internal) completes before this DB txn; if
- * the txn fails to commit the user sees a login failure while the provider may
- * already have issued tokens and account-service may have created an account
- * ({@code socialSignup} is idempotent). Outbox rollback already meant downstream
- * events were never published on txn failure. No compensating provider-side revoke
- * is performed.
+ * <p>TASK-BE-229: tokens are issued with default tenant context (fan-platform / B2C_CONSUMER)
+ * since OAuth callback does not carry explicit tenant context. The tenant for OAuth flows
+ * defaults to "fan-platform" until tenant-scoped OAuth is introduced in a future task.
  */
 @Slf4j
 @Component
@@ -67,9 +53,12 @@ public class OAuthLoginTransactionalStep {
         String accountId = command.accountId();
         boolean isNewAccount = command.isNewAccount();
 
-        // Upsert local social identity. Orchestrator already resolved accountId via
-        // either an existing identity (DB read) or accountServicePort.socialSignup
-        // (HTTP) — both performed OUTSIDE this @Transactional boundary (TASK-BE-072).
+        // OAuth default tenant: fan-platform / B2C_CONSUMER.
+        // When tenant-scoped OAuth is supported (future task), this will be resolved
+        // from the OAuth state or account-service response.
+        TenantContext tenantContext = TenantContext.defaultContext();
+
+        // Upsert local social identity.
         Optional<SocialIdentityJpaEntity> existingIdentity =
                 socialIdentityJpaRepository.findByProviderAndProviderUserId(
                         provider.name(), userInfo.providerUserId());
@@ -83,29 +72,29 @@ public class OAuthLoginTransactionalStep {
             socialIdentityJpaRepository.save(identity);
         } else {
             var newIdentity = SocialIdentityJpaEntity.create(
-                    accountId, provider.name(), userInfo.providerUserId(), userInfo.email());
+                    accountId, tenantContext.tenantId(),
+                    provider.name(), userInfo.providerUserId(), userInfo.email());
             socialIdentityJpaRepository.save(newIdentity);
         }
 
         // Account status check against pre-fetched value (no HTTP here).
-        // Empty status = account-service returned no status → treat as unavailable
-        // and skip the guard (existing TASK-BE-063 behaviour — the rest of the flow
-        // proceeds because the social-signup path already created the account).
         command.accountStatus().ifPresent(this::checkAccountStatus);
 
-        // Register/update device session (propagation MANDATORY — joins this txn)
+        // Register/update device session
         RegisterDeviceSessionResult sessionResult =
                 registerOrUpdateDeviceSessionUseCase.execute(accountId, ctx);
         String deviceId = sessionResult.deviceId();
 
-        // Issue JWT tokens (no DB/HTTP — pure crypto)
-        TokenPair tokenPair = tokenGeneratorPort.generateTokenPair(accountId, "user", deviceId);
+        // Issue JWT tokens with tenant context (fail-closed via JwtTokenGenerator)
+        TokenPair tokenPair = tokenGeneratorPort.generateTokenPair(accountId, "user", deviceId,
+                tenantContext);
 
-        // Persist refresh token
+        // Persist refresh token with tenant_id
         String refreshJti = tokenGeneratorPort.extractJti(tokenPair.refreshToken());
         Instant now = Instant.now();
         RefreshToken refreshTokenEntity = RefreshToken.create(
-                refreshJti, accountId, now,
+                refreshJti, accountId, tenantContext.tenantId(),
+                now,
                 now.plusSeconds(tokenGeneratorPort.refreshTokenTtlSeconds()),
                 null,
                 ctx.deviceFingerprint(),

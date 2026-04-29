@@ -21,8 +21,7 @@ import java.time.Instant;
  * <p>Called from the internal endpoint {@code POST /internal/auth/credentials},
  * which account-service invokes during signup (TASK-BE-063 Option A).</p>
  *
- * <p>The password is argon2id-hashed here — plain text is never persisted and
- * must never be logged.</p>
+ * <p>TASK-BE-229: tenantId is now included in the credential row.</p>
  */
 @Slf4j
 @Service
@@ -36,9 +35,8 @@ public class CreateCredentialUseCase {
     public CreateCredentialResult execute(CreateCredentialCommand command) {
         String accountId = command.accountId();
         String email = Credential.normalizeEmail(command.email());
+        String tenantId = command.tenantId() != null ? command.tenantId() : "fan-platform";
 
-        // Cheap pre-check so we can return 409 without burning argon2id CPU on
-        // duplicate calls (signup retries, at-least-once retries, etc.).
         if (credentialRepository.existsByAccountId(accountId)) {
             throw new CredentialAlreadyExistsException(accountId);
         }
@@ -47,6 +45,7 @@ public class CreateCredentialUseCase {
         Instant now = Instant.now();
         Credential credential = Credential.create(
                 accountId,
+                tenantId,
                 email,
                 CredentialHash.argon2id(hash),
                 now
@@ -54,11 +53,10 @@ public class CreateCredentialUseCase {
 
         try {
             Credential saved = credentialRepository.save(credential);
-            log.info("Credential created for accountId={}", saved.getAccountId());
+            log.info("Credential created for accountId={} tenantId={}", saved.getAccountId(),
+                    saved.getTenantId());
             return new CreateCredentialResult(saved.getAccountId(), saved.getCreatedAt());
         } catch (DataIntegrityViolationException e) {
-            // Concurrent create — unique constraint on account_id or email kicked in.
-            // Translated to 409 (idempotent shape of a duplicate signup request).
             throw new CredentialAlreadyExistsException(accountId);
         }
     }
