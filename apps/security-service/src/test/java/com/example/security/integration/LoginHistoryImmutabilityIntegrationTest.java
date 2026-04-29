@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import com.example.testsupport.integration.AbstractIntegrationTest;
@@ -23,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 class LoginHistoryImmutabilityIntegrationTest extends AbstractIntegrationTest {
 
     // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076/078/080).

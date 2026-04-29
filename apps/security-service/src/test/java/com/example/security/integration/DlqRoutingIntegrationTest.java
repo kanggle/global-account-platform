@@ -13,6 +13,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.MessageListenerContainer;
@@ -38,6 +39,7 @@ import static org.awaitility.Awaitility.await;
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class DlqRoutingIntegrationTest extends AbstractIntegrationTest {
 

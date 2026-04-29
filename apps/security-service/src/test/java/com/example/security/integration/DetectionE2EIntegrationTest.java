@@ -14,6 +14,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -40,6 +41,7 @@ import static org.awaitility.Awaitility.await;
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class DetectionE2EIntegrationTest extends AbstractIntegrationTest {
 
