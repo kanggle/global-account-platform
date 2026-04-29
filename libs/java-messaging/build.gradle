@@ -18,6 +18,10 @@ dependencies {
     // Bean Validation (for @NotEmpty on OutboxProperties)
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+    // Micrometer — compileOnly for @ConditionalOnClass; services supply runtime dependency
+    compileOnly 'io.micrometer:micrometer-core'
+    testImplementation 'io.micrometer:micrometer-core'
+
     // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
