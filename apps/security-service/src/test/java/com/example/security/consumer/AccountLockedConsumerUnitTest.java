@@ -21,7 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class AccountLockedConsumerTest {
+class AccountLockedConsumerUnitTest {
 
     @Mock
     private AccountLockHistoryJpaRepository repository;
@@ -31,7 +31,7 @@ class AccountLockedConsumerTest {
     @InjectMocks
     private AccountLockedConsumer consumer;
 
-    AccountLockedConsumerTest() {
+    AccountLockedConsumerUnitTest() {
         // Manual wiring because @InjectMocks cannot inject the concrete ObjectMapper bean.
     }
 
