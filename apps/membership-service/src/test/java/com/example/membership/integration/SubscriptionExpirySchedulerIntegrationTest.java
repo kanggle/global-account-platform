@@ -44,7 +44,7 @@ import static org.awaitility.Awaitility.await;
 @ActiveProfiles("test")
 @EnabledIf("isDockerAvailable")
 @DisplayName("SubscriptionExpiryScheduler — end-to-end")
-class SubscriptionExpirySchedulerTest {
+class SubscriptionExpirySchedulerIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {

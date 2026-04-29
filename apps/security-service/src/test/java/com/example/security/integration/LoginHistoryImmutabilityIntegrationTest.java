@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 @Testcontainers
 @org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-class LoginHistoryImmutabilityTest extends AbstractIntegrationTest {
+class LoginHistoryImmutabilityIntegrationTest extends AbstractIntegrationTest {
 
     static boolean isDockerAvailable() {
         try {
