@@ -1,4 +1,4 @@
-package com.example.community.application.exception;
+package com.example.community.domain.access;
 
 public class ArtistNotFoundException extends RuntimeException {
     public ArtistNotFoundException(String artistAccountId) {

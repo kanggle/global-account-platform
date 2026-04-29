@@ -215,6 +215,12 @@ All services must return errors in the following JSON format:
 | SHIPPING_NOT_FOUND | 404 | Shipping record does not exist |
 | INVALID_STATUS_TRANSITION | 422 | Shipping status transition is not allowed |
 
+## Community  `[domain: saas]`
+
+| Code | HTTP | Description |
+|---|---|---|
+| ARTIST_NOT_FOUND | 404 | Artist account does not exist (`POST /api/community/subscriptions/artists/{artistAccountId}`) |
+
 ## Signup  `[domain: saas]`
 
 | Code | HTTP | Description |

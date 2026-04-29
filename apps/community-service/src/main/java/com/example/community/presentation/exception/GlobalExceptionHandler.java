@@ -1,8 +1,8 @@
 package com.example.community.presentation.exception;
 
 import com.example.community.application.exception.AlreadyFollowingException;
-import com.example.community.application.exception.ArtistNotFoundException;
 import com.example.community.application.exception.MembershipRequiredException;
+import com.example.community.domain.access.ArtistNotFoundException;
 import com.example.community.application.exception.NotFollowingException;
 import com.example.community.application.exception.PermissionDeniedException;
 import com.example.community.application.exception.PostNotFoundException;

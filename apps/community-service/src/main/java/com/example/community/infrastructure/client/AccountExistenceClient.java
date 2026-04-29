@@ -1,6 +1,6 @@
 package com.example.community.infrastructure.client;
 
-import com.example.community.application.exception.ArtistNotFoundException;
+import com.example.community.domain.access.ArtistNotFoundException;
 import com.example.community.domain.access.ArtistAccountChecker;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -55,8 +55,6 @@ public class AccountExistenceClient implements ArtistAccountChecker {
                 throw new ArtistNotFoundException(artistAccountId);
             }
             log.warn("account-service existence check failed for {}: {}", artistAccountId, e.getMessage());
-        } catch (ArtistNotFoundException e) {
-            throw e;
         } catch (Exception e) {
             log.warn("account-service existence check failed for {}: {}", artistAccountId, e.getMessage());
         }

@@ -1,8 +1,8 @@
 package com.example.community.application;
 
 import com.example.community.application.exception.AlreadyFollowingException;
-import com.example.community.application.exception.ArtistNotFoundException;
 import com.example.community.application.exception.NotFollowingException;
+import com.example.community.domain.access.ArtistNotFoundException;
 import com.example.community.domain.access.ArtistAccountChecker;
 import com.example.community.domain.feed.FeedSubscription;
 import com.example.community.domain.feed.FeedSubscriptionRepository;

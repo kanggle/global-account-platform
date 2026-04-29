@@ -68,7 +68,9 @@ apps/community-service/src/main/java/com/example/community/
 │   │   └── repository/
 │   │       └── FeedSubscriptionRepository.java
 │   └── access/
-│       └── ContentAccessChecker.java    ← membership-service 호출 포트(인터페이스)
+│       ├── ContentAccessChecker.java    ← membership-service 호출 포트(인터페이스)
+│       ├── ArtistAccountChecker.java    ← account-service artist 존재 확인 포트(인터페이스)
+│       └── ArtistNotFoundException.java
 └── infrastructure/
     ├── persistence/
     │   ├── PostJpaEntity.java
@@ -81,7 +83,8 @@ apps/community-service/src/main/java/com/example/community/
     │   └── CommunityKafkaProducer.java
     ├── client/
     │   ├── MembershipAccessClient.java  ← ContentAccessChecker 구현체
-    │   └── AccountProfileClient.java    ← 작성자 표시명 조회
+    │   ├── AccountProfileClient.java    ← 작성자 표시명 조회
+    │   └── AccountExistenceClient.java  ← ArtistAccountChecker 구현체
     └── config/
 ```
 

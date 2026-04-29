@@ -1,6 +1,6 @@
 package com.example.community.infrastructure.client;
 
-import com.example.community.application.exception.ArtistNotFoundException;
+import com.example.community.domain.access.ArtistNotFoundException;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.http.Fault;
 import org.junit.jupiter.api.AfterEach;
