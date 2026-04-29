@@ -1,12 +1,13 @@
 package com.example.admin.infrastructure.persistence.rbac;
 
+import com.example.testsupport.integration.DockerAvailableCondition;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
@@ -40,17 +41,8 @@ import static org.mockito.Mockito.when;
  * context. The {@link PermissionEvaluatorImpl} origin is a Mockito mock,
  * letting us count DB hits precisely.
  */
-@EnabledIf("isDockerAvailable")
+@ExtendWith(DockerAvailableCondition.class)
 class PermissionEvaluatorCacheTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     @SuppressWarnings("resource")
     static final GenericContainer<?> REDIS =

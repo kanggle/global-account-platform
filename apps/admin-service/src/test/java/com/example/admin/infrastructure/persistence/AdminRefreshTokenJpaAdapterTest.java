@@ -1,9 +1,10 @@
 package com.example.admin.infrastructure.persistence;
 
 import com.example.admin.infrastructure.persistence.rbac.AdminOperatorJpaEntity;
+import com.example.testsupport.integration.DockerAvailableCondition;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -33,18 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(AdminRefreshTokenJpaAdapter.class)
 @Testcontainers
-@EnabledIf("isDockerAvailable")
+@ExtendWith(DockerAvailableCondition.class)
 @DisplayName("AdminRefreshTokenJpaAdapter — clearAutomatically regression")
 class AdminRefreshTokenJpaAdapterTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     @Container
     @SuppressWarnings("resource")
