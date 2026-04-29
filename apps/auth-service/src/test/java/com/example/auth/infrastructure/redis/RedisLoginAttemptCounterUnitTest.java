@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisLoginAttemptCounter 단위 테스트")
-class RedisLoginAttemptCounterTest {
+class RedisLoginAttemptCounterUnitTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOps;

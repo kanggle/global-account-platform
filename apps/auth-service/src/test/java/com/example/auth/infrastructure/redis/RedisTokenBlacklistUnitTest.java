@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisTokenBlacklist 단위 테스트")
-class RedisTokenBlacklistTest {
+class RedisTokenBlacklistUnitTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOps;

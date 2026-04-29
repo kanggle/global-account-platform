@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisPasswordResetTokenStore 단위 테스트")
-class RedisPasswordResetTokenStoreTest {
+class RedisPasswordResetTokenStoreUnitTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOps;
