@@ -26,7 +26,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LoginSucceededConsumer 단위 테스트")
-class LoginSucceededConsumerTest {
+class LoginSucceededConsumerUnitTest {
 
     @Mock
     private UpdateLastLoginUseCase updateLastLoginUseCase;

@@ -30,7 +30,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AccountDormantScheduler 단위 테스트")
-class AccountDormantSchedulerTest {
+class AccountDormantSchedulerUnitTest {
 
     @Mock
     private AccountJpaRepository accountJpaRepository;

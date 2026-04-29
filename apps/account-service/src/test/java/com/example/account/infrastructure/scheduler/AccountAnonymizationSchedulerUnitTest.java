@@ -61,7 +61,7 @@ import static org.mockito.Mockito.verify;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
 @DisplayName("AccountAnonymizationScheduler 단위 테스트")
-class AccountAnonymizationSchedulerTest {
+class AccountAnonymizationSchedulerUnitTest {
 
     @Mock
     private AccountJpaRepository accountJpaRepository;
