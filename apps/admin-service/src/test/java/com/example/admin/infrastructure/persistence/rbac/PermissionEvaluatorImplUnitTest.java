@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.STRICT_STUBS)
-class PermissionEvaluatorImplTest {
+class PermissionEvaluatorImplUnitTest {
 
     @Mock AdminOperatorJpaRepository operators;
     @Mock AdminOperatorRoleJpaRepository operatorRoles;

@@ -22,7 +22,7 @@ import static org.mockito.BDDMockito.willThrow;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisIdempotencyStore — fail-open on Redis outage")
-class RedisIdempotencyStoreTest {
+class RedisIdempotencyStoreUnitTest {
 
     @Mock
     private StringRedisTemplate redis;
