@@ -57,7 +57,7 @@ public class TokenBucketRateLimiter {
         int maxRequests = limit.getMaxRequests();
         // Add 10s safety margin to TTL
         long ttlSeconds = windowSeconds + 10;
-        String key = String.format("ratelimit:%s:%s:%d", scope, identifier, windowSeconds);
+        String key = String.format("rate:%s:%s", scope, identifier);
 
         return redisTemplate.execute(RATE_LIMIT_SCRIPT,
                         List.of(key), List.of(String.valueOf(ttlSeconds)))

@@ -181,7 +181,7 @@ class GatewayIntegrationTest {
     @BeforeEach
     void setUp() {
         // Clean up rate limit keys
-        redisTemplate.keys("ratelimit:*")
+        redisTemplate.keys("rate:*")
                 .flatMap(redisTemplate::delete)
                 .collectList()
                 .block();

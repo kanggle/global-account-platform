@@ -134,7 +134,7 @@ class GatewayTenantPropagationIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        redisTemplate.keys("ratelimit:*")
+        redisTemplate.keys("rate:*")
                 .flatMap(redisTemplate::delete)
                 .collectList()
                 .block();
@@ -153,12 +153,12 @@ class GatewayTenantPropagationIntegrationTest {
                 .expectStatus().isOk();
 
         // Redis should contain a key with the anonymous tenant prefix
-        List<String> keys = redisTemplate.keys("ratelimit:login:*")
+        List<String> keys = redisTemplate.keys("rate:login:*")
                 .collectList()
                 .block();
 
         assertThat(keys).isNotEmpty();
-        // Key must follow "ratelimit:login:{tenant_id}:{subnet}:{window}" pattern
+        // Key must follow "rate:login:{tenant_id}:{subnet}" pattern
         assertThat(keys).anyMatch(k -> k.contains("anonymous:"));
     }
 
@@ -178,7 +178,7 @@ class GatewayTenantPropagationIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        List<String> keys = redisTemplate.keys("ratelimit:login:*")
+        List<String> keys = redisTemplate.keys("rate:login:*")
                 .collectList()
                 .block();
 
