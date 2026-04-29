@@ -18,7 +18,7 @@ public class UpdatePostUseCase {
     private final PostMediaUrlsSerializer mediaUrlsSerializer;
 
     @Transactional
-    public void execute(String postId, ActorContext actor, String title, String body, List<String> mediaUrls) {
+    public UpdatePostResponse execute(String postId, ActorContext actor, String title, String body, List<String> mediaUrls) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new PostNotFoundException(postId));
         if (!post.getAuthorAccountId().equals(actor.accountId())) {
@@ -27,5 +27,12 @@ public class UpdatePostUseCase {
         String mediaUrlsJson = mediaUrlsSerializer.serialize(mediaUrls);
         post.updateContent(title, body, mediaUrlsJson);
         postRepository.save(post);
+        return new UpdatePostResponse(
+                post.getId(),
+                post.getTitle(),
+                post.getBody(),
+                mediaUrls,
+                post.getUpdatedAt()
+        );
     }
 }
