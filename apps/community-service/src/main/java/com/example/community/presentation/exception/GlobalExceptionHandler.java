@@ -61,8 +61,8 @@ public class GlobalExceptionHandler extends CommonGlobalExceptionHandler {
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException e) {
         if ("STATE_TRANSITION_INVALID".equals(e.getMessage())) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(ErrorResponse.of("STATE_TRANSITION_INVALID", "Invalid post status transition"));
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                    .body(ErrorResponse.of("POST_STATUS_TRANSITION_INVALID", "Invalid post status transition"));
         }
         log.warn("illegal state", e);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

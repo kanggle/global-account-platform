@@ -145,7 +145,7 @@ Base path: `/api/community`
 |---|---|---|
 | 404 | POST_NOT_FOUND | 미존재 또는 DELETED |
 | 403 | PERMISSION_DENIED | 작성자 본인이 아닌 경우 |
-| 422 | STATE_TRANSITION_INVALID | 허용되지 않는 전이 (예: DELETED→*) |
+| 422 | POST_STATUS_TRANSITION_INVALID | 허용되지 않는 전이 (예: DELETED→*) |
 | 422 | VALIDATION_ERROR | status 필드 없음 또는 유효하지 않은 값 |
 
 ---

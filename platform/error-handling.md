@@ -220,6 +220,7 @@ All services must return errors in the following JSON format:
 | Code | HTTP | Description |
 |---|---|---|
 | ARTIST_NOT_FOUND | 404 | Artist account does not exist (`POST /api/community/subscriptions/artists/{artistAccountId}`) |
+| POST_STATUS_TRANSITION_INVALID | 422 | Post status transition is not allowed (e.g., DELETED → *) (`PATCH /api/community/posts/{postId}/status`) |
 
 ## Signup  `[domain: saas]`
 
