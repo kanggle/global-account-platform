@@ -72,7 +72,7 @@ class PostRepositoryIntegrationTest extends CommunityIntegrationTestBase {
         String artistId = "artist-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s -> {
-            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistId));
+            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistId, Instant.now()));
             postJpaRepository.save(createPublishedPost(artistId, "Published-1"));
             postJpaRepository.save(createDraftPost(artistId, "Draft-1"));
         });
@@ -92,7 +92,7 @@ class PostRepositoryIntegrationTest extends CommunityIntegrationTestBase {
         String artistB = "artist-b-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s -> {
-            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistA));
+            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistA, Instant.now()));
             postJpaRepository.save(createPublishedPost(artistA, "ArtistA-Post"));
             postJpaRepository.save(createPublishedPost(artistB, "ArtistB-Post"));
         });
@@ -112,7 +112,7 @@ class PostRepositoryIntegrationTest extends CommunityIntegrationTestBase {
         String artistId = "artist-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s -> {
-            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistId));
+            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistId, Instant.now()));
             Post live = createPublishedPost(artistId, "Live-Post");
             postJpaRepository.save(live);
 
@@ -159,7 +159,7 @@ class PostRepositoryIntegrationTest extends CommunityIntegrationTestBase {
         String artistId = "artist-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s -> {
-            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistId));
+            feedSubscriptionJpaRepository.save(FeedSubscription.create(fanId, artistId, Instant.now()));
             for (int i = 0; i < 5; i++) {
                 Post p = createPublishedPost(artistId, "P-" + i);
                 postJpaRepository.save(p);

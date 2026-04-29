@@ -27,11 +27,11 @@ public class FeedSubscription {
     @Column(name = "followed_at", nullable = false)
     private Instant followedAt;
 
-    public static FeedSubscription create(String fanAccountId, String artistAccountId) {
+    public static FeedSubscription create(String fanAccountId, String artistAccountId, Instant followedAt) {
         FeedSubscription fs = new FeedSubscription();
         fs.fanAccountId = fanAccountId;
         fs.artistAccountId = artistAccountId;
-        fs.followedAt = Instant.now();
+        fs.followedAt = followedAt;
         return fs;
     }
 

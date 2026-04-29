@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,7 +34,7 @@ class FeedSubscriptionRepositoryIntegrationTest extends CommunityIntegrationTest
         String artistId = "artist-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s ->
-                repository.save(FeedSubscription.create(fanId, artistId)));
+                repository.save(FeedSubscription.create(fanId, artistId, Instant.now())));
 
         Optional<FeedSubscription> found = repository.find(fanId, artistId);
         assertThat(found).isPresent();
@@ -48,7 +49,7 @@ class FeedSubscriptionRepositoryIntegrationTest extends CommunityIntegrationTest
         String artistId = "artist-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s ->
-                repository.save(FeedSubscription.create(fanId, artistId)));
+                repository.save(FeedSubscription.create(fanId, artistId, Instant.now())));
 
         assertThat(repository.exists(fanId, artistId)).isTrue();
     }
@@ -70,7 +71,7 @@ class FeedSubscriptionRepositoryIntegrationTest extends CommunityIntegrationTest
         String artistId = "artist-" + UUID.randomUUID();
 
         transactionTemplate.executeWithoutResult(s ->
-                repository.save(FeedSubscription.create(fanId, artistId)));
+                repository.save(FeedSubscription.create(fanId, artistId, Instant.now())));
 
         assertThat(repository.exists(fanId, artistId)).isTrue();
 

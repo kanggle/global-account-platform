@@ -22,6 +22,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -69,7 +70,7 @@ class PostJpaRepositoryTest {
     @DisplayName("findFeedForFan — 구독한 아티스트의 발행 포스트 반환")
     void findFeedForFan_subscribedArtistPublishedPost_returnsPost() {
         String fan = uuid(), artist = uuid();
-        feedRepo.saveAndFlush(FeedSubscription.create(fan, artist));
+        feedRepo.saveAndFlush(FeedSubscription.create(fan, artist, Instant.now()));
         Post post = Post.createDraft(artist, PostType.ARTIST_POST, PostVisibility.PUBLIC, "Title", "Body", null);
         post.publish(ActorType.AUTHOR);
         postRepo.saveAndFlush(post);
@@ -84,7 +85,7 @@ class PostJpaRepositoryTest {
     @DisplayName("findFeedForFan — DRAFT 포스트는 피드에서 제외")
     void findFeedForFan_draftPost_excluded() {
         String fan = uuid(), artist = uuid();
-        feedRepo.saveAndFlush(FeedSubscription.create(fan, artist));
+        feedRepo.saveAndFlush(FeedSubscription.create(fan, artist, Instant.now()));
         postRepo.saveAndFlush(
                 Post.createDraft(artist, PostType.ARTIST_POST, PostVisibility.PUBLIC, "Title", "Body", null));
 
@@ -97,7 +98,7 @@ class PostJpaRepositoryTest {
     @DisplayName("findFeedForFan — 미구독 아티스트 포스트는 피드에서 제외")
     void findFeedForFan_unsubscribedArtist_excluded() {
         String fan = uuid(), artist = uuid(), other = uuid();
-        feedRepo.saveAndFlush(FeedSubscription.create(fan, artist));
+        feedRepo.saveAndFlush(FeedSubscription.create(fan, artist, Instant.now()));
         Post post = Post.createDraft(other, PostType.ARTIST_POST, PostVisibility.PUBLIC, "Title", "Body", null);
         post.publish(ActorType.AUTHOR);
         postRepo.saveAndFlush(post);

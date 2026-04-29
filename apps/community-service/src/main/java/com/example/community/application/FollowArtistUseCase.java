@@ -9,12 +9,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
+
 @Service
 @RequiredArgsConstructor
 public class FollowArtistUseCase {
 
     private final FeedSubscriptionRepository subscriptionRepository;
     private final ArtistAccountChecker artistAccountChecker;
+    private final Clock clock;
 
     public record FollowResult(String fanAccountId, String artistAccountId,
                                java.time.Instant followedAt) {}
@@ -28,7 +32,8 @@ public class FollowArtistUseCase {
         if (subscriptionRepository.exists(fanAccountId, artistAccountId)) {
             throw new AlreadyFollowingException();
         }
-        FeedSubscription saved = subscriptionRepository.save(FeedSubscription.create(fanAccountId, artistAccountId));
+        Instant now = clock.instant();
+        FeedSubscription saved = subscriptionRepository.save(FeedSubscription.create(fanAccountId, artistAccountId, now));
         return new FollowResult(saved.getFanAccountId(), saved.getArtistAccountId(), saved.getFollowedAt());
     }
 

@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -60,7 +61,7 @@ class FeedSubscriptionJpaRepositoryTest {
     @DisplayName("findByFanAccountIdAndArtistAccountId — 구독 반환")
     void findByFanAccountIdAndArtistAccountId_existing_returnsSubscription() {
         String fan = uuid(), artist = uuid();
-        repo.saveAndFlush(FeedSubscription.create(fan, artist));
+        repo.saveAndFlush(FeedSubscription.create(fan, artist, Instant.now()));
 
         Optional<FeedSubscription> result =
                 repo.findByFanAccountIdAndArtistAccountId(fan, artist);
@@ -82,7 +83,7 @@ class FeedSubscriptionJpaRepositoryTest {
     @DisplayName("existsByFanAccountIdAndArtistAccountId — 구독 존재 → true")
     void existsByFanAccountIdAndArtistAccountId_existing_returnsTrue() {
         String fan = uuid(), artist = uuid();
-        repo.saveAndFlush(FeedSubscription.create(fan, artist));
+        repo.saveAndFlush(FeedSubscription.create(fan, artist, Instant.now()));
 
         assertThat(repo.existsByFanAccountIdAndArtistAccountId(fan, artist)).isTrue();
     }
