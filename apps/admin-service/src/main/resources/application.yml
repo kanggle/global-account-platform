@@ -1,25 +1,14 @@
 spring:
   application:
     name: admin-service
+  config:
+    import: optional:classpath:application-defaults.yml
 
   datasource:
     url: jdbc:mysql://localhost:3306/admin_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:admin_user}
     password: ${DB_PASSWORD:admin_pass}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 3000
-
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
-        format_sql: false
 
   flyway:
     enabled: true
@@ -48,11 +37,6 @@ spring:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 1
 
-  jackson:
-    default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
-
 outbox:
   polling:
     interval-ms: ${OUTBOX_POLLING_INTERVAL_MS:1000}
@@ -70,16 +54,12 @@ management:
         include: health,info,prometheus,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
-      show-details: always
       group:
         circuitbreakers:
           include: circuitBreakers
   health:
     circuitbreakers:
       enabled: true
-  metrics:
-    tags:
-      service: ${spring.application.name}
 
 admin:
   permission-cache:

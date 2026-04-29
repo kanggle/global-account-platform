@@ -1,25 +1,14 @@
 spring:
   application:
     name: community-service
+  config:
+    import: optional:classpath:application-defaults.yml
 
   datasource:
     url: jdbc:mysql://localhost:3306/community_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:community_user}
     password: ${DB_PASSWORD:community_pass}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 3000
-
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
-        format_sql: false
 
   flyway:
     enabled: true
@@ -43,11 +32,6 @@ spring:
     caffeine:
       spec: maximumSize=10000,expireAfterWrite=5m
 
-  jackson:
-    default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
-
 outbox:
   polling:
     interval-ms: ${OUTBOX_POLLING_INTERVAL_MS:1000}
@@ -55,18 +39,6 @@ outbox:
 
 server:
   port: 8086
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus
-  endpoint:
-    health:
-      show-details: always
-  metrics:
-    tags:
-      service: ${spring.application.name}
 
 community:
   jwt:
