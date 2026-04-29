@@ -135,7 +135,7 @@ query → domain (via SecurityQueryService, read-only JPA 경로)
 ## Integration Rules
 
 - **이벤트 구독**: [specs/contracts/events/auth-events.md](../../contracts/events/) — 위 5개 토픽
-- **이벤트 발행**: [specs/contracts/events/security-events.md](../../contracts/events/) — `suspicious.detected`, `auto.lock.triggered`
+- **이벤트 발행**: [specs/contracts/events/security-events.md](../../contracts/events/) — `suspicious.detected`, `auto.lock.triggered`, `auto.lock.pending`
 - **HTTP 컨트랙트 (내부 query)**: [specs/contracts/http/security-query-api.md](../../contracts/http/) — 읽기 전용
 - **HTTP 컨트랙트 (out-going)**: [specs/contracts/http/internal/security-to-account.md](../../contracts/http/internal/) — 자동 잠금 명령
 - **퍼시스턴스**: MySQL — `login_history` (append-only), `suspicious_events`, `processed_events` (dedup), `outbox_events`
