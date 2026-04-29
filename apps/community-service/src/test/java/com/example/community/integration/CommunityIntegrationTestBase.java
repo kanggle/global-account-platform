@@ -3,6 +3,7 @@ package com.example.community.integration;
 import com.example.testsupport.integration.AbstractIntegrationTest;
 import com.gap.security.jwt.Rs256JwtSigner;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,32 +26,23 @@ import java.util.Map;
  * Shared base class for community-service integration tests (TASK-BE-149).
  *
  * <p>Extends {@link AbstractIntegrationTest} to inherit the JVM-shared MySQL + Kafka
- * Testcontainers. Adds two service-local WireMock servers on fixed ports
- * (membership-service @ 18083, account-service @ 18084) matching the URLs declared
- * in {@code application-test.yml}, plus an RS256 JWT signer using the same key pair
+ * Testcontainers. Adds two service-local WireMock servers on dynamic ports for
+ * membership-service and account-service, plus an RS256 JWT signer using the same key pair
  * as the runtime {@code keys/public.pem}.
  *
  * <p>Subclasses inherit the {@code @ActiveProfiles("test")} pin and the Docker
- * availability gate; they should declare {@code @SpringBootTest} (and optionally
- * {@code @AutoConfigureMockMvc}) themselves.
+ * availability gate (via {@link AbstractIntegrationTest}); they should declare
+ * {@code @SpringBootTest} (and optionally {@code @AutoConfigureMockMvc}) themselves.
  */
 @ActiveProfiles("test")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 public abstract class CommunityIntegrationTestBase extends AbstractIntegrationTest {
 
-    protected static final WireMockServer MEMBERSHIP_WM = new WireMockServer(18083);
-    protected static final WireMockServer ACCOUNT_WM = new WireMockServer(18084);
+    protected static final WireMockServer MEMBERSHIP_WM =
+            new WireMockServer(WireMockConfiguration.options().dynamicPort());
+    protected static final WireMockServer ACCOUNT_WM =
+            new WireMockServer(WireMockConfiguration.options().dynamicPort());
 
     private static Rs256JwtSigner signer;
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     @BeforeAll
     static void startWireMock() throws Exception {
@@ -81,8 +73,8 @@ public abstract class CommunityIntegrationTestBase extends AbstractIntegrationTe
 
     @DynamicPropertySource
     static void configureWireMock(DynamicPropertyRegistry registry) {
-        registry.add("community.membership-service.base-url", () -> "http://localhost:18083");
-        registry.add("community.account-service.base-url", () -> "http://localhost:18084");
+        registry.add("community.membership-service.base-url", MEMBERSHIP_WM::baseUrl);
+        registry.add("community.account-service.base-url", ACCOUNT_WM::baseUrl);
     }
 
     protected String bearerToken(String accountId, List<String> roles) {

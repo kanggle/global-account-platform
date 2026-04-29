@@ -1,5 +1,6 @@
 package com.example.gateway.integration;
 
+import com.example.testsupport.integration.DockerAvailableCondition;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import io.jsonwebtoken.Jwts;
@@ -8,7 +9,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
@@ -31,18 +32,9 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-@EnabledIf("isDockerAvailable")
+@ExtendWith(DockerAvailableCondition.class)
 @DisplayName("Gateway Resilience 통합 테스트 — JWKS rotation · 다운스트림 오류 · force-invalidated token")
 class GatewayResilienceIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     @SuppressWarnings("resource")
     @Container

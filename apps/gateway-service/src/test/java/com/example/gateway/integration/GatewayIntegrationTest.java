@@ -1,5 +1,6 @@
 package com.example.gateway.integration;
 
+import com.example.testsupport.integration.DockerAvailableCondition;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import io.jsonwebtoken.Jwts;
@@ -8,7 +9,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
@@ -29,24 +30,11 @@ import java.util.Date;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 
-// Note: @EnabledIf is used instead of Assumptions.assumeTrue in @BeforeAll because
-// @Testcontainers initializes containers before @BeforeAll runs, causing
-// IllegalStateException when Docker is unavailable. @EnabledIf evaluates before
-// container initialization, cleanly skipping the entire test class.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
-@EnabledIf("isDockerAvailable")
+@ExtendWith(DockerAvailableCondition.class)
 @DisplayName("Gateway 통합 테스트")
 class GatewayIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
     @SuppressWarnings("resource")
     @Container
