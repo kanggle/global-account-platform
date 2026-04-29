@@ -26,7 +26,7 @@ import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TokenValidator 단위 테스트")
-class TokenValidatorTest {
+class TokenValidatorUnitTest {
 
     private static final String EXPECTED_ISSUER = "global-account-platform";
 

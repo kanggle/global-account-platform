@@ -21,7 +21,7 @@ import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TokenBucketRateLimiter 단위 테스트")
-class TokenBucketRateLimiterTest {
+class TokenBucketRateLimiterUnitTest {
 
     @Mock
     private ReactiveStringRedisTemplate redisTemplate;

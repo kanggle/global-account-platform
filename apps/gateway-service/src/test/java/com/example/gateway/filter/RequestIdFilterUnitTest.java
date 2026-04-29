@@ -21,7 +21,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RequestIdFilter 단위 테스트")
-class RequestIdFilterTest {
+class RequestIdFilterUnitTest {
 
     @Mock
     private GatewayFilterChain chain;

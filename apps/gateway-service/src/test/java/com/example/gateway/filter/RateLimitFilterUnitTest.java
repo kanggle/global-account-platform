@@ -29,7 +29,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RateLimitFilter 단위 테스트")
-class RateLimitFilterTest {
+class RateLimitFilterUnitTest {
 
     @Mock
     private TokenBucketRateLimiter rateLimiter;

@@ -24,7 +24,7 @@ import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("LoggingFilter 단위 테스트")
-class LoggingFilterTest {
+class LoggingFilterUnitTest {
 
     @Mock
     private GatewayFilterChain chain;

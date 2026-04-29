@@ -34,7 +34,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("JwtAuthenticationFilter 단위 테스트")
-class JwtAuthenticationFilterTest {
+class JwtAuthenticationFilterUnitTest {
 
     @Mock
     private TokenValidator tokenValidator;
