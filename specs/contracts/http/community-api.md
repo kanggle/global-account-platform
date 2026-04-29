@@ -87,6 +87,69 @@ Base path: `/api/community`
 
 ---
 
+## PATCH /api/community/posts/{postId}
+
+포스트 내용 수정. 작성자 본인만 가능.
+
+**Auth required**: Yes (JWT Bearer)
+
+**Request body** (모든 필드 optional — 전달된 필드만 업데이트):
+```json
+{
+  "title": "string",
+  "body": "string",
+  "mediaUrls": ["string"]
+}
+```
+
+**Response 200**:
+```json
+{
+  "postId": "string",
+  "title": "string",
+  "body": "string",
+  "mediaUrls": ["string"],
+  "updatedAt": "2026-04-30T12:00:00Z"
+}
+```
+
+**Errors**:
+| Status | Code | 조건 |
+|---|---|---|
+| 404 | POST_NOT_FOUND | 미존재 또는 DELETED |
+| 403 | PERMISSION_DENIED | 작성자 본인이 아닌 경우 |
+| 422 | VALIDATION_ERROR | body 없음, 길이 초과 |
+
+---
+
+## PATCH /api/community/posts/{postId}/status
+
+포스트 상태 전이. 아티스트가 자신의 포스트에 대해 호출.
+
+허용 전이 (ARTIST): `DRAFT → PUBLISHED`, `PUBLISHED → HIDDEN`, `PUBLISHED → DELETED`
+
+**Auth required**: Yes (JWT Bearer)
+
+**Request body**:
+```json
+{
+  "status": "PUBLISHED | HIDDEN | DELETED",
+  "reason": "string (optional)"
+}
+```
+
+**Response 204**: (본문 없음)
+
+**Errors**:
+| Status | Code | 조건 |
+|---|---|---|
+| 404 | POST_NOT_FOUND | 미존재 또는 DELETED |
+| 403 | PERMISSION_DENIED | 작성자 본인이 아닌 경우 |
+| 422 | STATE_TRANSITION_INVALID | 허용되지 않는 전이 (예: DELETED→*) |
+| 422 | VALIDATION_ERROR | status 필드 없음 또는 유효하지 않은 값 |
+
+---
+
 ## GET /api/community/feed
 
 팔로잉 아티스트 기반 피드 조회. 최신순 페이지네이션.
