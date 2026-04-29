@@ -17,7 +17,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisKnownDeviceStore 단위 테스트")
-class RedisKnownDeviceStoreTest {
+class RedisKnownDeviceStoreUnitTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock SetOperations<String, String> setOps;

@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisVelocityCounter 단위 테스트")
-class RedisVelocityCounterTest {
+class RedisVelocityCounterUnitTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock ValueOperations<String, String> valueOps;

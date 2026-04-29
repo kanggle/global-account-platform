@@ -15,7 +15,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -23,8 +22,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("TokenReuseDetectedConsumer 단위 테스트")
-class TokenReuseDetectedConsumerTest {
+@DisplayName("LoginFailedConsumer 단위 테스트")
+class LoginFailedConsumerUnitTest {
 
     @Mock EventDedupService dedupService;
     @Mock RecordLoginHistoryUseCase recordLoginHistoryUseCase;
@@ -32,24 +31,24 @@ class TokenReuseDetectedConsumerTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private TokenReuseDetectedConsumer consumer() {
-        return new TokenReuseDetectedConsumer(objectMapper, dedupService, recordLoginHistoryUseCase, detectUseCase);
+    private LoginFailedConsumer consumer() {
+        return new LoginFailedConsumer(objectMapper, dedupService, recordLoginHistoryUseCase, detectUseCase);
     }
 
     private ConsumerRecord<String, String> record(String value) {
-        return new ConsumerRecord<>("auth.token.reuse.detected", 0, 0L, "key", value);
+        return new ConsumerRecord<>("auth.login.failed", 0, 0L, "key", value);
     }
 
     @Test
-    @DisplayName("정상 처리 — outcome=TOKEN_REUSE")
-    void onMessage_validEvent_executesWithTokenReuseOutcome() {
-        when(dedupService.isDuplicate("evt-reuse-1")).thenReturn(false);
+    @DisplayName("failureReason 없음 → outcome=FAILURE")
+    void onMessage_noFailureReason_executesWithFailureOutcome() {
+        when(dedupService.isDuplicate("evt-fail-1")).thenReturn(false);
         when(recordLoginHistoryUseCase.execute(any(LoginHistoryEntry.class), anyString())).thenReturn(true);
 
         String json = """
                 {
-                  "eventId": "evt-reuse-1",
-                  "eventType": "auth.token.reuse.detected",
+                  "eventId": "evt-fail-1",
+                  "eventType": "auth.login.failed",
                   "occurredAt": "2026-04-29T10:00:00Z",
                   "payload": {
                     "accountId": "acc-1",
@@ -63,34 +62,50 @@ class TokenReuseDetectedConsumerTest {
 
         ArgumentCaptor<LoginHistoryEntry> captor = ArgumentCaptor.forClass(LoginHistoryEntry.class);
         verify(recordLoginHistoryUseCase).execute(captor.capture(), anyString());
-        assertThat(captor.getValue().getOutcome()).isEqualTo(LoginOutcome.TOKEN_REUSE);
-        verify(dedupService).markProcessedInRedis("evt-reuse-1");
+        assertThat(captor.getValue().getOutcome()).isEqualTo(LoginOutcome.FAILURE);
     }
 
     @Test
-    @DisplayName("Redis dedup hit — execute 미호출")
-    void onMessage_redisDedupHit_skipsExecution() {
-        when(dedupService.isDuplicate("evt-reuse-dup")).thenReturn(true);
+    @DisplayName("failureReason=RATE_LIMITED → outcome=RATE_LIMITED (resolveOutcome 재정의)")
+    void onMessage_rateLimitedReason_executesWithRateLimitedOutcome() {
+        when(dedupService.isDuplicate("evt-fail-2")).thenReturn(false);
+        when(recordLoginHistoryUseCase.execute(any(LoginHistoryEntry.class), anyString())).thenReturn(true);
 
         String json = """
                 {
-                  "eventId": "evt-reuse-dup",
-                  "eventType": "auth.token.reuse.detected",
+                  "eventId": "evt-fail-2",
+                  "eventType": "auth.login.failed",
                   "occurredAt": "2026-04-29T10:00:00Z",
-                  "payload": { "accountId": "acc-2", "timestamp": "2026-04-29T10:00:00Z" }
+                  "payload": {
+                    "accountId": "acc-2",
+                    "failureReason": "RATE_LIMITED",
+                    "timestamp": "2026-04-29T10:00:00Z"
+                  }
                 }
                 """;
 
         consumer().onMessage(record(json));
 
-        verify(recordLoginHistoryUseCase, never()).execute(any(), any());
+        ArgumentCaptor<LoginHistoryEntry> captor = ArgumentCaptor.forClass(LoginHistoryEntry.class);
+        verify(recordLoginHistoryUseCase).execute(captor.capture(), anyString());
+        assertThat(captor.getValue().getOutcome()).isEqualTo(LoginOutcome.RATE_LIMITED);
     }
 
     @Test
-    @DisplayName("Malformed JSON — RuntimeException 전파 (DLQ 라우팅)")
-    void onMessage_malformedJson_throwsRuntimeException() {
-        assertThatThrownBy(() -> consumer().onMessage(record("not json {{{")))
-                .isInstanceOf(RuntimeException.class);
+    @DisplayName("Redis dedup hit — execute 미호출")
+    void onMessage_redisDedupHit_skipsExecution() {
+        when(dedupService.isDuplicate("evt-fail-dup")).thenReturn(true);
+
+        String json = """
+                {
+                  "eventId": "evt-fail-dup",
+                  "eventType": "auth.login.failed",
+                  "occurredAt": "2026-04-29T10:00:00Z",
+                  "payload": { "accountId": "acc-3", "timestamp": "2026-04-29T10:00:00Z" }
+                }
+                """;
+
+        consumer().onMessage(record(json));
 
         verify(recordLoginHistoryUseCase, never()).execute(any(), any());
     }

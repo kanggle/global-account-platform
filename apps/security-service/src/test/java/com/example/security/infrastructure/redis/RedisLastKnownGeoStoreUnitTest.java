@@ -24,7 +24,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisLastKnownGeoStore 단위 테스트")
-class RedisLastKnownGeoStoreTest {
+class RedisLastKnownGeoStoreUnitTest {
 
     @Mock StringRedisTemplate redisTemplate;
     @Mock HashOperations<String, Object, Object> hashOps;

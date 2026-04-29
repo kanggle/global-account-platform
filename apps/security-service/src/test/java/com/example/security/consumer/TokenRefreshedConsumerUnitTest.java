@@ -26,7 +26,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("TokenRefreshedConsumer 단위 테스트")
-class TokenRefreshedConsumerTest {
+class TokenRefreshedConsumerUnitTest {
 
     @Mock EventDedupService dedupService;
     @Mock RecordLoginHistoryUseCase recordLoginHistoryUseCase;

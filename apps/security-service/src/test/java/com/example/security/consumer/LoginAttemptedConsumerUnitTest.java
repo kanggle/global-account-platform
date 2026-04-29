@@ -22,8 +22,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("LoginFailedConsumer 단위 테스트")
-class LoginFailedConsumerTest {
+@DisplayName("LoginAttemptedConsumer 단위 테스트")
+class LoginAttemptedConsumerUnitTest {
 
     @Mock EventDedupService dedupService;
     @Mock RecordLoginHistoryUseCase recordLoginHistoryUseCase;
@@ -31,24 +31,24 @@ class LoginFailedConsumerTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private LoginFailedConsumer consumer() {
-        return new LoginFailedConsumer(objectMapper, dedupService, recordLoginHistoryUseCase, detectUseCase);
+    private LoginAttemptedConsumer consumer() {
+        return new LoginAttemptedConsumer(objectMapper, dedupService, recordLoginHistoryUseCase, detectUseCase);
     }
 
     private ConsumerRecord<String, String> record(String value) {
-        return new ConsumerRecord<>("auth.login.failed", 0, 0L, "key", value);
+        return new ConsumerRecord<>("auth.login.attempted", 0, 0L, "key", value);
     }
 
     @Test
-    @DisplayName("failureReason 없음 → outcome=FAILURE")
-    void onMessage_noFailureReason_executesWithFailureOutcome() {
-        when(dedupService.isDuplicate("evt-fail-1")).thenReturn(false);
+    @DisplayName("정상 처리 — outcome=ATTEMPTED 로 execute 호출")
+    void onMessage_validEvent_executesWithAttemptedOutcome() {
+        when(dedupService.isDuplicate("evt-atm-1")).thenReturn(false);
         when(recordLoginHistoryUseCase.execute(any(LoginHistoryEntry.class), anyString())).thenReturn(true);
 
         String json = """
                 {
-                  "eventId": "evt-fail-1",
-                  "eventType": "auth.login.failed",
+                  "eventId": "evt-atm-1",
+                  "eventType": "auth.login.attempted",
                   "occurredAt": "2026-04-29T10:00:00Z",
                   "payload": {
                     "accountId": "acc-1",
@@ -62,44 +62,36 @@ class LoginFailedConsumerTest {
 
         ArgumentCaptor<LoginHistoryEntry> captor = ArgumentCaptor.forClass(LoginHistoryEntry.class);
         verify(recordLoginHistoryUseCase).execute(captor.capture(), anyString());
-        assertThat(captor.getValue().getOutcome()).isEqualTo(LoginOutcome.FAILURE);
-    }
-
-    @Test
-    @DisplayName("failureReason=RATE_LIMITED → outcome=RATE_LIMITED (resolveOutcome 재정의)")
-    void onMessage_rateLimitedReason_executesWithRateLimitedOutcome() {
-        when(dedupService.isDuplicate("evt-fail-2")).thenReturn(false);
-        when(recordLoginHistoryUseCase.execute(any(LoginHistoryEntry.class), anyString())).thenReturn(true);
-
-        String json = """
-                {
-                  "eventId": "evt-fail-2",
-                  "eventType": "auth.login.failed",
-                  "occurredAt": "2026-04-29T10:00:00Z",
-                  "payload": {
-                    "accountId": "acc-2",
-                    "failureReason": "RATE_LIMITED",
-                    "timestamp": "2026-04-29T10:00:00Z"
-                  }
-                }
-                """;
-
-        consumer().onMessage(record(json));
-
-        ArgumentCaptor<LoginHistoryEntry> captor = ArgumentCaptor.forClass(LoginHistoryEntry.class);
-        verify(recordLoginHistoryUseCase).execute(captor.capture(), anyString());
-        assertThat(captor.getValue().getOutcome()).isEqualTo(LoginOutcome.RATE_LIMITED);
+        assertThat(captor.getValue().getOutcome()).isEqualTo(LoginOutcome.ATTEMPTED);
+        verify(dedupService).markProcessedInRedis("evt-atm-1");
     }
 
     @Test
     @DisplayName("Redis dedup hit — execute 미호출")
     void onMessage_redisDedupHit_skipsExecution() {
-        when(dedupService.isDuplicate("evt-fail-dup")).thenReturn(true);
+        when(dedupService.isDuplicate("evt-atm-dup")).thenReturn(true);
 
         String json = """
                 {
-                  "eventId": "evt-fail-dup",
-                  "eventType": "auth.login.failed",
+                  "eventId": "evt-atm-dup",
+                  "eventType": "auth.login.attempted",
+                  "occurredAt": "2026-04-29T10:00:00Z",
+                  "payload": { "accountId": "acc-2", "timestamp": "2026-04-29T10:00:00Z" }
+                }
+                """;
+
+        consumer().onMessage(record(json));
+
+        verify(recordLoginHistoryUseCase, never()).execute(any(), any());
+    }
+
+    @Test
+    @DisplayName("eventId 공백 — 조용히 skip, execute 미호출")
+    void onMessage_blankEventId_silentlySkips() {
+        String json = """
+                {
+                  "eventId": "",
+                  "eventType": "auth.login.attempted",
                   "occurredAt": "2026-04-29T10:00:00Z",
                   "payload": { "accountId": "acc-3", "timestamp": "2026-04-29T10:00:00Z" }
                 }
@@ -107,6 +99,7 @@ class LoginFailedConsumerTest {
 
         consumer().onMessage(record(json));
 
+        verify(dedupService, never()).isDuplicate(anyString());
         verify(recordLoginHistoryUseCase, never()).execute(any(), any());
     }
 }
