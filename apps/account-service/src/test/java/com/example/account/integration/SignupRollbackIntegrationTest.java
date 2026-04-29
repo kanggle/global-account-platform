@@ -3,6 +3,7 @@ package com.example.account.integration;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.account.infrastructure.persistence.ProfileJpaRepository;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import org.junit.jupiter.api.AfterAll;
@@ -19,8 +20,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
@@ -42,35 +41,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @AutoConfigureMockMvc
 @DisplayName("TASK-BE-065: signup rollback on auth-service 5xx")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-class SignupRollbackIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
-
-    @SuppressWarnings("resource")
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("account_db")
-            .withUsername("account_user")
-            .withPassword("account_pass")
-            .withCommand("mysqld",
-                    "--default-authentication-plugin=mysql_native_password",
-                    "--log-bin-trust-function-creators=1");
+class SignupRollbackIntegrationTest extends AbstractIntegrationTest {
 
     static WireMockServer wireMock;
 
     @DynamicPropertySource
     static void overrideProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
         registry.add("spring.flyway.enabled", () -> "true");
         registry.add("internal.api.token", () -> "test-internal-token");
         // Tighten retry timings so the 2-retry path finishes quickly in test
