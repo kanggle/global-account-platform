@@ -22,10 +22,10 @@ import org.springframework.context.annotation.Bean;
  */
 @AutoConfiguration(after = OutboxAutoConfiguration.class)
 @ConditionalOnClass(MeterRegistry.class)
-@ConditionalOnMissingBean(OutboxFailureHandler.class)
 public class OutboxMetricsAutoConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean(OutboxFailureHandler.class)
     OutboxFailureHandler defaultOutboxFailureHandler(
             MeterRegistry meterRegistry,
             @Value("${spring.application.name:application}") String appName) {
