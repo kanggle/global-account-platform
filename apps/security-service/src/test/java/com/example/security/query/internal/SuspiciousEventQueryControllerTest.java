@@ -8,17 +8,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -29,20 +31,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Verifies:
  * <ul>
- *   <li>internal token authentication via {@link InternalAuthFilter} (operator authentication)</li>
+ *   <li>internal token authentication via {@link InternalAuthFilter}</li>
  *   <li>read-only query response shape (PII-safe — evidence is rule-supplied, no raw IP/email)</li>
- *   <li>error mapping through {@link QueryExceptionHandler} (which extends the platform
- *       {@code CommonGlobalExceptionHandler}) for {@code MissingServletRequestParameterException},
- *       {@code IllegalArgumentException}, and {@code MethodArgumentTypeMismatchException}</li>
+ *   <li>error mapping through {@link QueryExceptionHandler} for missing params and type mismatch</li>
+ *   <li>size cap at 100</li>
+ *   <li>ruleCode filter passthrough to service</li>
  * </ul>
- *
- * <p>The {@code from}/{@code to} query parameters are declared as {@code String} on this
- * controller and parsed via {@code Instant.parse(...)} which raises a
- * {@link java.time.format.DateTimeParseException} — that is not handled by either
- * {@code QueryExceptionHandler} or {@code CommonGlobalExceptionHandler} and thus falls
- * through to the catch-all 500 handler. Type-mismatch coverage here therefore exercises
- * the {@code page}/{@code size} integer parameters which Spring binds via
- * {@code MethodArgumentTypeMismatchException}.
  */
 @WebMvcTest(controllers = SuspiciousEventQueryController.class)
 @Import({QueryExceptionHandler.class, InternalAuthFilter.class})
@@ -91,7 +85,7 @@ class SuspiciousEventQueryControllerTest {
     @Test
     @DisplayName("서비스가 IllegalArgumentException을 던지면 400 VALIDATION_ERROR 응답을 반환한다")
     void getSuspiciousEvents_serviceThrowsIllegalArgument_returns400() throws Exception {
-        when(queryService.findSuspiciousEvents(eq("acc-001"), any(Instant.class), any(Instant.class)))
+        when(queryService.findSuspiciousEvents(eq("acc-001"), any(Instant.class), any(Instant.class), isNull(), any()))
                 .thenThrow(new IllegalArgumentException("from must be before to"));
 
         mockMvc.perform(get("/internal/security/suspicious-events")
@@ -128,8 +122,8 @@ class SuspiciousEventQueryControllerTest {
                 "evt-1", "acc-001", "GEO_ANOMALY", 85, "AUTO_LOCK",
                 evidence, Instant.parse("2026-04-12T10:00:00Z"));
 
-        when(queryService.findSuspiciousEvents(eq("acc-001"), any(Instant.class), any(Instant.class)))
-                .thenReturn(List.of(view));
+        when(queryService.findSuspiciousEvents(eq("acc-001"), any(Instant.class), any(Instant.class), isNull(), any()))
+                .thenReturn(new PageImpl<>(List.of(view), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/internal/security/suspicious-events")
                         .header("X-Internal-Token", TOKEN)
@@ -142,7 +136,6 @@ class SuspiciousEventQueryControllerTest {
                 .andExpect(jsonPath("$.content[0].actionTaken").value("AUTO_LOCK"))
                 .andExpect(jsonPath("$.content[0].evidence.previousCountry").value("KR"))
                 .andExpect(jsonPath("$.content[0].evidence.currentCountry").value("US"))
-                // PII-safe assertions: response must not echo raw IP or email fields
                 .andExpect(jsonPath("$.content[0].ip").doesNotExist())
                 .andExpect(jsonPath("$.content[0].ipAddress").doesNotExist())
                 .andExpect(jsonPath("$.content[0].email").doesNotExist())
@@ -153,26 +146,39 @@ class SuspiciousEventQueryControllerTest {
     }
 
     @Test
+    @DisplayName("size가 100을 초과하면 100으로 캡 처리된다")
+    void getSuspiciousEvents_sizeOver100_isCappedAt100() throws Exception {
+        when(queryService.findSuspiciousEvents(eq("acc-001"), any(), any(), isNull(),
+                argThat(p -> p.getPageSize() == 100)))
+                .thenReturn(new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 100), 0));
+
+        mockMvc.perform(get("/internal/security/suspicious-events")
+                        .header("X-Internal-Token", TOKEN)
+                        .param("accountId", "acc-001")
+                        .param("size", "200"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(100));
+    }
+
+    @Test
     @DisplayName("ruleCode 파라미터로 결과를 필터링하여 200 응답을 반환한다")
     void getSuspiciousEvents_filterByRuleCode_returnsOnlyMatchingEvents() throws Exception {
         SuspiciousEventView geoEvent = new SuspiciousEventView(
                 "evt-1", "acc-001", "GEO_ANOMALY", 85, "AUTO_LOCK",
                 Map.of(), Instant.parse("2026-04-12T10:00:00Z"));
-        SuspiciousEventView velocityEvent = new SuspiciousEventView(
-                "evt-2", "acc-001", "VELOCITY", 70, "ALERT",
-                Map.of(), Instant.parse("2026-04-12T10:05:00Z"));
 
-        when(queryService.findSuspiciousEvents(eq("acc-001"), any(Instant.class), any(Instant.class)))
-                .thenReturn(List.of(geoEvent, velocityEvent));
+        when(queryService.findSuspiciousEvents(eq("acc-001"), any(Instant.class), any(Instant.class),
+                eq("GEO_ANOMALY"), any()))
+                .thenReturn(new PageImpl<>(List.of(geoEvent), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/internal/security/suspicious-events")
                         .header("X-Internal-Token", TOKEN)
                         .param("accountId", "acc-001")
-                        .param("ruleCode", "VELOCITY"))
+                        .param("ruleCode", "GEO_ANOMALY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(1))
-                .andExpect(jsonPath("$.content[0].id").value("evt-2"))
-                .andExpect(jsonPath("$.content[0].ruleCode").value("VELOCITY"))
+                .andExpect(jsonPath("$.content[0].id").value("evt-1"))
+                .andExpect(jsonPath("$.content[0].ruleCode").value("GEO_ANOMALY"))
                 .andExpect(jsonPath("$.totalElements").value(1));
     }
 }

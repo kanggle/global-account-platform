@@ -3,12 +3,14 @@ package com.example.security.query.internal;
 import com.example.security.query.SecurityQueryService;
 import com.example.security.query.dto.SuspiciousEventView;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,31 +28,29 @@ public class SuspiciousEventQueryController {
     @GetMapping("/suspicious-events")
     public ResponseEntity<?> getSuspiciousEvents(
             @RequestParam String accountId,
-            @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
             @RequestParam(required = false) String ruleCode,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Instant fromInstant = from == null ? Instant.EPOCH : Instant.parse(from);
-        Instant toInstant = to == null ? Instant.now().plusSeconds(60) : Instant.parse(to);
-
-        List<SuspiciousEventView> all = queryService.findSuspiciousEvents(accountId, fromInstant, toInstant);
-        if (ruleCode != null && !ruleCode.isBlank()) {
-            all = all.stream().filter(v -> ruleCode.equals(v.ruleCode())).toList();
+        if (size > 100) {
+            size = 100;
         }
 
-        int total = all.size();
-        int fromIdx = Math.min(page * size, total);
-        int toIdx = Math.min(fromIdx + size, total);
-        List<SuspiciousEventView> content = all.subList(fromIdx, toIdx);
+        Instant fromInstant = from == null ? Instant.EPOCH : from;
+        Instant toInstant = to == null ? Instant.now().plusSeconds(60) : to;
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<SuspiciousEventView> result = queryService.findSuspiciousEvents(
+                accountId, fromInstant, toInstant, ruleCode, pageable);
 
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("content", content);
-        response.put("page", page);
-        response.put("size", size);
-        response.put("totalElements", total);
-        response.put("totalPages", size == 0 ? 0 : (int) Math.ceil((double) total / size));
+        response.put("content", result.getContent());
+        response.put("page", result.getNumber());
+        response.put("size", result.getSize());
+        response.put("totalElements", result.getTotalElements());
+        response.put("totalPages", result.getTotalPages());
 
         return ResponseEntity.ok(response);
     }
