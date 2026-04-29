@@ -46,17 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 @ActiveProfiles("test")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka containers inherited from AbstractIntegrationTest (TASK-BE-076).
     // Redis is service-specific so stays declared here.

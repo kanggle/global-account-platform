@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gap.security.password.Argon2idPasswordHasher;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -37,17 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class AuthIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076/078).
     // Redis remains service-specific.
@@ -78,9 +69,9 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeAll
     static void startWireMock() {
-        wireMock = new WireMockServer(18082);
+        wireMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         wireMock.start();
-        WireMock.configureFor("localhost", 18082);
+        WireMock.configureFor("localhost", wireMock.port());
     }
 
     @AfterAll
@@ -95,7 +86,7 @@ class AuthIntegrationTest extends AbstractIntegrationTest {
         // MySQL + Kafka registered by AbstractIntegrationTest.
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        registry.add("auth.account-service.base-url", () -> "http://localhost:18082");
+        registry.add("auth.account-service.base-url", wireMock::baseUrl);
     }
 
     @BeforeEach
