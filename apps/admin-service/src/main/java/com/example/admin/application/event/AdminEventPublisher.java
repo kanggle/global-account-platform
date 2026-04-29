@@ -1,12 +1,11 @@
 package com.example.admin.application.event;
 
 import com.example.admin.application.Outcome;
-import com.example.admin.application.util.AdminPiiMaskingUtils;
 import com.example.common.id.UuidV7;
+import com.gap.security.pii.PiiMaskingUtils;
+import com.example.messaging.event.BaseEventPublisher;
 import com.example.messaging.outbox.OutboxWriter;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -31,19 +30,19 @@ import java.util.Map;
  * </pre>
  *
  * <p>{@code target.displayHint} is produced centrally here via
- * {@link AdminPiiMaskingUtils} when the target is an ACCOUNT identifier. All
+ * {@link PiiMaskingUtils} when the target is an ACCOUNT identifier. All
  * other target types emit a {@code null} displayHint so the consumer never
  * receives raw PII (rules/traits/regulated.md R4).
  */
 @Component
-@RequiredArgsConstructor
-public class AdminEventPublisher {
+public class AdminEventPublisher extends BaseEventPublisher {
 
     private static final String AGGREGATE_TYPE = "AdminAction";
     private static final String EVENT_TYPE = "admin.action.performed";
 
-    private final OutboxWriter outboxWriter;
-    private final ObjectMapper objectMapper;
+    public AdminEventPublisher(OutboxWriter outboxWriter, ObjectMapper objectMapper) {
+        super(outboxWriter, objectMapper);
+    }
 
     public void publishAdminActionPerformed(Envelope env) {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -73,19 +72,14 @@ public class AdminEventPublisher {
         payload.put("outcome", env.outcome() == null ? null : env.outcome().name());
         payload.put("reason", env.reason());
 
-        try {
-            String json = objectMapper.writeValueAsString(payload);
-            String aggregateId = env.targetId() != null ? env.targetId() : "-";
-            outboxWriter.save(AGGREGATE_TYPE, aggregateId, EVENT_TYPE, json);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to serialize admin.action.performed event", e);
-        }
+        String aggregateId = env.targetId() != null ? env.targetId() : "-";
+        saveEvent(AGGREGATE_TYPE, aggregateId, EVENT_TYPE, payload);
     }
 
     private static String displayHintFor(String targetType, String targetId) {
         if (targetType == null || targetId == null) return null;
         if (!"ACCOUNT".equals(targetType)) return null;
-        if (targetId.contains("@")) return AdminPiiMaskingUtils.maskEmail(targetId);
+        if (targetId.contains("@")) return PiiMaskingUtils.maskEmail(targetId);
         // UUID / numeric account ids are not PII; do not leak them into displayHint.
         return null;
     }

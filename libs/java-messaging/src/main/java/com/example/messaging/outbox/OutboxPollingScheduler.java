@@ -1,58 +1,89 @@
 package com.example.messaging.outbox;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.lang.Nullable;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
+import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Base class for Outbox polling scheduler.
+ * Outbox polling scheduler.
  *
- * Subclasses must implement {@link #resolveTopic(String)} to map event types
- * to Kafka topic names specific to each service.
+ * <p>Reads {@code outbox.topic-mapping} from configuration and publishes pending
+ * outbox rows to Kafka. Optional {@link OutboxFailureHandler} can be provided
+ * (e.g. to increment Micrometer counters) without adding Micrometer as a
+ * compile-time dependency to this library.
  *
- * Subclasses may override {@link #onKafkaSendFailure(String, String, Exception)}
- * to add service-specific failure handling (e.g., metrics recording).
+ * <h2>Lifecycle (TASK-BE-077)</h2>
  *
- * <p>Lifecycle note (TASK-BE-073): the polling loop guards against running
- * during Spring context shutdown. When the bean receives {@code @PreDestroy},
- * the {@code running} flag flips to {@code false}, causing any subsequent
- * scheduler tick to return immediately. This prevents
- * {@code CannotCreateTransactionException} storms when HikariCP has already
- * begun closing but a {@code @Scheduled} task was still in flight (observed
- * in Testcontainers-based integration tests that spin up and tear down
- * multiple Spring test contexts in the same JVM).</p>
+ * <p>Uses a dedicated {@link ThreadPoolTaskScheduler} ({@code outboxTaskScheduler})
+ * whose lifetime is bound to the owning {@code ApplicationContext}. This prevents
+ * the orphaned-thread / closing-pool issue described in PR #44 / TASK-BE-076.
  */
 @Slf4j
-@RequiredArgsConstructor
-public abstract class OutboxPollingScheduler {
+public class OutboxPollingScheduler {
 
     private final OutboxPublisher outboxPublisher;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ThreadPoolTaskScheduler taskScheduler;
+    private final Map<String, String> topicMapping;
+    @Nullable
+    private final OutboxFailureHandler failureHandler;
+
+    @Value("${outbox.polling.interval-ms:1000}")
+    private long intervalMs;
 
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private ScheduledFuture<?> scheduledFuture;
 
-    @Scheduled(fixedDelayString = "${outbox.polling.interval-ms:1000}")
-    public void pollAndPublish() {
-        if (!running.get()) {
-            // Context is shutting down; skip this tick so we don't touch a
-            // closing JDBC pool / transaction manager.
-            return;
-        }
-        outboxPublisher.publishPendingEvents(this::sendToKafka);
+    public OutboxPollingScheduler(OutboxPublisher outboxPublisher,
+                                  KafkaTemplate<String, String> kafkaTemplate,
+                                  ThreadPoolTaskScheduler outboxTaskScheduler,
+                                  OutboxProperties outboxProperties,
+                                  @Nullable OutboxFailureHandler failureHandler) {
+        this.outboxPublisher = outboxPublisher;
+        this.kafkaTemplate = kafkaTemplate;
+        this.taskScheduler = outboxTaskScheduler;
+        this.topicMapping = outboxProperties.getTopicMapping();
+        this.failureHandler = failureHandler;
     }
 
-    /**
-     * Stop accepting new poll ticks. Invoked by Spring when the bean is
-     * destroyed (typically during context shutdown). Idempotent.
-     */
+    @PostConstruct
+    public void start() {
+        scheduledFuture = taskScheduler.scheduleWithFixedDelay(
+                this::pollAndPublish, Duration.ofMillis(intervalMs));
+        log.info("OutboxPollingScheduler started: intervalMs={}", intervalMs);
+    }
+
+    public void pollAndPublish() {
+        if (!running.get()) {
+            return;
+        }
+        try {
+            outboxPublisher.publishPendingEvents(this::sendToKafka);
+        } catch (Exception e) {
+            if (!running.get()) {
+                log.debug("OutboxPollingScheduler tick failed during shutdown; suppressing.", e);
+            } else {
+                log.error("Unexpected error during outbox poll tick.", e);
+            }
+        }
+    }
+
     @PreDestroy
     public void stop() {
         if (running.compareAndSet(true, false)) {
-            log.info("OutboxPollingScheduler stop requested; subsequent ticks will be skipped.");
+            log.info("OutboxPollingScheduler stop requested; cancelling scheduled task.");
+            if (scheduledFuture != null) {
+                scheduledFuture.cancel(false);
+            }
         }
     }
 
@@ -63,29 +94,18 @@ public abstract class OutboxPollingScheduler {
             return true;
         } catch (Exception e) {
             log.error("Kafka send failed: eventType={}, aggregateId={}", eventType, aggregateId, e);
-            onKafkaSendFailure(eventType, aggregateId, e);
+            if (failureHandler != null) {
+                failureHandler.onFailure(eventType, aggregateId, e);
+            }
             return false;
         }
     }
 
-    /**
-     * Maps an event type to the corresponding Kafka topic name.
-     *
-     * @param eventType the domain event type name (e.g. "OrderPlaced")
-     * @return the Kafka topic name
-     * @throws IllegalArgumentException if the event type is unknown
-     */
-    protected abstract String resolveTopic(String eventType);
-
-    /**
-     * Hook called when Kafka send fails. Subclasses can override to record metrics
-     * or perform other failure handling.
-     *
-     * @param eventType   the event type that failed to send
-     * @param aggregateId the aggregate ID
-     * @param e           the exception that caused the failure
-     */
-    protected void onKafkaSendFailure(String eventType, String aggregateId, Exception e) {
-        // default: no additional handling
+    private String resolveTopic(String eventType) {
+        String topic = topicMapping.get(eventType);
+        if (topic == null) {
+            throw new IllegalStateException("No topic mapping for event type: " + eventType);
+        }
+        return topic;
     }
 }

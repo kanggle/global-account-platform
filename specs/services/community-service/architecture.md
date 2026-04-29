@@ -68,7 +68,9 @@ apps/community-service/src/main/java/com/example/community/
 │   │   └── repository/
 │   │       └── FeedSubscriptionRepository.java
 │   └── access/
-│       └── ContentAccessChecker.java    ← membership-service 호출 포트(인터페이스)
+│       ├── ContentAccessChecker.java    ← membership-service 호출 포트(인터페이스)
+│       ├── ArtistAccountChecker.java    ← account-service artist 존재 확인 포트(인터페이스)
+│       └── ArtistNotFoundException.java
 └── infrastructure/
     ├── persistence/
     │   ├── PostJpaEntity.java
@@ -81,7 +83,8 @@ apps/community-service/src/main/java/com/example/community/
     │   └── CommunityKafkaProducer.java
     ├── client/
     │   ├── MembershipAccessClient.java  ← ContentAccessChecker 구현체
-    │   └── AccountProfileClient.java    ← 작성자 표시명 조회
+    │   ├── AccountProfileClient.java    ← 작성자 표시명 조회
+    │   └── AccountExistenceClient.java  ← ArtistAccountChecker 구현체
     └── config/
 ```
 
@@ -126,6 +129,7 @@ presentation → application → domain
 
 - **HTTP 컨트랙트 (외부)**: [specs/contracts/http/community-api.md](../../contracts/http/community-api.md)
 - **HTTP 컨트랙트 (내부 발신)**: [specs/contracts/http/internal/community-to-membership.md](../../contracts/http/internal/community-to-membership.md)
+- **HTTP 컨트랙트 (내부 발신, account-service)**: [specs/contracts/http/internal/community-to-account.md](../../contracts/http/internal/community-to-account.md)
 - **이벤트 발행**: [specs/contracts/events/community-events.md](../../contracts/events/community-events.md) — `community.post.published`, `community.comment.created`, `community.reaction.added`
 - **퍼시스턴스**: MySQL (`community_db`) — `posts`, `post_status_history`, `comments`, `reactions`, `feed_subscriptions`, `outbox_events`
 

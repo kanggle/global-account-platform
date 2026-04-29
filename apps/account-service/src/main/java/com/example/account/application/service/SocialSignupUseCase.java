@@ -7,6 +7,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -24,17 +25,21 @@ public class SocialSignupUseCase {
 
     @Transactional
     public SocialSignupResult execute(SocialSignupCommand command) {
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        // introduces dynamic tenant injection from the JWT claim / X-Tenant-Id header.
+        TenantId tenantId = TenantId.FAN_PLATFORM;
+
         String normalizedEmail = command.email().trim().toLowerCase();
 
-        // Check if account with this email already exists
-        Optional<Account> existing = accountRepository.findByEmail(normalizedEmail);
+        // Check if account with this email already exists within this tenant
+        Optional<Account> existing = accountRepository.findByEmail(tenantId, normalizedEmail);
         if (existing.isPresent()) {
             return SocialSignupResult.fromExisting(existing.get());
         }
 
         try {
             // Create new account (no password for social-only accounts)
-            Account account = Account.create(command.email());
+            Account account = Account.create(tenantId, command.email());
             account = accountRepository.save(account);
 
             // Create profile with displayName from provider
@@ -47,19 +52,13 @@ public class SocialSignupUseCase {
             profileRepository.save(profile);
 
             // Publish account.created outbox event
-            eventPublisher.publishAccountCreated(
-                    account.getId(),
-                    account.getEmail(),
-                    account.getStatus().name(),
-                    profile.getLocale(),
-                    account.getCreatedAt()
-            );
+            eventPublisher.publishAccountCreated(account, profile.getLocale());
 
             return SocialSignupResult.fromNew(account);
         } catch (DataIntegrityViolationException e) {
             // Race condition: concurrent social signup with same email
             // Re-fetch and return existing account
-            Account racedAccount = accountRepository.findByEmail(normalizedEmail)
+            Account racedAccount = accountRepository.findByEmail(tenantId, normalizedEmail)
                     .orElseThrow(() -> new IllegalStateException(
                             "DataIntegrityViolation but account not found for email"));
             return SocialSignupResult.fromExisting(racedAccount);

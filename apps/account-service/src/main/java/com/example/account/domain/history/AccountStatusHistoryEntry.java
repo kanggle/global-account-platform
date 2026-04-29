@@ -13,6 +13,13 @@ import java.time.Instant;
 public class AccountStatusHistoryEntry {
 
     private Long id;
+    /**
+     * TASK-BE-231: tenantId carried alongside audit entry so that
+     * {@code account_status_history.tenant_id} can be populated correctly for
+     * non-fan-platform provisioning calls. {@code null} for legacy fan-platform records
+     * (infrastructure adapter falls back to {@code "fan-platform"} when null).
+     */
+    private String tenantId;
     private String accountId;
     private AccountStatus fromStatus;
     private AccountStatus toStatus;
@@ -38,6 +45,23 @@ public class AccountStatusHistoryEntry {
         entry.actorId = actorId;
         entry.details = details;
         entry.occurredAt = Instant.now();
+        return entry;
+    }
+
+    /**
+     * TASK-BE-231: Creates an audit entry with an explicit tenantId for provisioning flows.
+     */
+    public static AccountStatusHistoryEntry create(String tenantId,
+                                                    String accountId,
+                                                    AccountStatus fromStatus,
+                                                    AccountStatus toStatus,
+                                                    StatusChangeReason reasonCode,
+                                                    String actorType,
+                                                    String actorId,
+                                                    String details) {
+        AccountStatusHistoryEntry entry = create(accountId, fromStatus, toStatus, reasonCode,
+                actorType, actorId, details);
+        entry.tenantId = tenantId;
         return entry;
     }
 

@@ -6,8 +6,6 @@ import com.example.membership.application.exception.SubscriptionNotFoundExceptio
 import com.example.membership.application.exception.SubscriptionPermissionDeniedException;
 import com.example.membership.domain.subscription.Subscription;
 import com.example.membership.domain.subscription.SubscriptionRepository;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryEntry;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryRepository;
 import com.example.membership.domain.subscription.status.SubscriptionStatus;
 import com.example.membership.domain.subscription.status.SubscriptionStatusMachine;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +19,7 @@ import java.time.LocalDateTime;
 public class CancelSubscriptionUseCase {
 
     private final SubscriptionRepository subscriptionRepository;
-    private final SubscriptionStatusHistoryRepository historyRepository;
+    private final SubscriptionStatusHistoryRecorder historyRecorder;
     private final MembershipEventPublisher eventPublisher;
     private final SubscriptionStatusMachine statusMachine = new SubscriptionStatusMachine();
 
@@ -44,10 +42,9 @@ public class CancelSubscriptionUseCase {
         s.cancel(now, statusMachine);
         subscriptionRepository.save(s);
 
-        historyRepository.append(new SubscriptionStatusHistoryEntry(
-                s.getId(), s.getAccountId(),
+        historyRecorder.recordTransition(s,
                 from, SubscriptionStatus.CANCELLED,
-                "USER_CANCEL", "USER", now));
+                "USER_CANCEL", "USER", now);
 
         eventPublisher.publishCancelled(s);
     }

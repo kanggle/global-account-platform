@@ -10,6 +10,7 @@ import com.example.community.domain.post.PostVisibility;
 import com.example.community.domain.post.status.PostStatusHistoryEntry;
 import com.example.community.domain.post.status.PostStatusHistoryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -38,9 +39,10 @@ class PublishPostUseCaseTest {
     PublishPostUseCase useCase;
 
     @Test
-    void artist_publishes_public_post_ok() {
-        ObjectMapper mapper = new ObjectMapper();
-        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, mapper);
+    @DisplayName("아티스트가 PUBLIC ARTIST_POST 를 발행하면 PostView 가 반환된다")
+    void execute_artistPublishesPublicPost_returnsPostView() {
+        PostMediaUrlsSerializer serializer = new PostMediaUrlsSerializer(new ObjectMapper());
+        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, serializer);
 
         when(postRepository.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
         when(accountProfileLookup.displayNameOf("artist-1")).thenReturn("Stage Name");
@@ -60,8 +62,10 @@ class PublishPostUseCaseTest {
     }
 
     @Test
-    void fan_cannot_publish_artist_post() {
-        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup, new ObjectMapper());
+    @DisplayName("팬 역할이 ARTIST_POST 를 발행하려 하면 PermissionDeniedException 이 발생한다")
+    void execute_fanPublishesArtistPost_throwsPermissionDenied() {
+        useCase = new PublishPostUseCase(postRepository, historyRepository, eventPublisher, accountProfileLookup,
+                new PostMediaUrlsSerializer(new ObjectMapper()));
 
         PublishPostCommand cmd = new PublishPostCommand(
                 new ActorContext("fan-1", Set.of("FAN")),

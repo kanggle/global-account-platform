@@ -1,137 +1,63 @@
 package com.example.account.application.event;
 
-import com.example.common.id.UuidV7;
+import com.example.account.application.util.DigestUtils;
+import com.example.account.domain.account.Account;
+import com.example.account.domain.event.AccountDomainEvent;
+import com.example.messaging.event.BaseEventPublisher;
 import com.example.messaging.outbox.OutboxWriter;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
-import java.util.Map;
 
 @Component
-@RequiredArgsConstructor
-public class AccountEventPublisher {
+public class AccountEventPublisher extends BaseEventPublisher {
 
-    private final OutboxWriter outboxWriter;
-    private final ObjectMapper objectMapper;
-
-    public void publishAccountCreated(String accountId, String email, String status,
-                                       String locale, Instant createdAt) {
-        Map<String, Object> payload = Map.of(
-                "accountId", accountId,
-                "emailHash", sha256Short(email),
-                "status", status,
-                "locale", locale,
-                "createdAt", createdAt.toString()
-        );
-        outboxWriter.save("Account", accountId, "account.created", toJson(payload));
+    public AccountEventPublisher(OutboxWriter outboxWriter, ObjectMapper objectMapper) {
+        super(outboxWriter, objectMapper);
     }
 
-    public void publishStatusChanged(String accountId, String previousStatus, String currentStatus,
-                                      String reasonCode, String actorType, String actorId,
-                                      Instant occurredAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
-                "accountId", accountId,
-                "previousStatus", previousStatus,
-                "currentStatus", currentStatus,
-                "reasonCode", reasonCode,
-                "actorType", actorType,
-                "occurredAt", occurredAt.toString()
-        ));
-        if (actorId != null) {
-            payload.put("actorId", actorId);
-        }
-        outboxWriter.save("Account", accountId, "account.status.changed", toJson(payload));
+    public void publishAccountCreated(Account account, String locale) {
+        String emailHash = DigestUtils.sha256Short(account.getEmail(), 10);
+        save(account.getId(), account.buildCreatedEvent(emailHash, locale));
     }
 
-    public void publishAccountLocked(String accountId, String reasonCode,
+    public void publishStatusChanged(Account account, String previousStatus, String reasonCode,
+                                      String actorType, String actorId, Instant occurredAt) {
+        save(account.getId(), account.buildStatusChangedEvent(previousStatus, reasonCode, actorType, actorId, occurredAt));
+    }
+
+    public void publishAccountLocked(Account account, String reasonCode,
                                       String actorType, String actorId, Instant lockedAt) {
-        // TASK-BE-041b-fix Critical 1: include eventId (UUID v7) in the flat payload so
-        // security-service's AccountLockedConsumer can idempotently deduplicate replays
-        // via the account_lock_history.event_id unique constraint. Without this field,
-        // the consumer would synthesize a random UUID per delivery and insert duplicate
-        // rows on Kafka at-least-once redelivery (contract: specs/contracts/events/account-events.md).
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
-                "eventId", UuidV7.randomString(),
-                "accountId", accountId,
-                "reasonCode", reasonCode,
-                "actorType", actorType,
-                "lockedAt", lockedAt.toString()
-        ));
-        if (actorId != null) {
-            payload.put("actorId", actorId);
-        }
-        outboxWriter.save("Account", accountId, "account.locked", toJson(payload));
+        save(account.getId(), account.buildLockedEvent(reasonCode, actorType, actorId, lockedAt));
     }
 
-    public void publishAccountUnlocked(String accountId, String reasonCode,
+    public void publishAccountUnlocked(Account account, String reasonCode,
                                         String actorType, String actorId, Instant unlockedAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
-                "accountId", accountId,
-                "reasonCode", reasonCode,
-                "actorType", actorType,
-                "unlockedAt", unlockedAt.toString()
-        ));
-        if (actorId != null) {
-            payload.put("actorId", actorId);
-        }
-        outboxWriter.save("Account", accountId, "account.unlocked", toJson(payload));
+        save(account.getId(), account.buildUnlockedEvent(reasonCode, actorType, actorId, unlockedAt));
     }
 
-    public void publishAccountDeleted(String accountId, String reasonCode,
+    public void publishAccountDeleted(Account account, String reasonCode,
                                        String actorType, String actorId,
                                        Instant deletedAt, Instant gracePeriodEndsAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
-                "accountId", accountId,
-                "reasonCode", reasonCode,
-                "actorType", actorType,
-                "deletedAt", deletedAt.toString(),
-                "gracePeriodEndsAt", gracePeriodEndsAt.toString(),
-                "anonymized", false
-        ));
-        if (actorId != null) {
-            payload.put("actorId", actorId);
-        }
-        outboxWriter.save("Account", accountId, "account.deleted", toJson(payload));
+        save(account.getId(), account.buildDeletedEvent(reasonCode, actorType, actorId, deletedAt, gracePeriodEndsAt, false));
     }
 
-    public void publishAccountDeletedAnonymized(String accountId, String reasonCode,
-                                                    String actorType, String actorId,
-                                                    Instant deletedAt) {
-        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
-                "accountId", accountId,
-                "reasonCode", reasonCode,
-                "actorType", actorType,
-                "deletedAt", deletedAt.toString(),
-                "anonymized", true
-        ));
-        if (actorId != null) {
-            payload.put("actorId", actorId);
-        }
-        outboxWriter.save("Account", accountId, "account.deleted", toJson(payload));
+    /**
+     * TASK-BE-231: Published when the provisioning API replaces an account's role set.
+     */
+    public void publishRolesChanged(Account account, java.util.List<String> roles,
+                                    String actorType, String actorId, java.time.Instant occurredAt) {
+        save(account.getId(), account.buildRolesChangedEvent(roles, actorType, actorId, occurredAt));
     }
 
-    private String toJson(Object payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to serialize event payload", e);
-        }
+    public void publishAccountDeletedAnonymized(Account account, String reasonCode,
+                                                 String actorType, String actorId,
+                                                 Instant deletedAt, Instant gracePeriodEndsAt) {
+        save(account.getId(), account.buildDeletedEvent(reasonCode, actorType, actorId, deletedAt, gracePeriodEndsAt, true));
     }
 
-    private String sha256Short(String input) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.substring(0, 10);
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
+    private void save(String accountId, AccountDomainEvent event) {
+        saveEvent("Account", accountId, event.eventType(), event.payload());
     }
 }

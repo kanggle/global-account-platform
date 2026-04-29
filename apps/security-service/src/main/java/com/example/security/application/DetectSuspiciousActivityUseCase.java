@@ -1,7 +1,6 @@
 package com.example.security.application;
 
 import com.example.security.application.event.SecurityEventPublisher;
-import com.example.security.domain.detection.AccountLockClient;
 import com.example.security.domain.detection.DetectionResult;
 import com.example.security.domain.detection.EvaluationContext;
 import com.example.security.domain.detection.RiskLevel;
@@ -39,16 +38,16 @@ public class DetectSuspiciousActivityUseCase {
     private final List<SuspiciousActivityRule> rules;
     private final SuspiciousEventPersistenceService persistenceService;
     private final SecurityEventPublisher publisher;
-    private final AccountLockClient accountLockClient;
+    private final IssueAutoLockCommandUseCase issueAutoLockCommandUseCase;
 
     public DetectSuspiciousActivityUseCase(List<SuspiciousActivityRule> rules,
                                             SuspiciousEventPersistenceService persistenceService,
                                             SecurityEventPublisher publisher,
-                                            AccountLockClient accountLockClient) {
+                                            IssueAutoLockCommandUseCase issueAutoLockCommandUseCase) {
         this.rules = List.copyOf(rules);
         this.persistenceService = persistenceService;
         this.publisher = publisher;
-        this.accountLockClient = accountLockClient;
+        this.issueAutoLockCommandUseCase = issueAutoLockCommandUseCase;
     }
 
     /**
@@ -82,29 +81,8 @@ public class DetectSuspiciousActivityUseCase {
         publisher.publishSuspiciousDetected(persisted);
 
         if (level == RiskLevel.AUTO_LOCK) {
-            triggerAutoLock(persisted);
+            issueAutoLockCommandUseCase.execute(persisted);
         }
         return persisted;
-    }
-
-    private void triggerAutoLock(SuspiciousEvent event) {
-        AccountLockClient.LockResult result = accountLockClient.lock(event);
-        // Normalized vocabulary: SUCCESS | ALREADY_LOCKED | FAILURE.
-        // INVALID_TRANSITION is a failure mode from the caller's perspective —
-        // mapped to FAILURE so the DB column and event payload share identical values.
-        String code = switch (result.status()) {
-            case SUCCESS -> "SUCCESS";
-            case ALREADY_LOCKED -> "ALREADY_LOCKED";
-            case INVALID_TRANSITION, FAILURE -> "FAILURE";
-        };
-        SuspiciousEvent updated = event.withLockRequestResult(code);
-        persistenceService.updateLockResult(updated);
-        publisher.publishAutoLockTriggered(updated, result.status());
-
-        if (result.status() == AccountLockClient.Status.FAILURE) {
-            publisher.publishAutoLockPending(updated);
-            log.warn("Auto-lock FAILURE — emitted pending event; suspiciousEventId={}, accountId={}",
-                    updated.getId(), updated.getAccountId());
-        }
     }
 }

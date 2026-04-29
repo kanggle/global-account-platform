@@ -103,8 +103,9 @@ public class RequiresPermissionAspect {
             + " || @annotation(org.springframework.web.bind.annotation.DeleteMapping))")
     public Object denyUnannotatedMutation(ProceedingJoinPoint pjp) throws Throwable {
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
-        if (method.isAnnotationPresent(RequiresPermission.class)) {
-            // Annotated path handles itself.
+        if (method.isAnnotationPresent(RequiresPermission.class)
+                || method.isAnnotationPresent(SelfServiceEndpoint.class)) {
+            // Annotated path handles itself; self-service endpoints are JWT-only.
             return pjp.proceed();
         }
         HttpServletRequest request = currentRequest();
@@ -153,6 +154,14 @@ public class RequiresPermissionAspect {
         }
         if ("SessionAdminController".equals(simple)) return ActionCode.SESSION_REVOKE;
         if ("AuditController".equals(simple)) return ActionCode.AUDIT_QUERY;
+        // TASK-BE-083 — operator management controller; each endpoint maps to a
+        // dedicated action code so DENIED rows carry the correct target semantics.
+        if ("OperatorAdminController".equals(simple)) {
+            if ("createOperator".equals(name)) return ActionCode.OPERATOR_CREATE;
+            if ("patchRoles".equals(name)) return ActionCode.OPERATOR_ROLE_CHANGE;
+            if ("patchStatus".equals(name)) return ActionCode.OPERATOR_STATUS_CHANGE;
+            // listOperators / currentOperator are reads; fall through to null
+        }
         // Fallback for deny-by-default on unknown mutation endpoints.
         if (isMutation(m)) return null;
         return null;

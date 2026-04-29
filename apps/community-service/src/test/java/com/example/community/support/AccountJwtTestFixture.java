@@ -15,13 +15,15 @@ import java.util.Map;
 
 public final class AccountJwtTestFixture {
 
+    public static final String EXPECTED_ISSUER = "global-account-platform";
+
     private final Rs256JwtSigner signer;
     private final Rs256JwtVerifier verifier;
 
     public AccountJwtTestFixture() {
         KeyPair kp = generateKeyPair();
         this.signer = new Rs256JwtSigner(kp.getPrivate(), "test-key-001");
-        this.verifier = new Rs256JwtVerifier(kp.getPublic());
+        this.verifier = new Rs256JwtVerifier(kp.getPublic(), EXPECTED_ISSUER);
     }
 
     private static KeyPair generateKeyPair() {
@@ -43,7 +45,7 @@ public final class AccountJwtTestFixture {
         Map<String, Object> claims = new LinkedHashMap<>();
         claims.put("sub", sub);
         claims.put("roles", roles);
-        claims.put("iss", "auth-service");
+        claims.put("iss", EXPECTED_ISSUER);
         claims.put("iat", now);
         claims.put("exp", now.plus(30, ChronoUnit.MINUTES));
         return signer.sign(claims);

@@ -1,25 +1,14 @@
 spring:
   application:
     name: auth-service
+  config:
+    import: optional:classpath:application-defaults.yml
 
   datasource:
     url: jdbc:mysql://localhost:3306/auth_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:auth_user}
     password: ${DB_PASSWORD:auth_pass}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      connection-timeout: 3000
-
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
-        format_sql: false
 
   flyway:
     enabled: true
@@ -44,54 +33,58 @@ spring:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 1
 
-  jackson:
-    default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
-
 outbox:
   polling:
     interval-ms: ${OUTBOX_POLLING_INTERVAL_MS:1000}
     batch-size: ${OUTBOX_POLLING_BATCH_SIZE:50}
+  topic-mapping:
+    auth.login.attempted: auth.login.attempted
+    auth.login.failed: auth.login.failed
+    auth.login.succeeded: auth.login.succeeded
+    auth.token.refreshed: auth.token.refreshed
+    auth.token.reuse.detected: auth.token.reuse.detected
+    auth.session.created: auth.session.created
+    auth.session.revoked: auth.session.revoked
 
 server:
   port: 8081
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus
-  endpoint:
-    health:
-      show-details: always
-  metrics:
-    tags:
-      service: ${spring.application.name}
 
 oauth:
   google:
     client-id: ${OAUTH_GOOGLE_CLIENT_ID:test-google-client-id}
     client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:test-google-client-secret}
     redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:3000/oauth/callback}
+    # Server-side allowlist of redirect URIs (exact-string match). Comma-separated env var.
+    allowed-redirect-uris: ${OAUTH_GOOGLE_ALLOWED_REDIRECT_URIS:http://localhost:3000/oauth/callback}
     scopes: openid,email,profile
     token-uri: https://oauth2.googleapis.com/token
     auth-uri: https://accounts.google.com/o/oauth2/v2/auth
+    # TASK-BE-145: id_token signature + iss + aud + exp verification.
+    # Google publishes both 'https://accounts.google.com' and 'accounts.google.com' as iss.
+    jwks-uri: ${OAUTH_GOOGLE_JWKS_URI:https://www.googleapis.com/oauth2/v3/certs}
+    expected-issuer-pattern: ${OAUTH_GOOGLE_ISSUER_PATTERN:^(https://)?accounts\.google\.com$}
   kakao:
     client-id: ${OAUTH_KAKAO_CLIENT_ID:test-kakao-client-id}
     client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:test-kakao-client-secret}
     redirect-uri: ${OAUTH_KAKAO_REDIRECT_URI:http://localhost:3000/oauth/callback}
+    allowed-redirect-uris: ${OAUTH_KAKAO_ALLOWED_REDIRECT_URIS:http://localhost:3000/oauth/callback}
     scopes: account_email,profile_nickname
     token-uri: https://kauth.kakao.com/oauth/token
     auth-uri: https://kauth.kakao.com/oauth/authorize
     user-info-uri: https://kapi.kakao.com/v2/user/me
+    # Kakao does not return an id_token — JWKS verification is not applied.
   microsoft:
     client-id: ${OAUTH_MICROSOFT_CLIENT_ID:test-microsoft-client-id}
     client-secret: ${OAUTH_MICROSOFT_CLIENT_SECRET:test-microsoft-client-secret}
     redirect-uri: ${OAUTH_MICROSOFT_REDIRECT_URI:http://localhost:3000/oauth/callback}
+    allowed-redirect-uris: ${OAUTH_MICROSOFT_ALLOWED_REDIRECT_URIS:http://localhost:3000/oauth/callback}
     scopes: openid,email,profile
     token-uri: https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/oauth2/v2.0/token
     auth-uri: https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/oauth2/v2.0/authorize
+    # TASK-BE-145: id_token JWKS verification. Microsoft tenant=common returns
+    # iss containing the actual user tenant guid — regex pattern below allows that.
+    jwks-uri: ${OAUTH_MICROSOFT_JWKS_URI:https://login.microsoftonline.com/${OAUTH_MICROSOFT_TENANT:common}/discovery/v2.0/keys}
+    expected-issuer-pattern: ${OAUTH_MICROSOFT_ISSUER_PATTERN:^https://login\.microsoftonline\.com/[^/]+/v2\.0$}
 
 auth:
   jwt:
@@ -104,6 +97,12 @@ auth:
   login:
     max-failure-count: ${LOGIN_MAX_FAILURES:5}
     failure-window-seconds: ${LOGIN_FAILURE_WINDOW:900}
+  password-reset:
+    rate-limit:
+      # TASK-BE-144: per-email reset request flood protection (silent drop on overflow,
+      # 204 response shape preserved to avoid account-existence leaks).
+      window-seconds: ${PASSWORD_RESET_WINDOW:900}
+      max-attempts: ${PASSWORD_RESET_MAX_ATTEMPTS:3}
   device-session:
     max-active-sessions: ${AUTH_MAX_ACTIVE_SESSIONS:10}
   account-service:

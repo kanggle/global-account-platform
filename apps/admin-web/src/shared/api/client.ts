@@ -121,6 +121,8 @@ export const apiClient = {
     apiFetch<T>(path, { ...opts, method: 'GET' }),
   post: <T = unknown>(path: string, body?: unknown, opts: ApiRequestOptions = {}) =>
     apiFetch<T>(path, { ...opts, method: 'POST', body }),
+  patch: <T = unknown>(path: string, body?: unknown, opts: ApiRequestOptions = {}) =>
+    apiFetch<T>(path, { ...opts, method: 'PATCH', body }),
   put: <T = unknown>(path: string, body?: unknown, opts: ApiRequestOptions = {}) =>
     apiFetch<T>(path, { ...opts, method: 'PUT', body }),
   del: <T = unknown>(path: string, opts: ApiRequestOptions = {}) =>

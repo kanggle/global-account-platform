@@ -66,34 +66,86 @@ public class OutboxPublisher {
 
 ## Outbox Polling Scheduler
 
-Polls pending entries and publishes to Kafka. Each service extends the base scheduler.
+Polls pending entries and publishes to Kafka. The base scheduler in
+`libs/java-messaging` is **configuration-driven** — services do not subclass it.
+Topic mapping is loaded from `outbox.topic-mapping` via `OutboxProperties`
+(`@ConfigurationProperties(prefix = "outbox")`).
 
 ```java
-@Slf4j
-@Component
-@Profile("!standalone")
-public class OrderOutboxPollingScheduler extends OutboxPollingScheduler {
+// libs/java-messaging — final, not extended by services
+public class OutboxPollingScheduler {
 
-    public OrderOutboxPollingScheduler(OutboxPublisher outboxPublisher,
-                                       KafkaTemplate<String, String> kafkaTemplate) {
-        super(outboxPublisher, kafkaTemplate);
+    private final OutboxPublisher outboxPublisher;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ThreadPoolTaskScheduler taskScheduler;
+    private final Map<String, String> topicMapping;
+    @Nullable
+    private final OutboxFailureHandler failureHandler;
+
+    @Value("${outbox.polling.interval-ms:1000}")
+    private long intervalMs;
+
+    public OutboxPollingScheduler(OutboxPublisher outboxPublisher,
+                                  KafkaTemplate<String, String> kafkaTemplate,
+                                  ThreadPoolTaskScheduler outboxTaskScheduler,
+                                  OutboxProperties outboxProperties,
+                                  @Nullable OutboxFailureHandler failureHandler) { ... }
+
+    @PostConstruct
+    public void start() {
+        scheduledFuture = taskScheduler.scheduleWithFixedDelay(
+                this::pollAndPublish, Duration.ofMillis(intervalMs));
     }
 
-    @Override
-    protected String resolveTopic(String eventType) {
-        return switch (eventType) {
-            case "OrderPlaced"    -> "order.order.placed";
-            case "OrderCancelled" -> "order.order.cancelled";
-            default -> throw new IllegalArgumentException("Unknown event type: " + eventType);
-        };
-    }
+    @PreDestroy
+    public void stop() { /* cancel scheduledFuture */ }
 
-    @Override
-    protected void onKafkaSendFailure(String eventType, String aggregateId, Exception e) {
-        // record metrics
+    public void pollAndPublish() { /* publish PENDING via OutboxPublisher */ }
+
+    // private — services do not override topic resolution.
+    private String resolveTopic(String eventType) { ... }
+}
+```
+
+### Service Configuration
+
+Each service declares its `event_type → kafka_topic` mapping in
+`application.yml` (no Java code required):
+
+```yaml
+outbox:
+  polling:
+    interval-ms: ${OUTBOX_POLLING_INTERVAL_MS:1000}
+    batch-size:  ${OUTBOX_POLLING_BATCH_SIZE:50}
+    enabled:     true   # default; set false to disable polling (e.g. tests)
+  topic-mapping:
+    OrderPlaced:    order.order.placed
+    OrderCancelled: order.order.cancelled
+```
+
+`OutboxProperties` validates `topic-mapping` is `@NotEmpty` at startup so a
+missing mapping fails fast.
+
+### Failure Handler (Per-Service Metrics)
+
+To record service-specific Micrometer metrics on Kafka send failures,
+register an `OutboxFailureHandler` bean. The shared scheduler picks it up
+via `ObjectProvider` (no compile-time Micrometer dep in `libs/java-messaging`):
+
+```java
+// apps/<service>-service/src/main/java/.../infrastructure/messaging/<Service>OutboxFailureHandlerConfig.java
+@Configuration
+class OrderOutboxFailureHandlerConfig {
+
+    @Bean
+    OutboxFailureHandler outboxFailureHandler(MeterRegistry meterRegistry) {
+        return (eventType, aggregateId, e) ->
+                meterRegistry.counter("order_outbox_publish_failures", "event_type", eventType).increment();
     }
 }
 ```
+
+The bean is optional. If absent, the scheduler simply logs the failure.
 
 ---
 
@@ -102,9 +154,10 @@ public class OrderOutboxPollingScheduler extends OutboxPollingScheduler {
 ```
 1. Business operation + outbox write (same transaction) → COMMIT
 2. Scheduler polls outbox (status = PENDING)
-3. Scheduler sends to Kafka
-4. On success: update status → PUBLISHED, set published_at
-5. On failure: leave as PENDING, retry on next poll
+3. Scheduler resolves topic via outbox.topic-mapping
+4. Scheduler sends to Kafka
+5. On success: update status → PUBLISHED, set published_at
+6. On failure: leave as PENDING, retry on next poll; OutboxFailureHandler invoked (if registered)
 ```
 
 ---
@@ -113,9 +166,10 @@ public class OrderOutboxPollingScheduler extends OutboxPollingScheduler {
 
 - Outbox write must be in the same transaction as the business operation.
 - Scheduler runs outside transactions — Kafka send is not transactional.
-- Use `@Scheduled(fixedDelayString = "...")` for polling interval.
-- The base `OutboxPollingScheduler` lives in `libs/java-messaging`.
-- Each service extends it and implements `resolveTopic()`.
+- Polling cadence is driven by `@PostConstruct` + `ThreadPoolTaskScheduler.scheduleWithFixedDelay` on the dedicated `outboxTaskScheduler` bean. Do not add `@Scheduled` annotations.
+- The base `OutboxPollingScheduler` lives in `libs/java-messaging` and is **not subclassed** by services. Per-service behaviour is supplied via configuration (`outbox.topic-mapping`) and an optional `OutboxFailureHandler` bean.
+- Topic mapping comes from `OutboxProperties` (`outbox.topic-mapping` in `application.yml`). Add the entry alongside any new event type.
+- Set `outbox.polling.enabled=false` in tests/profiles that should not run the relay.
 
 ---
 
@@ -127,3 +181,6 @@ public class OrderOutboxPollingScheduler extends OutboxPollingScheduler {
 | Publishing directly to Kafka without outbox | Events can be lost if the app crashes after commit |
 | No index on `(status, created_at)` | Polling query will be slow |
 | Not handling serialization errors | Wrap `objectMapper.writeValueAsString` with proper error handling |
+| Subclassing `OutboxPollingScheduler` to add a topic | Add the mapping under `outbox.topic-mapping` in `application.yml` instead |
+| Using `@Scheduled(fixedDelayString = ...)` to drive polling | Rely on the built-in `@PostConstruct` + `ThreadPoolTaskScheduler.scheduleWithFixedDelay` lifecycle |
+| Missing `event_type` entry in `outbox.topic-mapping` | `OutboxProperties` `@NotEmpty` validation fails at startup; add the mapping before deploying the new event |

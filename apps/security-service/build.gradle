@@ -9,6 +9,7 @@ dependencies {
     implementation project(':libs:java-web')
     implementation project(':libs:java-messaging')
     implementation project(':libs:java-observability')
+    implementation project(':libs:java-security')
 
     // Spring Boot starters
     implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -41,7 +42,9 @@ dependencies {
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
     // Test
-    testImplementation project(':libs:java-test-support')
+    // TASK-BE-078: AbstractIntegrationTest lives in testFixtures source set so
+    // Testcontainers classes stay out of the production classpath.
+    testImplementation testFixtures(project(':libs:java-test-support'))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:mysql'

@@ -8,6 +8,7 @@ import com.example.account.domain.account.Account;
 import com.example.account.domain.profile.Profile;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.ProfileRepository;
+import com.example.account.domain.tenant.TenantId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,7 +22,8 @@ public class ProfileUseCase {
 
     @Transactional(readOnly = true)
     public AccountMeResult getMe(String accountId) {
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
         Profile profile = profileRepository.findByAccountId(accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
@@ -31,7 +33,8 @@ public class ProfileUseCase {
 
     @Transactional
     public ProfileUpdateResult updateProfile(UpdateProfileCommand command) {
-        accountRepository.findById(command.accountId())
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        accountRepository.findById(TenantId.FAN_PLATFORM, command.accountId())
                 .orElseThrow(() -> new AccountNotFoundException(command.accountId()));
 
         Profile profile = profileRepository.findByAccountId(command.accountId())

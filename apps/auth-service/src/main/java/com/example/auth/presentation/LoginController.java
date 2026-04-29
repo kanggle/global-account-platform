@@ -38,6 +38,7 @@ public class LoginController {
         LoginCommand command = new LoginCommand(
                 request.email(),
                 request.password(),
+                request.tenantId(),   // TASK-BE-229: pass optional tenant context
                 sessionContext
         );
 

@@ -62,7 +62,7 @@ export function LockDialog({ open, onOpenChange, accountId }: LockDialogProps) {
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             취소
           </Button>
-          <Button type="submit" variant="destructive" disabled={lock.isPending}>
+          <Button type="submit" variant="default" disabled={lock.isPending}>
             {lock.isPending ? '처리 중...' : '잠금'}
           </Button>
         </DialogFooter>

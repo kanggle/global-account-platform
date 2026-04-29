@@ -1,6 +1,8 @@
 package com.example.admin.presentation.advice;
 
 import com.example.admin.application.exception.AuditFailureException;
+import com.example.admin.application.exception.CurrentPasswordMismatchException;
+import com.example.admin.application.exception.PasswordPolicyViolationException;
 import com.example.admin.application.exception.BatchSizeExceededException;
 import com.example.admin.application.exception.DownstreamFailureException;
 import com.example.admin.application.exception.EnrollmentRequiredException;
@@ -11,28 +13,32 @@ import com.example.admin.application.exception.InvalidLoginRequestException;
 import com.example.admin.application.exception.InvalidRecoveryCodeException;
 import com.example.admin.application.exception.InvalidRefreshTokenException;
 import com.example.admin.application.exception.InvalidTwoFaCodeException;
+import com.example.admin.application.exception.OperatorEmailConflictException;
+import com.example.admin.application.exception.OperatorNotFoundException;
 import com.example.admin.application.exception.RefreshTokenReuseDetectedException;
+import com.example.admin.application.exception.RoleNotFoundException;
+import com.example.admin.application.exception.SelfSuspendForbiddenException;
+import com.example.admin.application.exception.StateTransitionInvalidException;
 import com.example.admin.application.exception.TokenRevokedException;
+import com.example.admin.application.exception.TotpNotEnrolledException;
 import com.example.admin.application.exception.OperatorUnauthorizedException;
 import com.example.admin.application.exception.PermissionDeniedException;
 import com.example.admin.application.exception.ReasonRequiredException;
 import com.example.admin.presentation.dto.EnrollmentRequiredResponse;
 import com.example.web.dto.ErrorResponse;
+import com.example.web.exception.CommonGlobalExceptionHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Slf4j
 @RestControllerAdvice
-public class AdminExceptionHandler {
+public class AdminExceptionHandler extends CommonGlobalExceptionHandler {
 
     @ExceptionHandler(ReasonRequiredException.class)
     public ResponseEntity<ErrorResponse> handleReasonRequired(ReasonRequiredException e) {
@@ -70,6 +76,13 @@ public class AdminExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalid2Fa(InvalidTwoFaCodeException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("INVALID_2FA_CODE", "TOTP code is invalid"));
+    }
+
+    @ExceptionHandler(TotpNotEnrolledException.class)
+    public ResponseEntity<ErrorResponse> handleTotpNotEnrolled(TotpNotEnrolledException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("TOTP_NOT_ENROLLED",
+                        "TOTP enrollment is required before recovery-code regeneration"));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)
@@ -162,6 +175,54 @@ public class AdminExceptionHandler {
                 .body(ErrorResponse.of("IDEMPOTENCY_KEY_CONFLICT", e.getMessage()));
     }
 
+    // TASK-BE-083 — operator management errors.
+    @ExceptionHandler(OperatorEmailConflictException.class)
+    public ResponseEntity<ErrorResponse> handleOperatorEmailConflict(OperatorEmailConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("OPERATOR_EMAIL_CONFLICT", e.getMessage()));
+    }
+
+    @ExceptionHandler(OperatorNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleOperatorNotFound(OperatorNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("OPERATOR_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(RoleNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRoleNotFound(RoleNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("ROLE_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(SelfSuspendForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleSelfSuspend(SelfSuspendForbiddenException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("SELF_SUSPEND_FORBIDDEN", e.getMessage()));
+    }
+
+    @ExceptionHandler(StateTransitionInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleStateTransition(StateTransitionInvalidException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("STATE_TRANSITION_INVALID", e.getMessage()));
+    }
+
+    @ExceptionHandler(CurrentPasswordMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleCurrentPasswordMismatch(CurrentPasswordMismatchException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CURRENT_PASSWORD_MISMATCH", e.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordPolicyViolationException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordPolicy(PasswordPolicyViolationException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("PASSWORD_POLICY_VIOLATION", e.getMessage()));
+    }
+
+    /**
+     * Overrides the base handler to apply X-Operator-Reason-specific error code when
+     * that header is missing, as required by admin-service's reason audit policy.
+     */
+    @Override
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException e) {
         String header = e.getHeaderName();
@@ -171,12 +232,6 @@ public class AdminExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("VALIDATION_ERROR", "Missing required header: " + header));
-    }
-
-    @ExceptionHandler(MissingServletRequestParameterException.class)
-    public ResponseEntity<ErrorResponse> handleMissingParam(MissingServletRequestParameterException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", "Missing required parameter: " + e.getParameterName()));
     }
 
     @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
@@ -190,38 +245,9 @@ public class AdminExceptionHandler {
                 .body(ErrorResponse.of("VALIDATION_ERROR", message));
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(err -> err.getField() + ": " + err.getDefaultMessage())
-                .orElse("Validation failed");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", message));
-    }
-
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("VALIDATION_ERROR", "Invalid parameter: " + e.getName()));
-    }
-
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ErrorResponse> handleMalformed(HttpMessageNotReadableException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", "Malformed request body"));
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", e.getMessage()));
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGeneral(Exception e) {
-        log.error("Unexpected error", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of("INTERNAL_ERROR", "An unexpected error occurred"));
     }
 }

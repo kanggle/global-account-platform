@@ -11,6 +11,7 @@ import com.example.account.domain.history.AccountStatusHistoryEntry;
 import com.example.account.domain.repository.AccountRepository;
 import com.example.account.domain.repository.AccountStatusHistoryRepository;
 import com.example.account.domain.status.*;
+import com.example.account.domain.tenant.TenantId;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +42,8 @@ public class AccountStatusUseCase {
 
     @Transactional(readOnly = true)
     public AccountStatusResult getStatus(String accountId) {
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         var latestHistory = historyRepository.findTopByAccountIdOrderByOccurredAtDesc(accountId);
@@ -56,7 +58,8 @@ public class AccountStatusUseCase {
 
     @Transactional
     public StatusChangeResult changeStatus(ChangeStatusCommand command) {
-        Account account = accountRepository.findById(command.accountId())
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, command.accountId())
                 .orElseThrow(() -> new AccountNotFoundException(command.accountId()));
 
         AccountStatus previousStatus = account.getStatus();
@@ -65,44 +68,10 @@ public class AccountStatusUseCase {
 
         accountRepository.save(account);
 
-        // Record history
-        AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
-                account.getId(),
-                transition.from(),
-                transition.to(),
-                transition.reason(),
-                command.actorType(),
-                command.actorId(),
-                command.details()
-        );
-        historyRepository.save(historyEntry);
+        recordStatusHistory(account.getId(), transition, command.actorType(), command.actorId(), command.details());
 
         Instant now = Instant.now();
-
-        // Publish events based on transition
-        if (previousStatus != command.targetStatus()) {
-            eventPublisher.publishStatusChanged(
-                    account.getId(),
-                    previousStatus.name(),
-                    command.targetStatus().name(),
-                    command.reason().name(),
-                    command.actorType(),
-                    command.actorId(),
-                    now
-            );
-
-            // Publish specialized events
-            if (command.targetStatus() == AccountStatus.LOCKED) {
-                eventPublisher.publishAccountLocked(
-                        account.getId(), command.reason().name(),
-                        command.actorType(), command.actorId(), now);
-            } else if (command.targetStatus() == AccountStatus.ACTIVE
-                    && previousStatus == AccountStatus.LOCKED) {
-                eventPublisher.publishAccountUnlocked(
-                        account.getId(), command.reason().name(),
-                        command.actorType(), command.actorId(), now);
-            }
-        }
+        publishStatusChangeEvents(account, previousStatus, command, now);
 
         return new StatusChangeResult(
                 account.getId(),
@@ -112,38 +81,62 @@ public class AccountStatusUseCase {
         );
     }
 
+    private void recordStatusHistory(String accountId, StatusTransition transition,
+                                      String actorType, String actorId, String details) {
+        AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
+                accountId,
+                transition.from(),
+                transition.to(),
+                transition.reason(),
+                actorType,
+                actorId,
+                details
+        );
+        historyRepository.save(historyEntry);
+    }
+
+    private void publishStatusChangeEvents(Account account, AccountStatus previousStatus,
+                                            ChangeStatusCommand command, Instant now) {
+        if (previousStatus == command.targetStatus()) {
+            return;
+        }
+
+        eventPublisher.publishStatusChanged(
+                account, previousStatus.name(), command.reason().name(),
+                command.actorType(), command.actorId(), now);
+
+        if (command.targetStatus() == AccountStatus.LOCKED) {
+            eventPublisher.publishAccountLocked(
+                    account, command.reason().name(), command.actorType(), command.actorId(), now);
+        } else if (command.targetStatus() == AccountStatus.ACTIVE
+                && previousStatus == AccountStatus.LOCKED) {
+            eventPublisher.publishAccountUnlocked(
+                    account, command.reason().name(), command.actorType(), command.actorId(), now);
+        }
+    }
+
     @Transactional
     public DeleteAccountResult deleteAccount(String accountId, StatusChangeReason reason,
                                               String actorType, String actorId) {
-        Account account = accountRepository.findById(accountId)
+        // TASK-BE-228: tenant context is fixed to FAN_PLATFORM until TASK-BE-229
+        Account account = accountRepository.findById(TenantId.FAN_PLATFORM, accountId)
                 .orElseThrow(() -> new AccountNotFoundException(accountId));
 
         AccountStatus previousStatus = account.getStatus();
-        account.changeStatus(statusMachine, AccountStatus.DELETED, reason);
+        StatusTransition transition = account.changeStatus(statusMachine, AccountStatus.DELETED, reason);
 
         accountRepository.save(account);
 
-        AccountStatusHistoryEntry historyEntry = AccountStatusHistoryEntry.create(
-                account.getId(),
-                previousStatus,
-                AccountStatus.DELETED,
-                reason,
-                actorType,
-                actorId,
-                null
-        );
-        historyRepository.save(historyEntry);
+        recordStatusHistory(account.getId(), transition, actorType, actorId, null);
 
         Instant now = Instant.now();
         Instant gracePeriodEndsAt = now.plus(gracePeriodDays, ChronoUnit.DAYS);
 
         eventPublisher.publishStatusChanged(
-                account.getId(), previousStatus.name(), AccountStatus.DELETED.name(),
-                reason.name(), actorType, actorId, now);
+                account, previousStatus.name(), reason.name(), actorType, actorId, now);
 
         eventPublisher.publishAccountDeleted(
-                account.getId(), reason.name(), actorType, actorId,
-                now, gracePeriodEndsAt);
+                account, reason.name(), actorType, actorId, now, gracePeriodEndsAt);
 
         return new DeleteAccountResult(
                 account.getId(),

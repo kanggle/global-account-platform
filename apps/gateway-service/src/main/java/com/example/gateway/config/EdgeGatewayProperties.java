@@ -15,6 +15,7 @@ public class EdgeGatewayProperties {
 
     private JwtProperties jwt = new JwtProperties();
     private RateLimitProperties rateLimit = new RateLimitProperties();
+    private TenantProperties tenant = new TenantProperties();
     private List<String> publicPaths = List.of();
 
     @Getter
@@ -48,6 +49,20 @@ public class EdgeGatewayProperties {
         public ScopeLimit(int maxRequests, long windowSeconds) {
             this.maxRequests = maxRequests;
             this.windowSeconds = windowSeconds;
+        }
+    }
+
+    @Getter
+    @Setter
+    public static class TenantProperties {
+        private LegacyFallbackProperties legacyFallback = new LegacyFallbackProperties();
+
+        @Getter
+        @Setter
+        public static class LegacyFallbackProperties {
+            /** When true, JWTs missing tenant_id claim are treated as "fan-platform" (grace period). Default: false. */
+            private boolean enabled = false;
+            private String defaultTenantId = "fan-platform";
         }
     }
 }

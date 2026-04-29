@@ -208,6 +208,45 @@ Invariant: `max-lifetime` must be strictly greater than `keepalive-time`
 tight values into the production profile — the pool there should favour
 long-lived connections and trust the DB to enforce server-side timeouts.
 
+## Scheduler Thread Lifecycle (Test Context Rotation)
+
+Schedulers that open JDBC transactions from `@Scheduled` methods must use
+a **context-scoped** `TaskScheduler` bean, not Spring's default singleton
+`TaskScheduler`. The default executor is a process-wide singleton whose
+threads outlive any individual `ApplicationContext`; Testcontainers
+integration tests that rotate Spring contexts therefore see `scheduling-1`
+keep polling with a closure that captured the destroyed context's
+HikariCP pool — surfacing as `HikariPool-N Connection is not available
+... total=0` / `CommunicationsException` on every subsequent tick (TASK-BE-077
+diagnosis from PR #44 / TASK-BE-076 CI artifacts).
+
+Canonical pattern (see `libs/java-messaging/OutboxSchedulerConfig` +
+`OutboxPollingScheduler`):
+
+- Expose a dedicated `ThreadPoolTaskScheduler` bean with
+  `destroyMethod = "shutdown"`,
+  `setWaitForTasksToCompleteOnShutdown(true)`, and
+  `setAwaitTerminationSeconds(5)`. The bean's lifetime is bound to the
+  owning `ApplicationContext`, so context close terminates every
+  scheduler thread.
+- Drive the poll loop programmatically via `@PostConstruct` /
+  `scheduleWithFixedDelay` / `@PreDestroy` / `ScheduledFuture.cancel()`
+  instead of `@Scheduled`. `@PreDestroy` runs before the executor bean
+  is destroyed, so in-flight ticks unwind deterministically.
+- Gate the wiring with
+  `@ConditionalOnProperty(name = "outbox.polling.enabled", havingValue
+  = "true", matchIfMissing = true)` (or an equivalent per-scheduler
+  flag). Production keeps the default (`true`); test profiles may
+  opt out when they do not exercise the relay path. Tests that need the
+  scheduler active leave the default or re-enable it via
+  `@TestPropertySource(properties = "outbox.polling.enabled=true")`.
+
+Do **not** rely on `@Scheduled` + an `AtomicBoolean running` guard alone
+— the in-flight tick still completes before the guard takes effect, and
+the next tick still fires from the orphaned singleton pool after the
+context is gone. The context-scoped executor is the only fix that closes
+both windows.
+
 ## Reuse Policy
 
 Testcontainers supports container reuse across JVM runs via

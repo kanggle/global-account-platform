@@ -1,18 +1,15 @@
 package com.example.security.application.event;
 
+import com.example.messaging.event.BaseEventPublisher;
 import com.example.messaging.outbox.OutboxWriter;
 import com.example.security.domain.detection.AccountLockClient;
 import com.example.security.domain.suspicious.SuspiciousEvent;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Outbox-based publisher for security-service Kafka events.
@@ -21,24 +18,22 @@ import java.util.UUID;
  * {@code specs/contracts/events/auth-events.md} (eventId, eventType, source,
  * occurredAt, schemaVersion, partitionKey, payload).</p>
  */
-@Slf4j
 @Component
-@RequiredArgsConstructor
-public class SecurityEventPublisher {
+public class SecurityEventPublisher extends BaseEventPublisher {
 
     public static final String TOPIC_SUSPICIOUS_DETECTED = "security.suspicious.detected";
     public static final String TOPIC_AUTO_LOCK_TRIGGERED = "security.auto.lock.triggered";
     public static final String TOPIC_AUTO_LOCK_PENDING = "security.auto.lock.pending";
 
-    private final OutboxWriter outboxWriter;
-    private final ObjectMapper objectMapper;
+    private static final String AGGREGATE_TYPE = "security";
+    private static final String SOURCE = "security-service";
+
+    public SecurityEventPublisher(OutboxWriter outboxWriter, ObjectMapper objectMapper) {
+        super(outboxWriter, objectMapper);
+    }
 
     public void publishSuspiciousDetected(SuspiciousEvent event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("suspiciousEventId", event.getId());
-        payload.put("accountId", event.getAccountId());
-        payload.put("ruleCode", event.getRuleCode());
-        payload.put("riskScore", event.getRiskScore());
+        Map<String, Object> payload = buildSuspiciousEventBase(event);
         payload.put("actionTaken", event.getActionTaken().name());
         payload.put("evidence", event.getEvidence());
         payload.put("triggerEventId", event.getTriggerEventId());
@@ -47,11 +42,7 @@ public class SecurityEventPublisher {
     }
 
     public void publishAutoLockTriggered(SuspiciousEvent event, AccountLockClient.Status status) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("suspiciousEventId", event.getId());
-        payload.put("accountId", event.getAccountId());
-        payload.put("ruleCode", event.getRuleCode());
-        payload.put("riskScore", event.getRiskScore());
+        Map<String, Object> payload = buildSuspiciousEventBase(event);
         payload.put("lockRequestResult", mapStatus(status));
         payload.put("lockRequestedAt", Instant.now().toString());
         writeEnvelope(TOPIC_AUTO_LOCK_TRIGGERED, event.getAccountId(), payload);
@@ -62,14 +53,26 @@ public class SecurityEventPublisher {
      * by the operator manual-intervention path.
      */
     public void publishAutoLockPending(SuspiciousEvent event) {
+        Map<String, Object> payload = buildSuspiciousEventBase(event);
+        payload.put("reason", "ACCOUNT_SERVICE_UNREACHABLE");
+        payload.put("raisedAt", Instant.now().toString());
+        writeEnvelope(TOPIC_AUTO_LOCK_PENDING, event.getAccountId(), payload);
+    }
+
+    /**
+     * Builds the 4 common fields shared by every {@link SuspiciousEvent}-based publish
+     * method in the documented insertion order: {@code suspiciousEventId, accountId,
+     * ruleCode, riskScore}. Returned as a mutable {@link LinkedHashMap} so callers can
+     * append method-specific fields after the common prefix. Mirrors the
+     * {@code AuthEventPublisher#buildLoginSucceededBase} pattern (TASK-BE-131).
+     */
+    private Map<String, Object> buildSuspiciousEventBase(SuspiciousEvent event) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("suspiciousEventId", event.getId());
         payload.put("accountId", event.getAccountId());
         payload.put("ruleCode", event.getRuleCode());
         payload.put("riskScore", event.getRiskScore());
-        payload.put("reason", "ACCOUNT_SERVICE_UNREACHABLE");
-        payload.put("raisedAt", Instant.now().toString());
-        writeEnvelope(TOPIC_AUTO_LOCK_PENDING, event.getAccountId(), payload);
+        return payload;
     }
 
     /**
@@ -87,22 +90,6 @@ public class SecurityEventPublisher {
     }
 
     private void writeEnvelope(String eventType, String partitionKey, Map<String, Object> payload) {
-        Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("eventId", UUID.randomUUID().toString());
-        envelope.put("eventType", eventType);
-        envelope.put("source", "security-service");
-        envelope.put("occurredAt", Instant.now().toString());
-        envelope.put("schemaVersion", 1);
-        envelope.put("partitionKey", partitionKey);
-        envelope.put("payload", payload);
-
-        try {
-            String json = objectMapper.writeValueAsString(envelope);
-            outboxWriter.save("security", partitionKey, eventType, json);
-        } catch (JsonProcessingException e) {
-            log.error("Failed to serialize {} event for outbox; suspiciousEventId={}",
-                    eventType, payload.get("suspiciousEventId"), e);
-            throw new IllegalStateException("Outbox serialization failed", e);
-        }
+        writeEvent(AGGREGATE_TYPE, partitionKey, eventType, SOURCE, payload);
     }
 }

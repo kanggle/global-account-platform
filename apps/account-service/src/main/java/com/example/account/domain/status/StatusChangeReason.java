@@ -11,5 +11,9 @@ public enum StatusChangeReason {
     USER_REQUEST,
     ADMIN_DELETE,
     REGULATED_DELETION,
-    WITHIN_GRACE_PERIOD
+    WITHIN_GRACE_PERIOD,
+    // TASK-BE-231: internal provisioning reasons (operator-initiated via WMS / enterprise tenant)
+    OPERATOR_PROVISIONING_STATUS_CHANGE,
+    OPERATOR_PROVISIONING_ROLES_REPLACE,
+    OPERATOR_PROVISIONING_PASSWORD_RESET
 }

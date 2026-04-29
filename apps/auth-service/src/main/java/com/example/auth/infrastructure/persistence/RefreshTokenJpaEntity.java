@@ -24,6 +24,10 @@ public class RefreshTokenJpaEntity {
     @Column(name = "account_id", nullable = false, length = 36)
     private String accountId;
 
+    // TASK-BE-229: tenant_id for cross-tenant rotation prevention.
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId;
+
     @Column(name = "issued_at", nullable = false)
     private Instant issuedAt;
 
@@ -46,7 +50,9 @@ public class RefreshTokenJpaEntity {
     private String deviceId;
 
     public RefreshToken toDomain() {
-        return new RefreshToken(id, jti, accountId, issuedAt, expiresAt,
+        return new RefreshToken(id, jti, accountId,
+                tenantId != null ? tenantId : "fan-platform",
+                issuedAt, expiresAt,
                 rotatedFrom, revoked, deviceFingerprint, deviceId);
     }
 
@@ -55,6 +61,7 @@ public class RefreshTokenJpaEntity {
         entity.id = token.getId();
         entity.jti = token.getJti();
         entity.accountId = token.getAccountId();
+        entity.tenantId = token.getTenantId();
         entity.issuedAt = token.getIssuedAt();
         entity.expiresAt = token.getExpiresAt();
         entity.rotatedFrom = token.getRotatedFrom();

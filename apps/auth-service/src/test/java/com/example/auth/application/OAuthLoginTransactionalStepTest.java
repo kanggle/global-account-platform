@@ -9,6 +9,7 @@ import com.example.auth.application.result.RegisterDeviceSessionResult;
 import com.example.auth.domain.oauth.OAuthProvider;
 import com.example.auth.domain.repository.RefreshTokenRepository;
 import com.example.auth.domain.session.SessionContext;
+import com.example.auth.domain.tenant.TenantContext;
 import com.example.auth.domain.token.RefreshToken;
 import com.example.auth.domain.token.TokenPair;
 import com.example.auth.infrastructure.oauth.OAuthUserInfo;
@@ -75,7 +76,8 @@ class OAuthLoginTransactionalStepTest {
                 .thenReturn(Optional.empty());
         when(registerOrUpdateDeviceSessionUseCase.execute(eq("acc-123"), any(SessionContext.class)))
                 .thenReturn(new RegisterDeviceSessionResult("dev-1", true, List.of()));
-        when(tokenGeneratorPort.generateTokenPair("acc-123", "user", "dev-1"))
+        when(tokenGeneratorPort.generateTokenPair(eq("acc-123"), eq("user"), eq("dev-1"),
+                any(TenantContext.class)))
                 .thenReturn(new TokenPair("access-jwt", "refresh-jwt", 1800));
         when(tokenGeneratorPort.extractJti("refresh-jwt")).thenReturn("jti-1");
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(604800L);
@@ -109,7 +111,8 @@ class OAuthLoginTransactionalStepTest {
                 .thenReturn(Optional.of(existing));
         when(registerOrUpdateDeviceSessionUseCase.execute(eq("acc-existing"), any(SessionContext.class)))
                 .thenReturn(new RegisterDeviceSessionResult("dev-2", false, List.of()));
-        when(tokenGeneratorPort.generateTokenPair("acc-existing", "user", "dev-2"))
+        when(tokenGeneratorPort.generateTokenPair(eq("acc-existing"), eq("user"), eq("dev-2"),
+                any(TenantContext.class)))
                 .thenReturn(new TokenPair("a", "r", 1));
         when(tokenGeneratorPort.extractJti("r")).thenReturn("jti-x");
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(1L);
@@ -154,7 +157,8 @@ class OAuthLoginTransactionalStepTest {
                 .thenReturn(Optional.empty());
         when(registerOrUpdateDeviceSessionUseCase.execute(eq("acc-new"), any(SessionContext.class)))
                 .thenReturn(new RegisterDeviceSessionResult("dev-1", true, List.of()));
-        when(tokenGeneratorPort.generateTokenPair("acc-new", "user", "dev-1"))
+        when(tokenGeneratorPort.generateTokenPair(eq("acc-new"), eq("user"), eq("dev-1"),
+                any(TenantContext.class)))
                 .thenReturn(new TokenPair("a", "r", 1));
         when(tokenGeneratorPort.extractJti("r")).thenReturn("jti-n");
         when(tokenGeneratorPort.refreshTokenTtlSeconds()).thenReturn(1L);

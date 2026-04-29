@@ -3,6 +3,9 @@ plugins {
 }
 
 dependencies {
+    // Jackson (for BaseEventPublisher payload serialization)
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
     // Spring Data JPA
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
@@ -11,6 +14,13 @@ dependencies {
 
     // Spring Boot Autoconfigure (for @AutoConfiguration, @ConditionalOn*)
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
+
+    // Bean Validation (for @NotEmpty on OutboxProperties)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Micrometer — compileOnly for @ConditionalOnClass; services supply runtime dependency
+    compileOnly 'io.micrometer:micrometer-core'
+    testImplementation 'io.micrometer:micrometer-core'
 
     // Lombok
     compileOnly 'org.projectlombok:lombok'

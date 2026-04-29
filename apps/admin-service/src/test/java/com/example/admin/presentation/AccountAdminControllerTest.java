@@ -5,6 +5,7 @@ import com.example.admin.application.AdminActionAuditor;
 import com.example.admin.application.BulkLockAccountUseCase;
 import com.example.admin.application.LockAccountResult;
 import com.example.admin.domain.rbac.PermissionEvaluator;
+import com.example.admin.infrastructure.client.AccountServiceClient;
 import com.example.admin.presentation.advice.AdminExceptionHandler;
 import com.example.admin.presentation.aspect.RequiresPermissionAspect;
 import com.example.admin.support.OperatorJwtTestFixture;
@@ -26,10 +27,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +72,9 @@ class AccountAdminControllerTest {
 
     @MockBean
     BulkLockAccountUseCase bulkLockUseCase;
+
+    @MockBean
+    AccountServiceClient accountServiceClient;
 
     @MockBean
     PermissionEvaluator permissionEvaluator;
@@ -147,5 +154,50 @@ class AccountAdminControllerTest {
                         .content("{}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("TOKEN_INVALID"));
+    }
+
+    // ---- search (GET /api/admin/accounts) ----
+
+    @Test
+    void search_superAdmin_noEmail_returns_paginated_list() throws Exception {
+        var items = List.of(new AccountServiceClient.AccountSummaryItem(
+                "acc-1", "a@example.com", "ACTIVE", Instant.parse("2026-01-01T00:00:00Z")));
+        var page = new AccountServiceClient.AccountSearchResponse(items, 1L, 0, 20, 1);
+        when(permissionEvaluator.hasPermission(anyString(), anyString())).thenReturn(true);
+        when(accountServiceClient.listAll(anyInt(), anyInt())).thenReturn(page);
+
+        mockMvc.perform(get("/api/admin/accounts")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value("acc-1"))
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    void search_noEmail_noAccountReadPermission_returns_empty() throws Exception {
+        when(permissionEvaluator.hasPermission(anyString(), anyString())).thenReturn(false);
+        when(permissionEvaluator.hasAllPermissions(anyString(), any(Collection.class))).thenReturn(false);
+
+        mockMvc.perform(get("/api/admin/accounts")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void search_withEmail_delegates_to_search_client() throws Exception {
+        var items = List.of(new AccountServiceClient.AccountSummaryItem(
+                "acc-1", "a@example.com", "ACTIVE", Instant.parse("2026-01-01T00:00:00Z")));
+        var result = new AccountServiceClient.AccountSearchResponse(items, 1L, 0, 20, 1);
+        when(accountServiceClient.search("a@example.com")).thenReturn(result);
+
+        mockMvc.perform(get("/api/admin/accounts?email=a@example.com")
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].email").value("a@example.com"));
     }
 }

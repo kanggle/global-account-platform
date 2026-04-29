@@ -1,9 +1,12 @@
 package com.example.auth.infrastructure.jwt;
 
+import com.example.auth.application.exception.TokenParseException;
 import com.example.auth.application.port.TokenGeneratorPort;
+import com.example.auth.domain.tenant.TenantContext;
 import com.example.auth.domain.token.TokenPair;
 import com.gap.security.jwt.JwtSigner;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +18,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * JWT token generator that produces RS256-signed access and refresh tokens.
+ *
+ * <p>TASK-BE-229: access token now includes required {@code tenant_id} and
+ * {@code tenant_type} claims per specs/features/multi-tenancy.md §JWT Changes.
+ * Issuing a token with null/blank tenant values is a fail-closed guard —
+ * {@link IllegalStateException} is thrown before any signing attempt.
+ */
 @Slf4j
 @Component
 public class JwtTokenGenerator implements TokenGeneratorPort {
@@ -39,7 +50,25 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
     }
 
     @Override
-    public TokenPair generateTokenPair(String accountId, String scope, String deviceId) {
+    public TokenPair generateTokenPair(String accountId, String scope, String deviceId,
+                                       TenantContext tenantContext) {
+        // fail-closed: tenant_id and tenant_type are mandatory per multi-tenancy spec
+        if (tenantContext == null) {
+            log.error("SECURITY: attempted to issue JWT without tenant context for accountId={}", accountId);
+            throw new IllegalStateException(
+                    "tenant_id is required for token issuance (fail-closed); accountId=" + accountId);
+        }
+        if (tenantContext.tenantId() == null || tenantContext.tenantId().isBlank()) {
+            log.error("SECURITY: attempted to issue JWT with blank tenant_id for accountId={}", accountId);
+            throw new IllegalStateException(
+                    "tenant_id must not be null or blank (fail-closed); accountId=" + accountId);
+        }
+        if (tenantContext.tenantType() == null || tenantContext.tenantType().isBlank()) {
+            log.error("SECURITY: attempted to issue JWT with blank tenant_type for accountId={}", accountId);
+            throw new IllegalStateException(
+                    "tenant_type must not be null or blank (fail-closed); accountId=" + accountId);
+        }
+
         Instant now = Instant.now();
         String accessJti = UUID.randomUUID().toString();
         String refreshJti = UUID.randomUUID().toString();
@@ -52,6 +81,9 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
         accessClaims.put("exp", now.plusSeconds(accessTokenTtlSeconds));
         accessClaims.put("jti", accessJti);
         accessClaims.put("scope", scope);
+        // tenant claims — required, fail-closed above ensures they are present
+        accessClaims.put("tenant_id", tenantContext.tenantId());
+        accessClaims.put("tenant_type", tenantContext.tenantType());
         if (deviceId != null) {
             // device_id claim: opaque UUID v7 of the device session that owns this access token.
             // See specs/contracts/http/auth-api.md "Access Token claims" + device-session.md D5.
@@ -60,13 +92,14 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
 
         String accessToken = jwtSigner.sign(accessClaims);
 
-        // Build refresh token claims
+        // Build refresh token claims — tenant_id embedded for rotation tenant validation
         Map<String, Object> refreshClaims = new LinkedHashMap<>();
         refreshClaims.put("sub", accountId);
         refreshClaims.put("jti", refreshJti);
         refreshClaims.put("iat", now);
         refreshClaims.put("exp", now.plusSeconds(refreshTokenTtlSeconds));
         refreshClaims.put("type", "refresh");
+        refreshClaims.put("tenant_id", tenantContext.tenantId());
 
         String refreshToken = jwtSigner.sign(refreshClaims);
 
@@ -85,31 +118,43 @@ public class JwtTokenGenerator implements TokenGeneratorPort {
 
     @Override
     public String extractJti(String refreshToken) {
-        Claims claims = Jwts.parser()
-                .verifyWith(publicKey)
-                .build()
-                .parseSignedClaims(refreshToken)
-                .getPayload();
-        return claims.getId();
+        return parseClaims(refreshToken).getId();
     }
 
     @Override
     public String extractAccountId(String refreshToken) {
-        Claims claims = Jwts.parser()
-                .verifyWith(publicKey)
-                .build()
-                .parseSignedClaims(refreshToken)
-                .getPayload();
-        return claims.getSubject();
+        return parseClaims(refreshToken).getSubject();
     }
 
     @Override
     public Instant extractIssuedAt(String refreshToken) {
-        Claims claims = Jwts.parser()
-                .verifyWith(publicKey)
-                .build()
-                .parseSignedClaims(refreshToken)
-                .getPayload();
-        return claims.getIssuedAt().toInstant();
+        java.util.Date iat = parseClaims(refreshToken).getIssuedAt();
+        if (iat == null) {
+            throw new TokenParseException("JWT missing iat claim");
+        }
+        return iat.toInstant();
+    }
+
+    @Override
+    public String extractTenantId(String token) {
+        try {
+            Claims claims = parseClaims(token);
+            return claims.get("tenant_id", String.class);
+        } catch (TokenParseException e) {
+            // propagate parse errors
+            throw e;
+        }
+    }
+
+    private Claims parseClaims(String token) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(publicKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (JwtException | IllegalArgumentException e) {
+            throw new TokenParseException(e.getMessage(), e);
+        }
     }
 }

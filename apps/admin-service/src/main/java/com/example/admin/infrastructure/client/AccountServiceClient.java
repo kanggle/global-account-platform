@@ -53,6 +53,73 @@ public class AccountServiceClient {
 
     @Retry(name = "accountService")
     @CircuitBreaker(name = "accountService")
+    public AccountSearchResponse search(String email) {
+        try {
+            return restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/internal/accounts")
+                            .queryParam("email", email)
+                            .build())
+                    .headers(h -> {
+                        if (internalToken != null && !internalToken.isBlank()) {
+                            h.add("X-Internal-Token", internalToken);
+                        }
+                    })
+                    .retrieve()
+                    .onStatus(org.springframework.http.HttpStatusCode::isError, (req, resp) -> {
+                        throw org.springframework.web.client.HttpClientErrorException.create(
+                                resp.getStatusCode(), resp.getStatusText(),
+                                resp.getHeaders(), resp.getBody().readAllBytes(), null);
+                    })
+                    .body(AccountSearchResponse.class);
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            log.warn("account-service returned {} on /internal/accounts: {}", e.getStatusCode(), e.getMessage());
+            throw new DownstreamFailureException("account-service search error", e);
+        } catch (Exception e) {
+            log.error("account-service search call failed", e);
+            throw new DownstreamFailureException("account-service unavailable", e);
+        }
+    }
+
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
+    public AccountSearchResponse listAll(int page, int size) {
+        try {
+            return restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/internal/accounts")
+                            .queryParam("page", page)
+                            .queryParam("size", size)
+                            .build())
+                    .headers(h -> {
+                        if (internalToken != null && !internalToken.isBlank()) {
+                            h.add("X-Internal-Token", internalToken);
+                        }
+                    })
+                    .retrieve()
+                    .onStatus(org.springframework.http.HttpStatusCode::isError, (req, resp) -> {
+                        throw org.springframework.web.client.HttpClientErrorException.create(
+                                resp.getStatusCode(), resp.getStatusText(),
+                                resp.getHeaders(), resp.getBody().readAllBytes(), null);
+                    })
+                    .body(AccountSearchResponse.class);
+        } catch (org.springframework.web.client.RestClientResponseException e) {
+            log.warn("account-service returned {} on /internal/accounts (listAll): {}", e.getStatusCode(), e.getMessage());
+            throw new DownstreamFailureException("account-service listAll error", e);
+        } catch (Exception e) {
+            log.error("account-service listAll call failed", e);
+            throw new DownstreamFailureException("account-service unavailable", e);
+        }
+    }
+
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
+    public AccountDetailResponse getDetail(String accountId) {
+        return callGet("/internal/accounts/" + accountId, null, AccountDetailResponse.class);
+    }
+
+    @Retry(name = "accountService")
+    @CircuitBreaker(name = "accountService")
     public LockResponse lock(String accountId,
                              String operatorId,
                              String reason,
@@ -108,7 +175,7 @@ public class AccountServiceClient {
             return restClient.get()
                     .uri(path)
                     .headers(h -> {
-                        h.add("X-Operator-ID", operatorId);
+                        if (operatorId != null) h.add("X-Operator-ID", operatorId);
                         if (internalToken != null && !internalToken.isBlank()) {
                             h.add("X-Internal-Token", internalToken);
                         }
@@ -143,7 +210,7 @@ public class AccountServiceClient {
                     .uri(path)
                     .headers(h -> {
                         h.add("Idempotency-Key", idempotencyKey);
-                        h.add("X-Operator-ID", operatorId);
+                        if (operatorId != null) h.add("X-Operator-ID", operatorId);
                         if (internalToken != null && !internalToken.isBlank()) {
                             h.add("X-Internal-Token", internalToken);
                         }
@@ -195,6 +262,34 @@ public class AccountServiceClient {
             return null;
         }
     }
+
+    public record AccountDetailResponse(
+            String id,
+            String email,
+            String status,
+            Instant createdAt,
+            AccountDetailProfile profile
+    ) {}
+
+    public record AccountDetailProfile(
+            String displayName,
+            String phoneMasked
+    ) {}
+
+    public record AccountSearchResponse(
+            java.util.List<AccountSummaryItem> content,
+            long totalElements,
+            int page,
+            int size,
+            int totalPages
+    ) {}
+
+    public record AccountSummaryItem(
+            String id,
+            String email,
+            String status,
+            Instant createdAt
+    ) {}
 
     public record LockResponse(
             String accountId,

@@ -14,7 +14,6 @@ import com.example.membership.domain.plan.MembershipPlanRepository;
 import com.example.membership.domain.plan.PlanLevel;
 import com.example.membership.domain.subscription.Subscription;
 import com.example.membership.domain.subscription.SubscriptionRepository;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +41,7 @@ import static org.mockito.Mockito.verify;
 class ActivateSubscriptionUseCaseTest {
 
     @Mock SubscriptionRepository subscriptionRepository;
-    @Mock SubscriptionStatusHistoryRepository historyRepository;
+    @Mock SubscriptionStatusHistoryRecorder historyRecorder;
     @Mock MembershipPlanRepository planRepository;
     @Mock AccountStatusChecker accountStatusChecker;
     @Mock PaymentGateway paymentGateway;
@@ -98,7 +97,7 @@ class ActivateSubscriptionUseCaseTest {
         assertThat(result.created()).isTrue();
         assertThat(result.subscription().planLevel()).isEqualTo(PlanLevel.FAN_CLUB);
         verify(eventPublisher).publishActivated(any(Subscription.class));
-        verify(historyRepository).append(any());
+        verify(historyRecorder).recordTransition(any(Subscription.class), any(), any(), any(), any(), any());
     }
 
     @Test

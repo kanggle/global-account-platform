@@ -46,22 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Testcontainers
 @ActiveProfiles("test")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 residual (PR #44 실측): shared AbstractIntegrationTest 로 이행 후에도 "
-        + "HikariPool-2/3 total=0 from scheduling-1 thread. OutboxPollingScheduler 가 "
-        + "이전 Spring context 의 orphaned pool 을 계속 참조 — TASK-BE-073 @PreDestroy guard 불완전. "
-        + "TASK-BE-077 로 승계.")
 class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka containers inherited from AbstractIntegrationTest (TASK-BE-076).
     // Redis is service-specific so stays declared here.
@@ -80,6 +65,24 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
     static {
         wireMock.start();
         WireMock.configureFor("localhost", wireMock.port());
+    }
+
+    // TASK-BE-145: shared test RSA keypair used to sign id_tokens served by WireMock,
+    // and exposed via the WireMock-served JWKS endpoints for both Google and Microsoft.
+    private static final java.security.KeyPair PROVIDER_KP;
+    private static final String PROVIDER_KID = "integration-test-kid";
+    private static final String GOOGLE_ISSUER = "https://accounts.google.com";
+    private static final String MICROSOFT_ISSUER =
+            "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0";
+
+    static {
+        try {
+            java.security.KeyPairGenerator gen = java.security.KeyPairGenerator.getInstance("RSA");
+            gen.initialize(2048);
+            PROVIDER_KP = gen.generateKeyPair();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new ExceptionInInitializerError(e);
+        }
     }
 
     @Autowired
@@ -111,16 +114,24 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
         // Redirect OAuth providers to WireMock
         registry.add("oauth.google.token-uri", () -> wireMock.baseUrl() + "/google/token");
         registry.add("oauth.google.auth-uri", () -> wireMock.baseUrl() + "/google/authorize");
+        // TASK-BE-145: id_token JWKS verification — point to WireMock-served JWKS.
+        registry.add("oauth.google.jwks-uri", () -> wireMock.baseUrl() + "/google/jwks");
         registry.add("oauth.kakao.token-uri", () -> wireMock.baseUrl() + "/kakao/token");
         registry.add("oauth.kakao.auth-uri", () -> wireMock.baseUrl() + "/kakao/authorize");
         registry.add("oauth.kakao.user-info-uri", () -> wireMock.baseUrl() + "/kakao/userinfo");
         registry.add("oauth.microsoft.token-uri", () -> wireMock.baseUrl() + "/microsoft/token");
         registry.add("oauth.microsoft.auth-uri", () -> wireMock.baseUrl() + "/microsoft/authorize");
+        registry.add("oauth.microsoft.jwks-uri", () -> wireMock.baseUrl() + "/microsoft/jwks");
     }
 
     @BeforeEach
     void resetStubs() {
         wireMock.resetAll();
+
+        // TASK-BE-145: re-publish JWKS endpoints after WireMock reset so id_token
+        // verification finds the public key in either provider's verifier cache.
+        stubJwks("/google/jwks");
+        stubJwks("/microsoft/jwks");
 
         // Clear Redis between tests
         var keys = redisTemplate.keys("oauth:state:*");
@@ -316,8 +327,8 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void stubGoogleTokenEndpoint(String sub, String email, String name) {
-        String payload = "{\"sub\":\"" + sub + "\",\"email\":\"" + email + "\",\"name\":\"" + name + "\"}";
-        String idToken = buildFakeJwt(payload);
+        String idToken = signIdToken(GOOGLE_ISSUER, "test-google-client-id", sub,
+                java.util.Map.of("email", email == null ? "" : email, "name", name == null ? "" : name));
         wireMock.stubFor(WireMock.post(urlEqualTo("/google/token"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -326,23 +337,60 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void stubMicrosoftTokenEndpoint(String sub, String email, String preferredUsername, String name) {
-        StringBuilder payload = new StringBuilder("{\"sub\":\"").append(sub).append("\"");
-        if (email != null) {
-            payload.append(",\"email\":\"").append(email).append("\"");
-        }
-        if (preferredUsername != null) {
-            payload.append(",\"preferred_username\":\"").append(preferredUsername).append("\"");
-        }
-        if (name != null) {
-            payload.append(",\"name\":\"").append(name).append("\"");
-        }
-        payload.append("}");
-        String idToken = buildFakeJwt(payload.toString());
+        java.util.LinkedHashMap<String, Object> extra = new java.util.LinkedHashMap<>();
+        if (email != null) extra.put("email", email);
+        if (preferredUsername != null) extra.put("preferred_username", preferredUsername);
+        if (name != null) extra.put("name", name);
+        String idToken = signIdToken(MICROSOFT_ISSUER, "test-microsoft-client-id", sub, extra);
         wireMock.stubFor(WireMock.post(urlEqualTo("/microsoft/token"))
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"id_token\":\"" + idToken + "\"}")));
+    }
+
+    private static String signIdToken(String issuer, String audience, String sub,
+                                      java.util.Map<String, Object> extraClaims) {
+        var builder = io.jsonwebtoken.Jwts.builder()
+                .header().keyId(PROVIDER_KID).and()
+                .subject(sub)
+                .issuer(issuer)
+                .audience().add(audience).and()
+                .issuedAt(java.util.Date.from(Instant.now()))
+                .expiration(java.util.Date.from(Instant.now().plusSeconds(600)));
+        for (var entry : extraClaims.entrySet()) {
+            if (entry.getValue() != null && !entry.getValue().toString().isBlank()) {
+                builder.claim(entry.getKey(), entry.getValue());
+            }
+        }
+        return builder.signWith(PROVIDER_KP.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256).compact();
+    }
+
+    private static void stubJwks(String path) {
+        java.security.interfaces.RSAPublicKey key =
+                (java.security.interfaces.RSAPublicKey) PROVIDER_KP.getPublic();
+        String n = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(toUnsignedByteArray(key.getModulus()));
+        String e = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(toUnsignedByteArray(key.getPublicExponent()));
+        String body = "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"" + PROVIDER_KID
+                + "\",\"alg\":\"RS256\",\"use\":\"sig\","
+                + "\"n\":\"" + n + "\",\"e\":\"" + e + "\"}]}";
+        wireMock.stubFor(WireMock.get(urlEqualTo(path))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(body)));
+    }
+
+    private static byte[] toUnsignedByteArray(java.math.BigInteger value) {
+        byte[] bytes = value.toByteArray();
+        if (bytes[0] == 0x00) {
+            byte[] trimmed = new byte[bytes.length - 1];
+            System.arraycopy(bytes, 1, trimmed, 0, trimmed.length);
+            return trimmed;
+        }
+        return bytes;
     }
 
     private void stubSocialSignup(String accountId, boolean newAccount) {
@@ -393,14 +441,6 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
         String payload = (String) rows.get(0).get("payload");
         JsonNode parsed = objectMapper.readTree(payload);
         assertThat(parsed.path("loginMethod").asText()).isEqualTo(expectedLoginMethod);
-    }
-
-    private static String buildFakeJwt(String payloadJson) {
-        String header = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString("{\"alg\":\"RS256\",\"typ\":\"JWT\"}".getBytes());
-        String payload = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(payloadJson.getBytes());
-        return header + "." + payload + ".sig";
     }
 
     @SuppressWarnings("unused")

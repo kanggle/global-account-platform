@@ -55,12 +55,18 @@ public class Profile {
     }
 
     /**
-     * GDPR PII masking: null out displayName, phoneNumber, birthDate and stamp maskedAt.
+     * GDPR PII masking per retention.md §2.5:
+     * <ul>
+     *   <li>displayName → fixed string {@code "탈퇴한 사용자"}</li>
+     *   <li>phoneNumber, birthDate, preferences → NULL</li>
+     *   <li>maskedAt stamped to the current instant</li>
+     * </ul>
      */
     public void maskPii() {
-        this.displayName = null;
+        this.displayName = "탈퇴한 사용자";
         this.phoneNumber = null;
         this.birthDate = null;
+        this.preferences = null;
         this.maskedAt = Instant.now();
         this.updatedAt = Instant.now();
     }

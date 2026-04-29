@@ -13,6 +13,8 @@ dependencies {
     // Spring Boot starters
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    // TASK-BE-114: email verification tokens + resend rate limit live in Redis.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -36,12 +38,18 @@ dependencies {
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
     // Test
+    // TASK-BE-098: AbstractIntegrationTest lives in testFixtures source set so
+    // Testcontainers classes stay out of the production classpath (TASK-BE-078 pattern).
+    testImplementation testFixtures(project(':libs:java-test-support'))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:kafka'
     testImplementation 'com.jayway.jsonpath:json-path'
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
+    // TASK-BE-103: Awaitility for end-to-end Kafka consumer integration tests.
+    testImplementation 'org.awaitility:awaitility'
 }
 
 dependencyManagement {

@@ -1,6 +1,7 @@
 package com.example.auth.presentation;
 
 import com.example.auth.application.CreateCredentialUseCase;
+import com.example.auth.application.ForceLogoutUseCase;
 import com.example.auth.application.command.CreateCredentialCommand;
 import com.example.auth.application.exception.CredentialAlreadyExistsException;
 import com.example.auth.application.result.CreateCredentialResult;
@@ -36,6 +37,9 @@ class InternalCredentialControllerTest {
 
     @MockitoBean
     private CreateCredentialUseCase createCredentialUseCase;
+
+    @MockitoBean
+    private ForceLogoutUseCase forceLogoutUseCase;
 
     @Test
     @DisplayName("POST /internal/auth/credentials happy path returns 201")

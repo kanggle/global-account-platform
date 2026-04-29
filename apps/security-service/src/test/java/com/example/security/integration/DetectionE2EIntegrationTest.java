@@ -14,6 +14,7 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -40,20 +41,9 @@ import static org.awaitility.Awaitility.await;
  */
 @SpringBootTest
 @Testcontainers
+@ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-@org.junit.jupiter.api.Disabled(
-        "TASK-BE-062 residual (PR #44 실측): OutboxPollingScheduler scheduling-1 thread 가 "
-        + "orphaned HikariPool 참조 계속 — TASK-BE-077 로 승계.")
 class DetectionE2EIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            return org.testcontainers.DockerClientFactory.instance().isDockerAvailable();
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076).
     // Redis remains service-specific.

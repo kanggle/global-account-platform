@@ -5,16 +5,16 @@ import { RoleGuard } from '@/shared/ui/RoleGuard';
 describe('RoleGuard', () => {
   it('renders children when operator has a permitted role', () => {
     render(
-      <RoleGuard roles={['ACCOUNT_ADMIN']} allow={['SUPER_ADMIN', 'ACCOUNT_ADMIN']}>
+      <RoleGuard roles={['SUPPORT_LOCK']} allow={['SUPER_ADMIN', 'SUPPORT_LOCK']}>
         <button>잠금</button>
       </RoleGuard>,
     );
     expect(screen.getByRole('button', { name: '잠금' })).toBeInTheDocument();
   });
 
-  it('hides children for AUDITOR when not in allow list', () => {
+  it('hides children for SUPPORT_READONLY when not in allow list', () => {
     render(
-      <RoleGuard roles={['AUDITOR']} allow={['SUPER_ADMIN', 'ACCOUNT_ADMIN']}>
+      <RoleGuard roles={['SUPPORT_READONLY']} allow={['SUPER_ADMIN', 'SUPPORT_LOCK']}>
         <button>잠금</button>
       </RoleGuard>,
     );
@@ -23,7 +23,7 @@ describe('RoleGuard', () => {
 
   it('renders fallback when no role matches', () => {
     render(
-      <RoleGuard roles={['AUDITOR']} allow={['SUPER_ADMIN']} fallback={<span>권한 없음</span>}>
+      <RoleGuard roles={['SECURITY_ANALYST']} allow={['SUPER_ADMIN']} fallback={<span>권한 없음</span>}>
         <button>잠금</button>
       </RoleGuard>,
     );

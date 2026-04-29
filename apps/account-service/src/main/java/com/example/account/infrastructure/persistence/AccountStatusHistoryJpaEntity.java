@@ -20,6 +20,9 @@ public class AccountStatusHistoryJpaEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId;
+
     @Column(name = "account_id", nullable = false, length = 36)
     private String accountId;
 
@@ -50,6 +53,9 @@ public class AccountStatusHistoryJpaEntity {
     public static AccountStatusHistoryJpaEntity fromDomain(AccountStatusHistoryEntry entry) {
         AccountStatusHistoryJpaEntity entity = new AccountStatusHistoryJpaEntity();
         entity.id = entry.getId();
+        // TASK-BE-231: use tenantId from entry when present; fall back to "fan-platform"
+        // for legacy fan-platform records where no explicit tenantId is set.
+        entity.tenantId = entry.getTenantId() != null ? entry.getTenantId() : "fan-platform";
         entity.accountId = entry.getAccountId();
         entity.fromStatus = entry.getFromStatus();
         entity.toStatus = entry.getToStatus();

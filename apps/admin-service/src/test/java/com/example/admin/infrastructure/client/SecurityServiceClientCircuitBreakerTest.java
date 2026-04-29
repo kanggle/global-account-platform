@@ -23,6 +23,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Verifies the TASK-BE-033 fail-fast contract on the audit read path:
@@ -134,13 +135,10 @@ class SecurityServiceClientCircuitBreakerTest {
     }
 
     @Test
-    void recovers_to_closed_after_half_open_success() throws InterruptedException {
+    void recovers_to_closed_after_half_open_success() {
         // Force OPEN state deterministically.
         circuitBreaker.transitionToOpenState();
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
-
-        // Wait past waitDurationInOpenState so the CB auto-transitions to HALF_OPEN.
-        Thread.sleep(300);
 
         wireMock.stubFor(get(urlPathMatching("/internal/security/login-history.*"))
                 .willReturn(aResponse()
@@ -148,7 +146,12 @@ class SecurityServiceClientCircuitBreakerTest {
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"content\":[]}")));
 
-        // First probe triggers HALF_OPEN and, on success, closes the circuit.
+        // Poll until CB auto-transitions from OPEN to HALF_OPEN (waitDurationInOpenState=200ms).
+        await().atMost(Duration.ofMillis(500))
+               .pollInterval(Duration.ofMillis(25))
+               .until(() -> circuitBreaker.getState() != CircuitBreaker.State.OPEN);
+
+        // First probe succeeds → CLOSED.
         callLoginHistory();
 
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);

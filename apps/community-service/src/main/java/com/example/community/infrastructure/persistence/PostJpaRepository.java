@@ -16,6 +16,7 @@ public interface PostJpaRepository extends JpaRepository<Post, String> {
                 WHERE fs.fanAccountId = :fanAccountId
             )
             AND p.status = com.example.community.domain.post.status.PostStatus.PUBLISHED
+            AND p.deletedAt IS NULL
             ORDER BY p.publishedAt DESC
             """)
     Page<Post> findFeedForFan(@Param("fanAccountId") String fanAccountId, Pageable pageable);

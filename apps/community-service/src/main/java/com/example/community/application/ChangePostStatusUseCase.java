@@ -1,5 +1,6 @@
 package com.example.community.application;
 
+import com.example.community.application.exception.PermissionDeniedException;
 import com.example.community.application.exception.PostNotFoundException;
 import com.example.community.domain.post.Post;
 import com.example.community.domain.post.PostRepository;
@@ -22,6 +23,9 @@ public class ChangePostStatusUseCase {
     public void execute(String postId, PostStatus target, ActorType actorType, String actorId, String reason) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new PostNotFoundException(postId));
+        if (actorType == ActorType.AUTHOR && !post.getAuthorAccountId().equals(actorId)) {
+            throw new PermissionDeniedException("Only the author can change the status of this post");
+        }
         PostStatus previous = post.changeStatus(target, actorType);
         postRepository.save(post);
         historyRepository.save(PostStatusHistoryEntry.record(

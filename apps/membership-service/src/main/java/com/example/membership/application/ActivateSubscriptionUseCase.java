@@ -16,8 +16,6 @@ import com.example.membership.domain.plan.MembershipPlan;
 import com.example.membership.domain.plan.MembershipPlanRepository;
 import com.example.membership.domain.subscription.Subscription;
 import com.example.membership.domain.subscription.SubscriptionRepository;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryEntry;
-import com.example.membership.domain.subscription.SubscriptionStatusHistoryRepository;
 import com.example.membership.domain.subscription.status.SubscriptionStatus;
 import com.example.membership.domain.subscription.status.SubscriptionStatusMachine;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +32,7 @@ import java.util.Optional;
 public class ActivateSubscriptionUseCase {
 
     private final SubscriptionRepository subscriptionRepository;
-    private final SubscriptionStatusHistoryRepository historyRepository;
+    private final SubscriptionStatusHistoryRecorder historyRecorder;
     private final MembershipPlanRepository planRepository;
     private final AccountStatusChecker accountStatusChecker;
     private final PaymentGateway paymentGateway;
@@ -91,14 +89,9 @@ public class ActivateSubscriptionUseCase {
         Subscription saved = subscriptionRepository.save(subscription);
 
         // 7) Append audit history.
-        historyRepository.append(new SubscriptionStatusHistoryEntry(
-                saved.getId(),
-                saved.getAccountId(),
-                SubscriptionStatus.NONE,
-                SubscriptionStatus.ACTIVE,
-                "USER_SUBSCRIBE",
-                "USER",
-                now));
+        historyRecorder.recordTransition(saved,
+                SubscriptionStatus.NONE, SubscriptionStatus.ACTIVE,
+                "USER_SUBSCRIBE", "USER", now);
 
         // 8) Publish outbox event.
         eventPublisher.publishActivated(saved);

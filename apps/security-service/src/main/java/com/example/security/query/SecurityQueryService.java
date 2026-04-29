@@ -4,7 +4,7 @@ import com.example.security.infrastructure.persistence.LoginHistoryJpaEntity;
 import com.example.security.infrastructure.persistence.LoginHistoryJpaRepository;
 import com.example.security.infrastructure.persistence.SuspiciousEventJpaEntity;
 import com.example.security.infrastructure.persistence.SuspiciousEventJpaRepository;
-import com.example.security.domain.util.PiiMaskingUtils;
+import com.gap.security.pii.PiiMaskingUtils;
 import com.example.security.query.dto.LoginHistoryView;
 import com.example.security.query.dto.SuspiciousEventView;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -33,10 +32,19 @@ public class SecurityQueryService {
     private final SuspiciousEventJpaRepository suspiciousEventJpaRepository;
     private final ObjectMapper objectMapper;
 
-    public List<SuspiciousEventView> findSuspiciousEvents(String accountId, Instant from, Instant to) {
-        List<SuspiciousEventJpaEntity> entities =
-                suspiciousEventJpaRepository.findByAccountIdAndDetectedAtBetweenOrderByDetectedAtDesc(accountId, from, to);
-        return entities.stream().map(this::toView).toList();
+    public Page<SuspiciousEventView> findSuspiciousEvents(
+            String accountId, Instant from, Instant to, String ruleCode, Pageable pageable) {
+        Page<SuspiciousEventJpaEntity> page;
+        if (ruleCode != null && !ruleCode.isBlank()) {
+            page = suspiciousEventJpaRepository
+                    .findByAccountIdAndRuleCodeAndDetectedAtBetweenOrderByDetectedAtDesc(
+                            accountId, ruleCode, from, to, pageable);
+        } else {
+            page = suspiciousEventJpaRepository
+                    .findByAccountIdAndDetectedAtBetweenOrderByDetectedAtDesc(
+                            accountId, from, to, pageable);
+        }
+        return page.map(this::toView);
     }
 
     private SuspiciousEventView toView(SuspiciousEventJpaEntity e) {

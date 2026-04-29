@@ -52,20 +52,14 @@ public class AccountAdminUseCase {
             // audit row before re-throwing so AdminExceptionHandler maps to 503
             // CIRCUIT_OPEN. A10 fail-closed requires a completion row for every
             // started action, including CB-rejected ones.
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
-                    "ACCOUNT", cmd.accountId(),
-                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
-                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    startedAt, "CIRCUIT_OPEN: " + ex.getMessage());
             throw ex;
         } catch (DownstreamFailureException ex) {
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
-                    "ACCOUNT", cmd.accountId(),
-                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
-                    Outcome.FAILURE, ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.ACCOUNT_LOCK, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    startedAt, ex.getMessage());
             throw ex;
         }
 
@@ -106,20 +100,14 @@ public class AccountAdminUseCase {
                     cmd.ticketId(),
                     cmd.idempotencyKey());
         } catch (CallNotPermittedException ex) {
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
-                    "ACCOUNT", cmd.accountId(),
-                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
-                    Outcome.FAILURE, "CIRCUIT_OPEN: " + ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    startedAt, "CIRCUIT_OPEN: " + ex.getMessage());
             throw ex;
         } catch (DownstreamFailureException ex) {
-            auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
-                    auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
-                    "ACCOUNT", cmd.accountId(),
-                    cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
-                    Outcome.FAILURE, ex.getMessage(),
-                    startedAt, Instant.now()));
+            recordAuditFailure(auditId, ActionCode.ACCOUNT_UNLOCK, cmd.operator(),
+                    cmd.accountId(), cmd.reason(), cmd.ticketId(), cmd.idempotencyKey(),
+                    startedAt, ex.getMessage());
             throw ex;
         }
 
@@ -143,5 +131,17 @@ public class AccountAdminUseCase {
         if (reason == null || reason.isBlank()) {
             throw new ReasonRequiredException();
         }
+    }
+
+    private void recordAuditFailure(String auditId, ActionCode actionCode,
+                                    OperatorContext operator, String targetId,
+                                    String reason, String ticketId, String idempotencyKey,
+                                    Instant startedAt, String failureMessage) {
+        auditor.recordCompletion(new AdminActionAuditor.CompletionRecord(
+                auditId, actionCode, operator,
+                "ACCOUNT", targetId,
+                reason, ticketId, idempotencyKey,
+                Outcome.FAILURE, failureMessage,
+                startedAt, Instant.now()));
     }
 }

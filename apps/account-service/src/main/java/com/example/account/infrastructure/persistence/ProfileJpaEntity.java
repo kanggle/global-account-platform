@@ -19,6 +19,9 @@ public class ProfileJpaEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "tenant_id", nullable = false, length = 32)
+    private String tenantId;
+
     @Column(name = "account_id", nullable = false, unique = true, length = 36)
     private String accountId;
 
@@ -47,8 +50,18 @@ public class ProfileJpaEntity {
     private Instant maskedAt;
 
     public static ProfileJpaEntity fromDomain(Profile profile) {
+        return fromDomain(profile, "fan-platform");
+    }
+
+    /**
+     * TASK-BE-231: overload that accepts an explicit tenantId for provisioned accounts.
+     * The single-arg variant retains {@code "fan-platform"} for backward compatibility
+     * with existing self-service signup flows.
+     */
+    public static ProfileJpaEntity fromDomain(Profile profile, String tenantId) {
         ProfileJpaEntity entity = new ProfileJpaEntity();
         entity.id = profile.getId();
+        entity.tenantId = tenantId;
         entity.accountId = profile.getAccountId();
         entity.displayName = profile.getDisplayName();
         entity.phoneNumber = profile.getPhoneNumber();

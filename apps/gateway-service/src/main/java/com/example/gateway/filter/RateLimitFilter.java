@@ -6,6 +6,8 @@ import com.example.gateway.route.RouteConfig;
 import com.example.web.dto.ErrorResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -27,23 +29,36 @@ import java.util.Base64;
 /**
  * Global rate limit filter using Redis token bucket.
  * Applies scope-specific limits (login, signup, refresh) and global IP-based limit.
+ *
+ * Rate limit key pattern includes tenant_id (decoded from JWT payload without signature verification)
+ * to support per-tenant quota accounting: rate:login:{tenant_id}:{ip}
+ * For routes without a JWT (public login/signup), tenant defaults to "anonymous".
  */
 @Slf4j
 @Component
 public class RateLimitFilter implements GlobalFilter, Ordered {
 
     private static final int ORDER = -150;
+    private static final String METRIC_NAME = "gateway_ratelimit_total";
+    private static final String TAG_SCOPE = "scope";
+    private static final String TAG_RESULT = "result";
+    private static final String RESULT_ALLOWED = "allowed";
+    private static final String RESULT_REJECTED = "rejected";
+    private static final String ANONYMOUS_TENANT = "anonymous";
 
     private final TokenBucketRateLimiter rateLimiter;
     private final RouteConfig routeConfig;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     public RateLimitFilter(TokenBucketRateLimiter rateLimiter,
                            RouteConfig routeConfig,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           MeterRegistry meterRegistry) {
         this.rateLimiter = rateLimiter;
         this.routeConfig = routeConfig;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -51,13 +66,14 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getPath().value();
         String clientIp = resolveClientIp(request);
+        String tenantId = extractTenantIdFromJwt(request);
 
         // Check scope-specific rate limit first
         String scope = routeConfig.resolveRateLimitScope(path);
 
         Mono<RateLimitResult> scopeCheck;
         if (scope != null) {
-            String identifier = resolveIdentifier(scope, clientIp, request);
+            String identifier = resolveIdentifier(scope, clientIp, tenantId, request);
             scopeCheck = rateLimiter.isAllowed(scope, identifier);
         } else {
             scopeCheck = Mono.just(RateLimitResult.allowed());
@@ -65,14 +81,24 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
         return scopeCheck.flatMap(scopeResult -> {
             if (!scopeResult.isAllowed()) {
+                if (scope != null) {
+                    recordCounter(scope, RESULT_REJECTED);
+                    recordRejectedCounter(scope);
+                }
                 return writeRateLimitResponse(exchange, scopeResult.retryAfterSeconds());
+            }
+            if (scope != null) {
+                recordCounter(scope, RESULT_ALLOWED);
             }
             // Always check global rate limit
             return rateLimiter.isAllowed("global", clientIp)
                     .flatMap(globalResult -> {
                         if (!globalResult.isAllowed()) {
+                            recordCounter("global", RESULT_REJECTED);
+                            recordRejectedCounter("global");
                             return writeRateLimitResponse(exchange, globalResult.retryAfterSeconds());
                         }
+                        recordCounter("global", RESULT_ALLOWED);
                         return chain.filter(exchange);
                     });
         });
@@ -94,13 +120,43 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         return "unknown";
     }
 
-    private String resolveIdentifier(String scope, String clientIp, ServerHttpRequest request) {
+    private String resolveIdentifier(String scope, String clientIp, String tenantId, ServerHttpRequest request) {
         return switch (scope) {
-            case "login" -> extractSubnet(clientIp);
-            case "signup" -> clientIp;
-            case "refresh" -> extractAccountIdFromJwt(request, clientIp);
+            case "login" -> tenantId + ":" + extractSubnet(clientIp);
+            case "signup" -> tenantId + ":" + clientIp;
+            case "refresh" -> tenantId + ":" + extractAccountIdFromJwt(request, clientIp);
             default -> clientIp;
         };
+    }
+
+    /**
+     * Extracts tenant_id from JWT payload without signature verification.
+     * Used only for rate-limit key construction; full JWT validation occurs in JwtAuthenticationFilter.
+     * Falls back to "anonymous" if no valid JWT is present.
+     */
+    private String extractTenantIdFromJwt(ServerHttpRequest request) {
+        String authHeader = request.getHeaders().getFirst("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ANONYMOUS_TENANT;
+        }
+
+        String token = authHeader.substring(7);
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                return ANONYMOUS_TENANT;
+            }
+            String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            com.fasterxml.jackson.databind.JsonNode payload = objectMapper.readTree(payloadJson);
+            com.fasterxml.jackson.databind.JsonNode tenantIdNode = payload.get("tenant_id");
+            if (tenantIdNode != null && !tenantIdNode.asText().isBlank()) {
+                return tenantIdNode.asText();
+            }
+            return ANONYMOUS_TENANT;
+        } catch (Exception e) {
+            log.debug("rate-limit: failed to extract tenant_id from JWT, using anonymous: {}", e.getMessage());
+            return ANONYMOUS_TENANT;
+        }
     }
 
     /**
@@ -167,6 +223,21 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
                             "{\"code\":\"RATE_LIMITED\",\"message\":\"Too many requests\"}"
                                     .getBytes(StandardCharsets.UTF_8))));
         }
+    }
+
+    private void recordCounter(String scope, String result) {
+        Counter.builder(METRIC_NAME)
+                .tag(TAG_SCOPE, scope)
+                .tag(TAG_RESULT, result)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    private void recordRejectedCounter(String scope) {
+        Counter.builder("gateway_ratelimit_rejected_total")
+                .tag(TAG_SCOPE, scope)
+                .register(meterRegistry)
+                .increment();
     }
 
     @Override

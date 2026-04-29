@@ -83,7 +83,7 @@ apps/gateway-service/src/main/java/com/example/gateway/
 - JWKS는 auth-service에서 10분 주기로 페치 + Redis 캐시 + kid 불일치 시 즉시 refetch
 
 ### ratelimit/
-- 토큰 버킷 키 스키마: `ratelimit:{scope}:{identifier}:{window}` (`rules/traits/transactional.md` T1의 idempotency와 별개)
+- 토큰 버킷 키 스키마: `rate:{scope}:{tenant_id}:{identifier}` (상세 패턴: `specs/services/gateway-service/redis-keys.md` 참조)
 - 초과 시 429 응답 + `Retry-After` 헤더
 
 ### config/

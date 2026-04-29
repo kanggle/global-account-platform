@@ -41,6 +41,7 @@ dependencies {
     implementation 'io.micrometer:micrometer-registry-prometheus'
 
     // Test
+    testImplementation(testFixtures(project(':libs:java-test-support')))
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.testcontainers:junit-jupiter'

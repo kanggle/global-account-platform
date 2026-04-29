@@ -18,6 +18,14 @@ class OAuthClientFactoryTest {
     @BeforeEach
     void setUp() {
         OAuthProperties props = new OAuthProperties();
+        // TASK-BE-145: provider clients now construct an OidcJwksVerifier eagerly,
+        // which requires non-null jwks-uri and expected-issuer-pattern. Use any
+        // syntactically valid placeholders — this test never invokes the verifier.
+        props.getGoogle().setJwksUri("http://localhost/google/jwks");
+        props.getGoogle().setExpectedIssuerPattern("^accounts\\.google\\.com$");
+        props.getMicrosoft().setJwksUri("http://localhost/microsoft/jwks");
+        props.getMicrosoft().setExpectedIssuerPattern("^https://login\\.microsoftonline\\.com/[^/]+/v2\\.0$");
+
         ObjectMapper mapper = new ObjectMapper();
         googleClient = new GoogleOAuthClient(props, mapper);
         kakaoClient = new KakaoOAuthClient(props, mapper);

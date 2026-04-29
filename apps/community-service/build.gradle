@@ -18,6 +18,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'com.github.ben-manes.caffeine:caffeine'
 
     // Kafka
     implementation 'org.springframework.kafka:spring-kafka'
@@ -53,6 +54,7 @@ dependencies {
     testImplementation 'com.jayway.jsonpath:json-path'
     testImplementation 'org.awaitility:awaitility'
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
+    testImplementation testFixtures(project(':libs:java-test-support'))
 }
 
 dependencyManagement {

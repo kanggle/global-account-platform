@@ -37,6 +37,7 @@ dependencies {
     testImplementation 'com.redis:testcontainers-redis:2.2.2'
     testImplementation 'org.wiremock:wiremock-standalone:3.9.1'
     testImplementation 'io.projectreactor:reactor-test'
+    testImplementation testFixtures(project(':libs:java-test-support'))
 }
 
 dependencyManagement {

@@ -4,9 +4,11 @@ import com.example.membership.domain.plan.PlanLevel;
 import com.example.membership.domain.subscription.Subscription;
 import com.example.membership.domain.subscription.status.SubscriptionStatus;
 import com.example.membership.domain.subscription.status.SubscriptionStatusMachine;
+import com.example.testsupport.integration.DockerAvailableCondition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -17,6 +19,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -32,24 +35,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
 @DisplayName("SubscriptionJpaRepository#findExpirable")
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
+@ExtendWith(DockerAvailableCondition.class)
 class SubscriptionJpaRepositoryTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     @Container
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
             .withDatabaseName("membership_db")
             .withUsername("test")
             .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     @DynamicPropertySource
     static void overrideProps(DynamicPropertyRegistry registry) {

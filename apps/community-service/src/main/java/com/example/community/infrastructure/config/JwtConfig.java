@@ -22,6 +22,9 @@ public class JwtConfig {
     @Value("${community.jwt.public-key-path}")
     private Resource publicKeyResource;
 
+    @Value("${community.jwt.expected-issuer}")
+    private String expectedIssuer;
+
     @Bean
     public PublicKey communityPublicKey() throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
         byte[] keyBytes = readPemKey(publicKeyResource);
@@ -32,7 +35,7 @@ public class JwtConfig {
 
     @Bean
     public JwtVerifier communityJwtVerifier(PublicKey communityPublicKey) {
-        return new Rs256JwtVerifier(communityPublicKey);
+        return new Rs256JwtVerifier(communityPublicKey, expectedIssuer);
     }
 
     private byte[] readPemKey(Resource resource) throws IOException {

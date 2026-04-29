@@ -1,20 +1,17 @@
 package com.example.membership.infrastructure.client;
 
+import com.example.common.resilience.ResilienceClientFactory;
 import com.example.membership.application.exception.AccountStatusUnavailableException;
 import com.example.membership.domain.account.AccountStatus;
 import com.example.membership.domain.account.AccountStatusChecker;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.function.Supplier;
 
 /**
@@ -35,28 +32,8 @@ public class AccountStatusClient implements AccountStatusChecker {
             @Value("${membership.account-service.connect-timeout-ms:2000}") int connectTimeoutMs,
             @Value("${membership.account-service.read-timeout-ms:3000}") int readTimeoutMs,
             @Value("${membership.account-service.internal-token:}") String internalToken) {
-
-        HttpClient httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(connectTimeoutMs))
-                .build();
-
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
-
-        this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
-                .requestFactory(requestFactory)
-                .build();
-
-        CircuitBreakerConfig cbConfig = CircuitBreakerConfig.custom()
-                .failureRateThreshold(50)
-                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.TIME_BASED)
-                .slidingWindowSize(10)
-                .minimumNumberOfCalls(5)
-                .waitDurationInOpenState(Duration.ofSeconds(10))
-                .permittedNumberOfCallsInHalfOpenState(3)
-                .build();
-        this.circuitBreaker = CircuitBreaker.of("accountStatus", cbConfig);
+        this.restClient = ResilienceClientFactory.buildRestClient(baseUrl, connectTimeoutMs, readTimeoutMs);
+        this.circuitBreaker = ResilienceClientFactory.buildCircuitBreaker("accountStatus");
         this.internalToken = internalToken;
     }
 

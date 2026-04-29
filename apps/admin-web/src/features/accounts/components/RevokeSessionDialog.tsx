@@ -31,7 +31,10 @@ export function RevokeSessionDialog({ open, onOpenChange, accountId }: RevokeSes
     try {
       const result = await revoke.mutateAsync({ accountId, reason: values.reason });
       setRevokedCount(result.revokedSessionCount);
-      toast.show(`${result.revokedSessionCount}개의 세션을 종료했습니다.`, 'success');
+      const countMsg = result.revokedSessionCount > 0
+        ? `refresh token ${result.revokedSessionCount}개 만료, `
+        : '';
+      toast.show(`세션 강제 종료 완료 — ${countMsg}현재 접속 즉시 차단됨`, 'success');
       form.reset();
       onOpenChange(false);
       setRevokedCount(null);
@@ -46,7 +49,7 @@ export function RevokeSessionDialog({ open, onOpenChange, accountId }: RevokeSes
       open={open}
       onOpenChange={onOpenChange}
       title="세션 강제 종료"
-      description="해당 계정의 모든 활성 세션을 강제 종료합니다. 사유는 감사 로그에 기록됩니다."
+      description="해당 계정의 모든 세션을 즉시 차단합니다. 현재 유효한 access token도 즉시 무효화됩니다. 사유는 감사 로그에 기록됩니다."
     >
       <form aria-label="revoke-session-form" onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
         <div className="flex flex-col gap-1">
@@ -62,7 +65,7 @@ export function RevokeSessionDialog({ open, onOpenChange, accountId }: RevokeSes
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             취소
           </Button>
-          <Button type="submit" variant="destructive" disabled={revoke.isPending}>
+          <Button type="submit" variant="default" disabled={revoke.isPending}>
             {revoke.isPending ? '처리 중...' : '세션 강제 종료'}
           </Button>
         </DialogFooter>

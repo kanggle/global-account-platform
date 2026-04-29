@@ -37,6 +37,7 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 {
   "accountId": "string | null (미존재 이메일이면 null)",
   "emailHash": "string (SHA256[:10])",
+  "tenantId": "string | null (테넌트 컨텍스트. 미확정 이메일이면 null)",
   "ipMasked": "192.168.*.*",
   "userAgentFamily": "Chrome 120",
   "deviceFingerprint": "string (hashed)",
@@ -60,7 +61,8 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 {
   "accountId": "string | null",
   "emailHash": "string",
-  "failureReason": "CREDENTIALS_INVALID | ACCOUNT_LOCKED | ACCOUNT_DORMANT | ACCOUNT_DELETED | RATE_LIMITED",
+  "tenantId": "string | null",
+  "failureReason": "CREDENTIALS_INVALID | ACCOUNT_LOCKED | ACCOUNT_DORMANT | ACCOUNT_DELETED | RATE_LIMITED | LOGIN_TENANT_AMBIGUOUS",
   "failCount": 3,
   "ipMasked": "192.168.*.*",
   "userAgentFamily": "Chrome 120",
@@ -84,6 +86,7 @@ auth-service가 발행하는 모든 Kafka 이벤트. security-service가 primary
 ```json
 {
   "accountId": "string",
+  "tenantId": "string (발급된 토큰의 tenant_id. 필수)",
   "ipMasked": "192.168.*.*",
   "userAgentFamily": "Chrome 120",
   "deviceFingerprint": "string",
@@ -118,6 +121,7 @@ Refresh token rotation 성공 시 발행.
 ```json
 {
   "accountId": "string",
+  "tenantId": "string (토큰의 tenant_id)",
   "previousJti": "string (소비된 토큰)",
   "newJti": "string (새로 발급된 토큰)",
   "ipMasked": "192.168.*.*",
@@ -151,6 +155,29 @@ Refresh token rotation 성공 시 발행.
 ```
 
 **Consumers**: security-service → 즉시 `auto.lock.triggered` 발행 (최고 우선순위)
+
+---
+
+## auth.token.tenant.mismatch
+
+Refresh token rotation 시 제출된 token의 `tenant_id`와 새로 발급할 token의 `tenant_id`가 불일치. 보안 이벤트.
+
+**Topic**: `auth.token.tenant.mismatch`
+
+**Payload**:
+```json
+{
+  "accountId": "string",
+  "submittedTenantId": "string (제출된 refresh token의 tenant_id)",
+  "expectedTenantId": "string (새 token의 tenant_id)",
+  "reusedJti": "string (문제가 된 refresh token의 jti)",
+  "ipMasked": "192.168.*.*",
+  "deviceFingerprint": "string",
+  "detectedAt": "2026-04-12T10:00:00Z"
+}
+```
+
+**Consumers**: security-service (최고 우선순위 보안 이벤트)
 
 ---
 

@@ -1,23 +1,73 @@
 package com.example.auth.presentation.exception;
 
 import com.example.auth.application.exception.*;
+import com.example.auth.application.exception.LoginTenantAmbiguousException;
+import com.example.auth.application.exception.TokenTenantMismatchException;
+import com.example.auth.domain.credentials.PasswordPolicyViolationException;
 import com.example.web.dto.ErrorResponse;
+import com.example.web.exception.CommonGlobalExceptionHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @Slf4j
 @RestControllerAdvice
-public class AuthExceptionHandler {
+public class AuthExceptionHandler extends CommonGlobalExceptionHandler {
 
     @ExceptionHandler(CredentialsInvalidException.class)
     public ResponseEntity<ErrorResponse> handleCredentialsInvalid(CredentialsInvalidException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("CREDENTIALS_INVALID", "Invalid email or password"));
+    }
+
+    @ExceptionHandler(LoginTenantAmbiguousException.class)
+    public ResponseEntity<ErrorResponse> handleLoginTenantAmbiguous(LoginTenantAmbiguousException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("LOGIN_TENANT_AMBIGUOUS",
+                        "Email exists in multiple tenants. Please specify tenantId."));
+    }
+
+    @ExceptionHandler(TokenTenantMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTokenTenantMismatch(TokenTenantMismatchException e) {
+        log.warn("Token tenant mismatch detected");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("TOKEN_TENANT_MISMATCH",
+                        "Refresh token tenant does not match; rotation denied"));
+    }
+
+    /**
+     * Password-change flow uses a separate 400 mapping per
+     * {@code specs/contracts/http/auth-api.md} ({@code PATCH /api/auth/password}).
+     * Spring picks the most specific {@code @ExceptionHandler}, so this method
+     * wins over {@link #handleCredentialsInvalid} when the use case throws
+     * {@link CurrentPasswordMismatchException}.
+     */
+    @ExceptionHandler(CurrentPasswordMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleCurrentPasswordMismatch(CurrentPasswordMismatchException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CREDENTIALS_INVALID", "Current password does not match"));
+    }
+
+    @ExceptionHandler(PasswordPolicyViolationException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordPolicyViolation(PasswordPolicyViolationException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("PASSWORD_POLICY_VIOLATION", e.getMessage()));
+    }
+
+    /**
+     * Password-reset confirm flow (TASK-BE-109): unknown / expired / already-used
+     * tokens, and the "credential row vanished between request and confirm" edge
+     * case, all surface as the same 400 so the API does not leak which condition
+     * triggered the rejection.
+     */
+    @ExceptionHandler(PasswordResetTokenInvalidException.class)
+    public ResponseEntity<ErrorResponse> handlePasswordResetTokenInvalid(
+            PasswordResetTokenInvalidException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("PASSWORD_RESET_TOKEN_INVALID",
+                        "Password reset token is invalid or has expired"));
     }
 
     @ExceptionHandler(CredentialAlreadyExistsException.class)
@@ -79,6 +129,14 @@ public class AuthExceptionHandler {
                 .body(ErrorResponse.of("INVALID_STATE", "Invalid or expired OAuth state"));
     }
 
+    @ExceptionHandler(com.example.auth.application.exception.InvalidOAuthRedirectUriException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOAuthRedirectUri(
+            com.example.auth.application.exception.InvalidOAuthRedirectUriException e) {
+        log.warn("Rejected OAuth request with redirect_uri not in allowlist");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_REDIRECT_URI", "Invalid redirect_uri"));
+    }
+
     @ExceptionHandler(com.example.auth.application.exception.OAuthEmailRequiredException.class)
     public ResponseEntity<ErrorResponse> handleOAuthEmailRequired(
             com.example.auth.application.exception.OAuthEmailRequiredException e) {
@@ -112,36 +170,5 @@ public class AuthExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse.of("SESSION_OWNERSHIP_MISMATCH",
                         "Session does not belong to caller"));
-    }
-
-    @ExceptionHandler(org.springframework.web.bind.MissingRequestHeaderException.class)
-    public ResponseEntity<ErrorResponse> handleMissingHeader(
-            org.springframework.web.bind.MissingRequestHeaderException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR",
-                        "Missing required header: " + e.getHeaderName()));
-    }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(err -> err.getField() + ": " + err.getDefaultMessage())
-                .orElse("Validation failed");
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", message));
-    }
-
-    @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<ErrorResponse> handleMalformedRequest(HttpMessageNotReadableException e) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", "Malformed request body"));
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGeneral(Exception e) {
-        log.error("Unexpected error", e);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of("INTERNAL_ERROR", "An unexpected error occurred"));
     }
 }

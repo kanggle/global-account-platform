@@ -71,7 +71,7 @@ public class AuditQueryUseCase {
             }
         }
 
-        if (includeLogin) {
+        if (includeLogin && cmd.accountId() != null) {
             List<SecurityServiceClient.LoginHistoryEntry> lh =
                     securityServiceClient.queryLoginHistory(cmd.accountId(), cmd.from(), cmd.to());
             totalElements += lh.size();
@@ -92,7 +92,7 @@ public class AuditQueryUseCase {
             }
         }
 
-        if (includeSuspicious) {
+        if (includeSuspicious && cmd.accountId() != null) {
             List<SecurityServiceClient.SuspiciousEventEntry> se =
                     securityServiceClient.querySuspiciousEvents(cmd.accountId(), cmd.from(), cmd.to());
             totalElements += se.size();

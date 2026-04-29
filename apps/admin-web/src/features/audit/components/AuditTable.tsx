@@ -2,20 +2,21 @@
 
 import { useState } from 'react';
 import { useAudit } from '../hooks/useAudit';
+import type { AuditFilters } from '../hooks/useAudit';
 import { Table, THead, TBody, TR, TH, TD } from '@/shared/ui/table';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Button } from '@/shared/ui/button';
 import { formatDateTime } from '@/shared/lib/date';
 
-export function AuditTable() {
+export function AuditTable({ defaultSource }: { defaultSource?: AuditFilters['source'] }) {
   const [filters, setFilters] = useState<{ accountId: string; actionCode: string; from: string; to: string }>({
     accountId: '',
     actionCode: '',
     from: '',
     to: '',
   });
-  const query = useAudit(filters);
+  const query = useAudit({ ...filters, source: defaultSource });
 
   return (
     <div className="flex flex-col gap-4">

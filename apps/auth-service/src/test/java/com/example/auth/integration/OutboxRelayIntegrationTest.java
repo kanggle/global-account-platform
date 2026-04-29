@@ -17,13 +17,10 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.support.TransactionTemplate;
+import com.example.testsupport.integration.AbstractIntegrationTest;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
 import java.util.*;
@@ -40,38 +37,14 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @ActiveProfiles("test")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
-class OutboxRelayIntegrationTest {
+class OutboxRelayIntegrationTest extends AbstractIntegrationTest {
 
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
-
-    @Container
-    static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-            .withDatabaseName("auth_db")
-            .withUsername("test")
-            .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
-            .withStartupTimeout(Duration.ofMinutes(3));
-
+    // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076/078).
+    // Redis remains service-specific.
     @Container
     @SuppressWarnings("resource")
     static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
-
-    // TASK-BE-075: switch to log-based wait so broker metadata is published
-    // before Producer/Consumer attempt their first connect.
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(
-            DockerImageName.parse("confluentinc/cp-kafka:7.6.0"))
-            .waitingFor(Wait.forLogMessage(".*\\[KafkaServer id=\\d+\\] started.*", 1))
-            .withStartupTimeout(Duration.ofMinutes(3));
 
     @Autowired
     private AuthEventPublisher authEventPublisher;
@@ -87,18 +60,15 @@ class OutboxRelayIntegrationTest {
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", mysql::getJdbcUrl);
-        registry.add("spring.datasource.username", mysql::getUsername);
-        registry.add("spring.datasource.password", mysql::getPassword);
+        // MySQL + Kafka registered by AbstractIntegrationTest.
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
         registry.add("auth.account-service.base-url", () -> "http://localhost:18099");
     }
 
     private KafkaConsumer<String, String> createConsumer(String... topics) {
         Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers());
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "test-outbox-relay-" + UUID.randomUUID());
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());

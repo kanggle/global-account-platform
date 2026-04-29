@@ -7,6 +7,7 @@ import com.example.admin.application.BulkLockAccountUseCase;
 import com.example.admin.application.exception.BatchSizeExceededException;
 import com.example.admin.application.exception.IdempotencyKeyConflictException;
 import com.example.admin.domain.rbac.PermissionEvaluator;
+import com.example.admin.infrastructure.client.AccountServiceClient;
 import com.example.admin.presentation.advice.AdminExceptionHandler;
 import com.example.admin.presentation.aspect.RequiresPermissionAspect;
 import com.example.admin.support.OperatorJwtTestFixture;
@@ -62,6 +63,7 @@ class BulkLockControllerTest {
     @Autowired MockMvc mockMvc;
     @MockBean AccountAdminUseCase useCase;
     @MockBean BulkLockAccountUseCase bulkLockUseCase;
+    @MockBean AccountServiceClient accountServiceClient;
     @MockBean PermissionEvaluator permissionEvaluator;
     @MockBean AdminActionAuditor auditor;
 

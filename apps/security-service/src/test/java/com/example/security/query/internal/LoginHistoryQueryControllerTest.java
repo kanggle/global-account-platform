@@ -7,10 +7,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -23,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = LoginHistoryQueryController.class)
 @Import({QueryExceptionHandler.class, InternalAuthFilter.class})
+@ActiveProfiles("test")
 class LoginHistoryQueryControllerTest {
 
     @Autowired
@@ -62,6 +64,21 @@ class LoginHistoryQueryControllerTest {
                         .param("accountId", "acc-001"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("PERMISSION_DENIED"));
+    }
+
+    @Test
+    @DisplayName("서비스가 IllegalArgumentException을 던지면 400 VALIDATION_ERROR 응답을 반환한다")
+    void getLoginHistory_serviceThrowsIllegalArgument_returns400() throws Exception {
+        when(queryService.findLoginHistory(eq("acc-001"), isNull(), isNull(), isNull(), any()))
+                .thenThrow(new IllegalArgumentException("from must be before to"));
+
+        mockMvc.perform(get("/internal/security/login-history")
+                        .header("X-Internal-Token", TOKEN)
+                        .param("accountId", "acc-001"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.message").value("from must be before to"))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty());
     }
 
     @Test
