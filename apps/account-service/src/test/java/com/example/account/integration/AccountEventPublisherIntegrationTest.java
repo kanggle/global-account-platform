@@ -7,6 +7,7 @@ import com.example.messaging.outbox.OutboxPollingScheduler;
 import com.example.testsupport.integration.AbstractIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,7 +18,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
@@ -81,13 +81,17 @@ class AccountEventPublisherIntegrationTest extends AbstractIntegrationTest {
     @SuppressWarnings("rawtypes")
     private KafkaTemplate kafkaTemplate;
 
+    @BeforeEach
+    void cleanOutbox() {
+        jdbcTemplate.update("DELETE FROM outbox");
+    }
+
     private Account lockedAccount(String id) {
         return Account.reconstitute(id, "user@example.com", null, AccountStatus.LOCKED,
                 Instant.now(), Instant.now(), null, null, null, 0);
     }
 
     @Test
-    @Transactional
     @DisplayName("publishAccountLocked writes outbox row whose payload matches the contract and carries a UUID v7 eventId")
     void publishAccountLocked_writesContractCompliantPayload() throws Exception {
         String accountId = "acc-" + UUID.randomUUID();
@@ -97,8 +101,8 @@ class AccountEventPublisherIntegrationTest extends AbstractIntegrationTest {
                 lockedAccount(accountId), "ADMIN_LOCK", "operator", "op-7", lockedAt);
 
         // Read the row that was just written. We filter by aggregate_id +
-        // event_type so co-resident rows from prior tests don't bleed in
-        // (the @Transactional wrapper rolls this row back at test end).
+        // event_type so rows from other tests don't bleed in (outbox is
+        // truncated in @BeforeEach; each test uses a unique accountId).
         Map<String, Object> row = jdbcTemplate.queryForMap(
                 "SELECT aggregate_type, aggregate_id, event_type, payload, status " +
                         "FROM outbox WHERE aggregate_id = ? AND event_type = ?",
@@ -134,7 +138,6 @@ class AccountEventPublisherIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @Transactional
     @DisplayName("publishAccountLocked omits actorId from payload when actorId is null")
     void publishAccountLocked_nullActorId_omitsField() throws Exception {
         String accountId = "acc-" + UUID.randomUUID();
