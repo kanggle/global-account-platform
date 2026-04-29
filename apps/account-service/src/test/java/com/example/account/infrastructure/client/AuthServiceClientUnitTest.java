@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("AuthServiceClient 단위 테스트")
-class AuthServiceClientTest {
+class AuthServiceClientUnitTest {
 
     private static final String CREDENTIALS_PATH = "/internal/auth/credentials";
 
