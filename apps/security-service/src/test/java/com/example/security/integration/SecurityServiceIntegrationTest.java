@@ -36,17 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Testcontainers
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class SecurityServiceIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076/078).
     // Kafka image version is pinned to cp-kafka:7.6.0 there; no local override.

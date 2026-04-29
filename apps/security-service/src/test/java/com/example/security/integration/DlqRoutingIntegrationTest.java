@@ -39,17 +39,7 @@ import static org.awaitility.Awaitility.await;
 @SpringBootTest
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class DlqRoutingIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076).
     // Redis remains service-specific.

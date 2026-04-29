@@ -2,10 +2,11 @@ package com.example.account.infrastructure.persistence;
 
 import com.example.account.domain.account.Account;
 import com.example.account.domain.status.AccountStatus;
+import com.example.testsupport.integration.DockerAvailableCondition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -27,18 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers
-@EnabledIf("isDockerAvailable")
+@ExtendWith(DockerAvailableCondition.class)
 @DisplayName("AccountJpaRepository 쿼리 슬라이스 테스트")
 class AccountJpaRepositoryTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     @SuppressWarnings("resource")
     @Container

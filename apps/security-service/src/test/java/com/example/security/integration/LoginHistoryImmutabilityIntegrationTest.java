@@ -23,17 +23,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest
 @Testcontainers
-@org.junit.jupiter.api.condition.EnabledIf("isDockerAvailable")
 class LoginHistoryImmutabilityIntegrationTest extends AbstractIntegrationTest {
-
-    static boolean isDockerAvailable() {
-        try {
-            org.testcontainers.DockerClientFactory.instance().client();
-            return true;
-        } catch (Throwable e) {
-            return false;
-        }
-    }
 
     // MySQL + Kafka inherited from AbstractIntegrationTest (TASK-BE-076/078/080).
     // Kafka image version is pinned to cp-kafka:7.6.0 there; no local override.
