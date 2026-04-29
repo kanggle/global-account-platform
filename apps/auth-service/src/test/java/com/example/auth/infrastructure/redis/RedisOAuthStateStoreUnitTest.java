@@ -25,7 +25,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisOAuthStateStore 단위 테스트 (TASK-BE-147)")
-class RedisOAuthStateStoreTest {
+class RedisOAuthStateStoreUnitTest {
 
     private static final String STATE = "state-uuid";
     // Reference the adapter's own constant so a prefix change is caught here too.

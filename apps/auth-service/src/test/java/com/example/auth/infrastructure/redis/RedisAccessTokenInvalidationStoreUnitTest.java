@@ -22,7 +22,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisAccessTokenInvalidationStore 단위 테스트 (TASK-BE-146)")
-class RedisAccessTokenInvalidationStoreTest {
+class RedisAccessTokenInvalidationStoreUnitTest {
 
     private static final String ACCOUNT_ID = "acc-1";
     private static final String EXPECTED_KEY = "access:invalidate-before:" + ACCOUNT_ID;

@@ -23,7 +23,7 @@ import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("RedisPasswordResetAttemptCounter 단위 테스트")
-class RedisPasswordResetAttemptCounterTest {
+class RedisPasswordResetAttemptCounterUnitTest {
 
     private static final String EMAIL_HASH = "abcdef0123";
     private static final String EXPECTED_KEY = "pwd-reset-rate:" + EMAIL_HASH;
