@@ -6,6 +6,8 @@ import com.example.gateway.route.RouteConfig;
 import com.example.web.dto.ErrorResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -33,17 +35,25 @@ import java.util.Base64;
 public class RateLimitFilter implements GlobalFilter, Ordered {
 
     private static final int ORDER = -150;
+    private static final String METRIC_NAME = "gateway_ratelimit_total";
+    private static final String TAG_SCOPE = "scope";
+    private static final String TAG_RESULT = "result";
+    private static final String RESULT_ALLOWED = "allowed";
+    private static final String RESULT_REJECTED = "rejected";
 
     private final TokenBucketRateLimiter rateLimiter;
     private final RouteConfig routeConfig;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
 
     public RateLimitFilter(TokenBucketRateLimiter rateLimiter,
                            RouteConfig routeConfig,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           MeterRegistry meterRegistry) {
         this.rateLimiter = rateLimiter;
         this.routeConfig = routeConfig;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -65,14 +75,20 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
         return scopeCheck.flatMap(scopeResult -> {
             if (!scopeResult.isAllowed()) {
+                recordCounter(scope, RESULT_REJECTED);
                 return writeRateLimitResponse(exchange, scopeResult.retryAfterSeconds());
+            }
+            if (scope != null) {
+                recordCounter(scope, RESULT_ALLOWED);
             }
             // Always check global rate limit
             return rateLimiter.isAllowed("global", clientIp)
                     .flatMap(globalResult -> {
                         if (!globalResult.isAllowed()) {
+                            recordCounter("global", RESULT_REJECTED);
                             return writeRateLimitResponse(exchange, globalResult.retryAfterSeconds());
                         }
+                        recordCounter("global", RESULT_ALLOWED);
                         return chain.filter(exchange);
                     });
         });
@@ -167,6 +183,14 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
                             "{\"code\":\"RATE_LIMITED\",\"message\":\"Too many requests\"}"
                                     .getBytes(StandardCharsets.UTF_8))));
         }
+    }
+
+    private void recordCounter(String scope, String result) {
+        Counter.builder(METRIC_NAME)
+                .tag(TAG_SCOPE, scope)
+                .tag(TAG_RESULT, result)
+                .register(meterRegistry)
+                .increment();
     }
 
     @Override

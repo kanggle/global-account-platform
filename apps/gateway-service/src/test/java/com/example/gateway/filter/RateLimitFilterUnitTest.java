@@ -4,6 +4,8 @@ import com.example.gateway.ratelimit.TokenBucketRateLimiter;
 import com.example.gateway.ratelimit.TokenBucketRateLimiter.RateLimitResult;
 import com.example.gateway.route.RouteConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,12 +44,18 @@ class RateLimitFilterUnitTest {
 
     private RateLimitFilter filter;
     private ObjectMapper objectMapper;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        filter = new RateLimitFilter(rateLimiter, routeConfig, objectMapper);
+        meterRegistry = new SimpleMeterRegistry();
+        filter = new RateLimitFilter(rateLimiter, routeConfig, objectMapper, meterRegistry);
     }
+
+    // -----------------------------------------------------------------------
+    // Existing behaviour tests
+    // -----------------------------------------------------------------------
 
     @Test
     @DisplayName("rate limit 이내 요청은 정상 통과")
@@ -133,5 +141,127 @@ class RateLimitFilterUnitTest {
 
         // Verify the rate limiter was called with account_id from JWT sub, not client IP
         verify(rateLimiter).isAllowed("refresh", "account-42");
+    }
+
+    // -----------------------------------------------------------------------
+    // Micrometer counter tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("scope 허용 + global 허용 시 scope=login/result=allowed, scope=global/result=allowed 카운터 증가")
+    void counter_scopeAllowed_globalAllowed_incrementsBoth() {
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("192.168.1.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/login")).willReturn("login");
+        given(rateLimiter.isAllowed(eq("login"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("login", "allowed")).isEqualTo(1.0);
+        assertThat(counterValue("global", "allowed")).isEqualTo(1.0);
+        assertThat(counterValue("login", "rejected")).isZero();
+        assertThat(counterValue("global", "rejected")).isZero();
+    }
+
+    @Test
+    @DisplayName("scope 거부 시 scope=login/result=rejected 카운터 증가, global 카운터 미증가")
+    void counter_scopeRejected_incrementsScopeRejected_skipsGlobal() {
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("192.168.1.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/login")).willReturn("login");
+        given(rateLimiter.isAllowed(eq("login"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.rejected(60)));
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("login", "rejected")).isEqualTo(1.0);
+        assertThat(counterValue("login", "allowed")).isZero();
+        assertThat(counterValue("global", "allowed")).isZero();
+        assertThat(counterValue("global", "rejected")).isZero();
+    }
+
+    @Test
+    @DisplayName("scope 허용 후 global 거부 시 scope=login/result=allowed, scope=global/result=rejected 카운터 증가")
+    void counter_scopeAllowed_globalRejected_incrementsCorrectly() {
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("192.168.1.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/login")).willReturn("login");
+        given(rateLimiter.isAllowed(eq("login"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.rejected(30)));
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("login", "allowed")).isEqualTo(1.0);
+        assertThat(counterValue("global", "rejected")).isEqualTo(1.0);
+        assertThat(counterValue("login", "rejected")).isZero();
+        assertThat(counterValue("global", "allowed")).isZero();
+    }
+
+    @Test
+    @DisplayName("scope=null(non-rate-limited path): scope 카운터 없이 global 카운터만 증가")
+    void counter_nullScope_onlyGlobalCounterFires() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me")
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/accounts/me")).willReturn(null);
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("global", "allowed")).isEqualTo(1.0);
+        // No scope-specific counter registered at all
+        assertThat(meterRegistry.find("gateway_ratelimit_total")
+                .tag("scope", "login").counter()).isNull();
+        assertThat(meterRegistry.find("gateway_ratelimit_total")
+                .tag("scope", "signup").counter()).isNull();
+    }
+
+    @Test
+    @DisplayName("scope=null + global 거부 시 global/result=rejected 카운터 증가")
+    void counter_nullScope_globalRejected_incrementsGlobalRejected() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me")
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/accounts/me")).willReturn(null);
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.rejected(1)));
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("global", "rejected")).isEqualTo(1.0);
+        assertThat(counterValue("global", "allowed")).isZero();
+    }
+
+    // -----------------------------------------------------------------------
+    // Helper
+    // -----------------------------------------------------------------------
+
+    private double counterValue(String scope, String result) {
+        Counter counter = meterRegistry.find("gateway_ratelimit_total")
+                .tag("scope", scope)
+                .tag("result", result)
+                .counter();
+        return counter == null ? 0.0 : counter.count();
     }
 }
