@@ -116,7 +116,7 @@ query → domain (via SecurityQueryService, read-only JPA 경로)
 - 파티션 키: `account_id` (같은 계정의 이벤트 순서 보장)
 
 ### application/
-- `RecordLoginHistoryUseCase`: 소비된 이벤트를 `login_history`에 append-only 기록. 트랜잭션 내에서 outbox 이벤트(`suspicious.detected`, `auto.lock.triggered`) 같이 기록
+- `RecordLoginHistoryUseCase`: 소비된 이벤트를 `login_history`에 append-only 기록. 트랜잭션 내에서 outbox 이벤트(`suspicious.detected`, `auto.lock.triggered`, `auto.lock.pending`) 같이 기록
 - `DetectSuspiciousActivityUseCase`: 전략 패턴으로 여러 `SuspiciousActivityRule`을 순회 평가. 임계치 초과 시 `suspicious_events` 저장 + 이벤트 발행
 - `IssueAutoLockCommandUseCase`: 심각도가 높은 suspicious에 대해 account-service로 내부 HTTP `POST /internal/accounts/{id}/lock` 호출 ([rules/traits/integration-heavy.md](../../../rules/traits/integration-heavy.md) I4 idempotent side effect, 멱등 키 `suspicious_event_id` 사용)
 
