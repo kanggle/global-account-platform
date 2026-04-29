@@ -17,6 +17,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -44,7 +45,8 @@ class AdminRefreshTokenJpaAdapterTest {
             .withDatabaseName("admin_db")
             .withUsername("test")
             .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     @DynamicPropertySource
     static void overrideProps(DynamicPropertyRegistry registry) {
