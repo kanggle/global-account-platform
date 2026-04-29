@@ -77,6 +77,7 @@ All services must return errors in the following JSON format:
 | Code | HTTP | Description |
 |---|---|---|
 | ACCESS_DENIED | 403 | Insufficient permissions to access resource |
+| PERMISSION_DENIED | 403 | Caller is not the owner or lacks the required role for this operation |
 
 ## Registration
 

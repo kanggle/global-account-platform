@@ -75,7 +75,10 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
 
         return scopeCheck.flatMap(scopeResult -> {
             if (!scopeResult.isAllowed()) {
-                recordCounter(scope, RESULT_REJECTED);
+                if (scope != null) {
+                    recordCounter(scope, RESULT_REJECTED);
+                    recordRejectedCounter(scope);
+                }
                 return writeRateLimitResponse(exchange, scopeResult.retryAfterSeconds());
             }
             if (scope != null) {
@@ -86,6 +89,7 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
                     .flatMap(globalResult -> {
                         if (!globalResult.isAllowed()) {
                             recordCounter("global", RESULT_REJECTED);
+                            recordRejectedCounter("global");
                             return writeRateLimitResponse(exchange, globalResult.retryAfterSeconds());
                         }
                         recordCounter("global", RESULT_ALLOWED);
@@ -189,6 +193,13 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         Counter.builder(METRIC_NAME)
                 .tag(TAG_SCOPE, scope)
                 .tag(TAG_RESULT, result)
+                .register(meterRegistry)
+                .increment();
+    }
+
+    private void recordRejectedCounter(String scope) {
+        Counter.builder("gateway_ratelimit_rejected_total")
+                .tag(TAG_SCOPE, scope)
                 .register(meterRegistry)
                 .increment();
     }

@@ -37,6 +37,9 @@ public class SuspiciousEventQueryController {
         if (size > 100) {
             size = 100;
         }
+        if (size < 1) {
+            size = 1;
+        }
 
         Instant fromInstant = from == null ? Instant.EPOCH : from;
         Instant toInstant = to == null ? Instant.now().plusSeconds(60) : to;

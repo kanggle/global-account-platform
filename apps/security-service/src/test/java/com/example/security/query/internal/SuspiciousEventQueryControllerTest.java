@@ -161,6 +161,21 @@ class SuspiciousEventQueryControllerTest {
     }
 
     @Test
+    @DisplayName("size=0 요청 시 size=1로 캡 처리된다")
+    void getSuspiciousEvents_sizeZero_isCappedAtOne() throws Exception {
+        when(queryService.findSuspiciousEvents(eq("acc-001"), any(), any(), isNull(),
+                argThat(p -> p.getPageSize() == 1)))
+                .thenReturn(new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 1), 0));
+
+        mockMvc.perform(get("/internal/security/suspicious-events")
+                        .header("X-Internal-Token", TOKEN)
+                        .param("accountId", "acc-001")
+                        .param("size", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(1));
+    }
+
+    @Test
     @DisplayName("ruleCode 파라미터로 결과를 필터링하여 200 응답을 반환한다")
     void getSuspiciousEvents_filterByRuleCode_returnsOnlyMatchingEvents() throws Exception {
         SuspiciousEventView geoEvent = new SuspiciousEventView(

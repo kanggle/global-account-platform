@@ -253,6 +253,64 @@ class RateLimitFilterUnitTest {
         assertThat(counterValue("global", "allowed")).isZero();
     }
 
+    @Test
+    @DisplayName("Redis 오류 + fail-open 시 global/result=allowed 카운터 증가")
+    void counter_redisFailOpen_incrementsGlobalAllowed() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me")
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/accounts/me")).willReturn(null);
+        // Simulate Redis failure returning fail-open result
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("global", "allowed")).isEqualTo(1.0);
+        assertThat(rejectedCounterValue("global")).isZero();
+    }
+
+    @Test
+    @DisplayName("Redis 오류 + fail-closed 시 global/result=rejected 카운터 및 rejected_total 카운터 증가")
+    void counter_redisFailClosed_incrementsGlobalRejected() {
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/accounts/me")
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/accounts/me")).willReturn(null);
+        // Simulate Redis failure returning fail-closed result
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.rejected(1)));
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(counterValue("global", "rejected")).isEqualTo(1.0);
+        assertThat(rejectedCounterValue("global")).isEqualTo(1.0);
+        assertThat(counterValue("global", "allowed")).isZero();
+    }
+
+    @Test
+    @DisplayName("scope 거부 시 gateway_ratelimit_rejected_total{scope=login} 카운터 증가")
+    void counter_scopeRejected_incrementsRejectedTotal() {
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("192.168.1.1", 8080))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/login")).willReturn("login");
+        given(rateLimiter.isAllowed(eq("login"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.rejected(60)));
+
+        StepVerifier.create(filter.filter(exchange, chain)).verifyComplete();
+
+        assertThat(rejectedCounterValue("login")).isEqualTo(1.0);
+        assertThat(rejectedCounterValue("global")).isZero();
+    }
+
     // -----------------------------------------------------------------------
     // Helper
     // -----------------------------------------------------------------------
@@ -261,6 +319,13 @@ class RateLimitFilterUnitTest {
         Counter counter = meterRegistry.find("gateway_ratelimit_total")
                 .tag("scope", scope)
                 .tag("result", result)
+                .counter();
+        return counter == null ? 0.0 : counter.count();
+    }
+
+    private double rejectedCounterValue(String scope) {
+        Counter counter = meterRegistry.find("gateway_ratelimit_rejected_total")
+                .tag("scope", scope)
                 .counter();
         return counter == null ? 0.0 : counter.count();
     }
