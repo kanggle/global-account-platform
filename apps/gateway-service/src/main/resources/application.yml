@@ -29,6 +29,13 @@ spring:
           filters:
             - StripPrefix=0
 
+        - id: account-service-internal
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/internal/tenants/**
+          filters:
+            - StripPrefix=0
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -58,6 +65,11 @@ gateway:
     grace-period-seconds: 300
     # TASK-BE-143: enforce iss claim. Must match auth.jwt.issuer in auth-service.
     expected-issuer: ${JWT_EXPECTED_ISSUER:global-account-platform}
+
+  tenant:
+    legacy-fallback:
+      enabled: ${GATEWAY_TENANT_LEGACY_FALLBACK_ENABLED:false}
+      default-tenant-id: fan-platform
 
   rate-limit:
     fail-open: ${RATE_LIMIT_FAIL_OPEN:true}

@@ -121,6 +121,13 @@ class GatewayIntegrationTest {
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"id\":\"new-account\"}")));
 
+        // Setup internal provisioning endpoint
+        accountServiceMock.stubFor(post(urlPathMatching("/internal/tenants/.+/accounts"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":\"new-wms-account\"}")));
+
         // admin-service downstream — gateway must reach these without
         // performing its own JWT verification (operator tokens have a
         // separate JWKS owned by admin-service).
@@ -164,6 +171,11 @@ class GatewayIntegrationTest {
         registry.add("spring.cloud.gateway.routes[2].id", () -> "admin-service");
         registry.add("spring.cloud.gateway.routes[2].predicates[0]",
                 () -> "Path=/api/admin/**,/.well-known/admin/**");
+        registry.add("spring.cloud.gateway.routes[3].uri", accountServiceMock::baseUrl);
+        registry.add("spring.cloud.gateway.routes[3].id", () -> "account-service-internal");
+        registry.add("spring.cloud.gateway.routes[3].predicates[0]", () -> "Path=/internal/tenants/**");
+        // Fallback disabled by default
+        registry.add("gateway.tenant.legacy-fallback.enabled", () -> "false");
     }
 
     @BeforeEach
@@ -174,6 +186,10 @@ class GatewayIntegrationTest {
                 .collectList()
                 .block();
     }
+
+    // -----------------------------------------------------------------------
+    // Existing tests
+    // -----------------------------------------------------------------------
 
     @Test
     @DisplayName("공개 경로 /api/auth/login 인증 없이 다운스트림 전달")
@@ -198,18 +214,19 @@ class GatewayIntegrationTest {
     }
 
     @Test
-    @DisplayName("인증 필요 경로 + 유효 JWT -> 200 + X-Account-ID 주입")
-    void protectedRoute_validJwt_forwardsWithAccountId() {
-        String token = createValidToken("account-123");
+    @DisplayName("인증 필요 경로 + 유효 JWT (tenant_id 포함) -> 200 + X-Account-ID + X-Tenant-Id 주입")
+    void protectedRoute_validJwt_forwardsWithAccountIdAndTenantId() {
+        String token = createValidToken("account-123", "fan-platform");
 
         webTestClient.get().uri("/api/accounts/me")
                 .header("Authorization", "Bearer " + token)
                 .exchange()
                 .expectStatus().isOk();
 
-        // Verify auth-service received request with X-Account-ID
+        // Verify downstream received X-Account-ID and X-Tenant-Id
         accountServiceMock.verify(getRequestedFor(urlEqualTo("/api/accounts/me"))
-                .withHeader("X-Account-ID", equalTo("account-123")));
+                .withHeader("X-Account-ID", equalTo("account-123"))
+                .withHeader("X-Tenant-Id", equalTo("fan-platform")));
     }
 
     @Test
@@ -269,7 +286,7 @@ class GatewayIntegrationTest {
     @Test
     @DisplayName("외부에서 X-Account-ID 직접 전송 -> gateway가 덮어씀")
     void spoofedAccountIdHeader_isOverwritten() {
-        String token = createValidToken("real-account-id");
+        String token = createValidToken("real-account-id", "fan-platform");
 
         webTestClient.get().uri("/api/accounts/me")
                 .header("Authorization", "Bearer " + token)
@@ -357,14 +374,103 @@ class GatewayIntegrationTest {
         adminServiceMock.verify(getRequestedFor(urlEqualTo("/api/admin/audit")));
     }
 
+    // -----------------------------------------------------------------------
+    // TASK-BE-230: tenant propagation integration tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("JWT에 tenant_id 없음 + fallback 비활성 → 401 TOKEN_INVALID")
+    void missingTenantIdClaim_fallbackDisabled_returns401() {
+        // Token without tenant_id claim
+        String tokenWithoutTenant = Jwts.builder()
+                .header().keyId("test-kid-1").and()
+                .subject("account-123")
+                .issuer(EXPECTED_ISSUER)
+                .issuedAt(Date.from(Instant.now()))
+                .expiration(Date.from(Instant.now().plusSeconds(3600)))
+                .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)
+                .compact();
+
+        webTestClient.get().uri("/api/accounts/me")
+                .header("Authorization", "Bearer " + tokenWithoutTenant)
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("TOKEN_INVALID");
+    }
+
+    @Test
+    @DisplayName("클라이언트가 위조한 X-Tenant-Id 헤더 → gateway가 JWT 기반으로 덮어씀")
+    void spoofedTenantIdHeader_isOverwrittenByJwtClaim() {
+        String token = createValidToken("account-123", "fan-platform");
+
+        webTestClient.get().uri("/api/accounts/me")
+                .header("Authorization", "Bearer " + token)
+                .header("X-Tenant-Id", "malicious-tenant")
+                .exchange()
+                .expectStatus().isOk();
+
+        // Downstream must receive the JWT-derived tenant, not the spoofed one
+        accountServiceMock.verify(getRequestedFor(urlEqualTo("/api/accounts/me"))
+                .withHeader("X-Tenant-Id", equalTo("fan-platform")));
+        accountServiceMock.verify(0, getRequestedFor(urlEqualTo("/api/accounts/me"))
+                .withHeader("X-Tenant-Id", equalTo("malicious-tenant")));
+    }
+
+    @Test
+    @DisplayName("tenant_id=fan-platform 토큰 → X-Tenant-Id: fan-platform 다운스트림 전파")
+    void validToken_tenantIdFanPlatform_propagatesHeader() {
+        String token = createValidToken("account-123", "fan-platform");
+
+        webTestClient.get().uri("/api/accounts/me")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isOk();
+
+        accountServiceMock.verify(getRequestedFor(urlEqualTo("/api/accounts/me"))
+                .withHeader("X-Tenant-Id", equalTo("fan-platform")));
+    }
+
+    @Test
+    @DisplayName("/internal/tenants/wms/accounts + JWT tenant_id=wms → 201 (path 일치)")
+    void internalRoute_pathTenantMatchesJwt_passes() {
+        String token = createValidToken("service-account", "wms");
+
+        webTestClient.post().uri("/internal/tenants/wms/accounts")
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .bodyValue("{\"email\":\"wms-user@wms.com\"}")
+                .exchange()
+                .expectStatus().isCreated();
+
+        accountServiceMock.verify(postRequestedFor(urlEqualTo("/internal/tenants/wms/accounts"))
+                .withHeader("X-Tenant-Id", equalTo("wms")));
+    }
+
+    @Test
+    @DisplayName("/internal/tenants/wms/accounts + JWT tenant_id=fan-platform → 403 TENANT_SCOPE_DENIED")
+    void internalRoute_pathTenantMismatch_returns403() {
+        String token = createValidToken("account-123", "fan-platform");
+
+        webTestClient.post().uri("/internal/tenants/wms/accounts")
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .bodyValue("{\"email\":\"wms-user@wms.com\"}")
+                .exchange()
+                .expectStatus().isForbidden()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("TENANT_SCOPE_DENIED");
+    }
+
     private static final String EXPECTED_ISSUER = "global-account-platform";
 
-    private String createValidToken(String accountId) {
+    private String createValidToken(String accountId, String tenantId) {
         return Jwts.builder()
                 .header().keyId("test-kid-1").and()
                 .subject(accountId)
                 .issuer(EXPECTED_ISSUER)
                 .claim("email", "test@example.com")
+                .claim("tenant_id", tenantId)
                 .issuedAt(Date.from(Instant.now()))
                 .expiration(Date.from(Instant.now().plusSeconds(3600)))
                 .signWith(keyPair.getPrivate(), Jwts.SIG.RS256)

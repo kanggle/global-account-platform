@@ -114,13 +114,14 @@ class RateLimitFilterUnitTest {
     }
 
     @Test
-    @DisplayName("refresh scope는 JWT sub 클레임의 account_id를 rate-limit 식별자로 사용")
+    @DisplayName("refresh scope는 JWT sub 클레임의 account_id를 rate-limit 식별자로 사용 (tenant_id 포함)")
     void filter_refreshScope_extractsAccountIdFromJwtSub() {
-        // Build a minimal JWT with sub = "account-42" (header.payload.signature)
+        // Build a minimal JWT with sub = "account-42" and tenant_id = "fan-platform"
         String header = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString("{\"alg\":\"RS256\"}".getBytes(StandardCharsets.UTF_8));
         String payload = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString("{\"sub\":\"account-42\",\"exp\":9999999999}".getBytes(StandardCharsets.UTF_8));
+                .encodeToString("{\"sub\":\"account-42\",\"tenant_id\":\"fan-platform\",\"exp\":9999999999}"
+                        .getBytes(StandardCharsets.UTF_8));
         String fakeJwt = header + "." + payload + ".fake-signature";
 
         MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/refresh")
@@ -130,7 +131,8 @@ class RateLimitFilterUnitTest {
         MockServerWebExchange exchange = MockServerWebExchange.from(request);
 
         given(routeConfig.resolveRateLimitScope("/api/auth/refresh")).willReturn("refresh");
-        given(rateLimiter.isAllowed(eq("refresh"), eq("account-42")))
+        // identifier is now "tenant_id:account_id" = "fan-platform:account-42"
+        given(rateLimiter.isAllowed(eq("refresh"), eq("fan-platform:account-42")))
                 .willReturn(Mono.just(RateLimitResult.allowed()));
         given(rateLimiter.isAllowed(eq("global"), anyString()))
                 .willReturn(Mono.just(RateLimitResult.allowed()));
@@ -139,8 +141,91 @@ class RateLimitFilterUnitTest {
         StepVerifier.create(filter.filter(exchange, chain))
                 .verifyComplete();
 
-        // Verify the rate limiter was called with account_id from JWT sub, not client IP
-        verify(rateLimiter).isAllowed("refresh", "account-42");
+        verify(rateLimiter).isAllowed("refresh", "fan-platform:account-42");
+    }
+
+    // -----------------------------------------------------------------------
+    // TASK-BE-230: tenant_id in rate limit key tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    @DisplayName("login scope — JWT에 tenant_id=fan-platform → 키 패턴 fan-platform:{subnet}")
+    void filter_loginScope_tenantIdIncludedInKey() {
+        String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"RS256\"}".getBytes(StandardCharsets.UTF_8));
+        String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"sub\":\"account-1\",\"tenant_id\":\"fan-platform\",\"exp\":9999999999}"
+                        .getBytes(StandardCharsets.UTF_8));
+        String fakeJwt = header + "." + payload + ".fake-sig";
+
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/login")
+                .header("Authorization", "Bearer " + fakeJwt)
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 12345))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/login")).willReturn("login");
+        // subnet of 10.0.0.1 = 10.0.0.0/24 → key = "fan-platform:10.0.0.0/24"
+        given(rateLimiter.isAllowed(eq("login"), eq("fan-platform:10.0.0.0/24")))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        verify(rateLimiter).isAllowed("login", "fan-platform:10.0.0.0/24");
+    }
+
+    @Test
+    @DisplayName("signup scope — JWT에 tenant_id=wms → 키 패턴 wms:{ip}")
+    void filter_signupScope_tenantIdIncludedInKey() {
+        String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"RS256\"}".getBytes(StandardCharsets.UTF_8));
+        String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"sub\":\"account-2\",\"tenant_id\":\"wms\",\"exp\":9999999999}"
+                        .getBytes(StandardCharsets.UTF_8));
+        String fakeJwt = header + "." + payload + ".fake-sig";
+
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/accounts/signup")
+                .header("Authorization", "Bearer " + fakeJwt)
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.5", 12345))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/accounts/signup")).willReturn("signup");
+        given(rateLimiter.isAllowed(eq("signup"), eq("wms:10.0.0.5")))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        verify(rateLimiter).isAllowed("signup", "wms:10.0.0.5");
+    }
+
+    @Test
+    @DisplayName("JWT 없는 공개 경로 — tenant_id=anonymous로 처리")
+    void filter_noJwt_loginScope_usesAnonymousTenant() {
+        MockServerHttpRequest request = MockServerHttpRequest.post("/api/auth/login")
+                .remoteAddress(new java.net.InetSocketAddress("10.0.0.1", 12345))
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        given(routeConfig.resolveRateLimitScope("/api/auth/login")).willReturn("login");
+        given(rateLimiter.isAllowed(eq("login"), eq("anonymous:10.0.0.0/24")))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(rateLimiter.isAllowed(eq("global"), anyString()))
+                .willReturn(Mono.just(RateLimitResult.allowed()));
+        given(chain.filter(any())).willReturn(Mono.empty());
+
+        StepVerifier.create(filter.filter(exchange, chain))
+                .verifyComplete();
+
+        verify(rateLimiter).isAllowed("login", "anonymous:10.0.0.0/24");
     }
 
     // -----------------------------------------------------------------------

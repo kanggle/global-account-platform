@@ -71,6 +71,7 @@ All services must return errors in the following JSON format:
 | INVALID_REFRESH_TOKEN | 401 | Refresh token not found or expired |
 | REFRESH_TOKEN_REVOKED | 401 | Refresh token has been explicitly revoked |
 | UNAUTHORIZED | 401 | Access token missing or invalid |
+| TOKEN_INVALID | 401 | JWT is missing, expired, has an invalid signature, or is structurally malformed (gateway-generated). Also used when `tenant_id` claim is absent and the grace-period fallback is disabled. |
 
 ## Authorization
 
@@ -78,6 +79,7 @@ All services must return errors in the following JSON format:
 |---|---|---|
 | ACCESS_DENIED | 403 | Insufficient permissions to access resource |
 | PERMISSION_DENIED | 403 | Caller is not the owner or lacks the required role for this operation |
+| TENANT_SCOPE_DENIED | 403 | Path `{tenantId}` does not match the JWT `tenant_id` claim; cross-tenant access is forbidden (gateway internal provisioning routes). |
 
 ## Registration
 
@@ -228,6 +230,14 @@ All services must return errors in the following JSON format:
 | Code | HTTP | Description |
 |---|---|---|
 | AUTH_SERVICE_UNAVAILABLE | 503 | Authentication service is temporarily unavailable (account-service signup flow — auth-service 5xx/timeout/circuit-open triggers fail-closed rollback) |
+
+## Tenant Provisioning  `[domain: saas]`
+
+| Code | HTTP | Description |
+|---|---|---|
+| `TENANT_NOT_FOUND` | 404 | The `{tenantId}` path parameter does not correspond to a registered tenant in the `tenants` table (account-service internal provisioning API). |
+| `TENANT_SUSPENDED` | 409 | The target tenant exists but its status is `SUSPENDED`; new account creation is rejected (account-service internal provisioning API). |
+| `ROLES_REPLACE_INVALID` | 400 | Role list contains entries that violate role-name constraints (e.g. exceeds 50 chars). |
 
 ## Email Verification  `[domain: saas]`
 

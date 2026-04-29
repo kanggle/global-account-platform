@@ -25,6 +25,7 @@
 | `POST /api/admin/sessions/{id}/revoke` | admin-service | Yes (operator token, downstream) | 아래 §Admin Routes 참조 |
 | `GET /api/admin/audit` | admin-service | Yes (operator token, downstream) | 아래 §Admin Routes 참조 |
 | `GET /actuator/health` | gateway 자체 | No | 헬스체크 |
+| `/internal/tenants/{tenantId}/**` | account-service | Yes (JWT) | path `{tenantId}` ↔ JWT `tenant_id` 검사. 불일치 시 403 `TENANT_SCOPE_DENIED`. 외부 노출 금지 |
 
 ---
 
@@ -62,6 +63,20 @@ admin-service 는 자체 IdP 를 소유하며 operator JWT 를 별도 RS256 키 
 - JWT 서명 불일치 (JWKS kid mismatch 포함)
 - JWT `exp` 만료
 - JWT `nbf` 미도래
+- JWT `tenant_id` claim 누락 (grace period fallback 비활성 시)
+
+### 403 Forbidden — Tenant Scope 불일치
+
+```json
+{
+  "code": "TENANT_SCOPE_DENIED",
+  "message": "Tenant scope mismatch: path tenantId does not match token claim",
+  "timestamp": "2026-04-12T10:00:00Z"
+}
+```
+
+발생 조건:
+- `/internal/tenants/{tenantId}/...` 경로의 `{tenantId}` ↔ JWT `tenant_id` claim 불일치
 
 ### 429 Too Many Requests — Rate Limit 초과
 
@@ -107,9 +122,18 @@ admin-service 는 자체 IdP 를 소유하며 operator JWT 를 별도 RS256 키 
 |---|---|
 | `X-Request-ID` | 없으면 UUID 생성, 있으면 전파 |
 | `X-Account-ID` | JWT에서 추출한 account_id (인증 성공 시) |
+| `X-Tenant-Id` | JWT `tenant_id` claim에서 추출한 테넌트 식별자 (인증 성공 시). 외부 입력 값은 반드시 gateway가 제거 후 JWT 기반으로 재설정. grace period fallback 활성 시 claim 누락 토큰은 `fan-platform`으로 간주 |
 | `X-Forwarded-For` | 원본 client IP |
 
-다운스트림은 이 헤더를 신뢰한다. 외부에서 `X-Account-ID`를 직접 보내는 경우 **게이트웨이가 덮어씀** (spoofing 방지).
+다운스트림은 이 헤더를 신뢰한다. 외부에서 `X-Account-ID` 또는 `X-Tenant-Id`를 직접 보내는 경우 **게이트웨이가 덮어씀** (spoofing 방지).
+
+## Internal Provisioning Routes
+
+| Path Pattern | 인증 | 검증 |
+|---|---|---|
+| `/internal/tenants/{tenantId}/**` | JWT 필수 | path `{tenantId}` ↔ JWT `tenant_id` 일치 확인. 불일치 시 403 `TENANT_SCOPE_DENIED` |
+
+이 라우트는 외부 인터넷에 노출되지 않는다 (internal network only).
 
 ---
 
