@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -97,13 +98,15 @@ class PermissionEvaluatorCacheTest {
 
     @Test
     @DisplayName("10초(테스트에서는 2초) TTL 경과 후 재조회 시 origin을 1회 재호출한다")
-    void reloadsAfterTtlExpiry() throws InterruptedException {
+    void reloadsAfterTtlExpiry() {
         caching.hasPermission(OPERATOR, "account.lock");
-        // Sleep past TTL (2s in test config, +200ms safety margin).
-        Thread.sleep(Duration.ofMillis(2_200).toMillis());
-        caching.hasPermission(OPERATOR, "account.lock");
-
-        verify(origin, times(2)).loadPermissions(OPERATOR);
+        // Poll until Redis TTL (2s) expires and the next lookup triggers origin again.
+        await().atMost(Duration.ofSeconds(5))
+               .pollInterval(Duration.ofMillis(200))
+               .untilAsserted(() -> {
+                   caching.hasPermission(OPERATOR, "account.lock");
+                   verify(origin, times(2)).loadPermissions(OPERATOR);
+               });
     }
 
     @Test
