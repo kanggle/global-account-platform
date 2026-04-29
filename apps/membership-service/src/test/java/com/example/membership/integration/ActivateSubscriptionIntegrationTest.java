@@ -3,6 +3,7 @@ package com.example.membership.integration;
 import com.example.testsupport.integration.AbstractIntegrationTest;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,13 +52,12 @@ class ActivateSubscriptionIntegrationTest extends AbstractIntegrationTest {
             .withExposedPorts(6379);
 
     static WireMockServer wireMock;
-    static final int WIREMOCK_PORT = 18087;
 
     @BeforeAll
     static void startWireMock() {
-        wireMock = new WireMockServer(WIREMOCK_PORT);
+        wireMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         wireMock.start();
-        WireMock.configureFor("localhost", WIREMOCK_PORT);
+        WireMock.configureFor("localhost", wireMock.port());
     }
 
     @AfterAll
@@ -71,7 +71,7 @@ class ActivateSubscriptionIntegrationTest extends AbstractIntegrationTest {
     static void overrideProps(DynamicPropertyRegistry registry) {
         registry.add("spring.data.redis.host", redis::getHost);
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
-        registry.add("membership.account-service.base-url", () -> "http://localhost:" + WIREMOCK_PORT);
+        registry.add("membership.account-service.base-url", wireMock::baseUrl);
     }
 
     @Autowired

@@ -6,6 +6,7 @@ import com.example.admin.support.OperatorJwtTestFixture;
 import com.example.testsupport.integration.AbstractIntegrationTest;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -74,9 +75,9 @@ class AdminIntegrationTest extends AbstractIntegrationTest {
                 + Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(pk.getEncoded())
                 + "\n-----END PRIVATE KEY-----\n";
 
-        wireMock = new WireMockServer(18085);
+        wireMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         wireMock.start();
-        WireMock.configureFor("localhost", 18085);
+        WireMock.configureFor("localhost", wireMock.port());
     }
 
     @AfterAll
@@ -105,9 +106,9 @@ class AdminIntegrationTest extends AbstractIntegrationTest {
         registry.add("admin.jwt.signing-keys.test-key-001", () -> signingKeyPem);
         registry.add("admin.jwt.issuer", () -> "admin-service");
         registry.add("admin.jwt.expected-token-type", () -> "admin");
-        registry.add("admin.auth-service.base-url", () -> "http://localhost:18085");
-        registry.add("admin.account-service.base-url", () -> "http://localhost:18085");
-        registry.add("admin.security-service.base-url", () -> "http://localhost:18085");
+        registry.add("admin.auth-service.base-url", wireMock::baseUrl);
+        registry.add("admin.account-service.base-url", wireMock::baseUrl);
+        registry.add("admin.security-service.base-url", wireMock::baseUrl);
     }
 
     @Autowired
