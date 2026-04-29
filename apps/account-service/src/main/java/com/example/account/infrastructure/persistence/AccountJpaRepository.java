@@ -22,6 +22,18 @@ public interface AccountJpaRepository extends JpaRepository<AccountJpaEntity, St
     Page<AccountJpaEntity> findAllAccounts(Pageable pageable);
 
     /**
+     * TASK-BE-231: Tenant-scoped paginated account listing with optional status filter.
+     * Used by the internal provisioning API to list accounts within a specific tenant.
+     */
+    @Query("SELECT a FROM AccountJpaEntity a " +
+            "WHERE a.tenantId = :tenantId " +
+            "AND (:status IS NULL OR a.status = :status)")
+    Page<AccountJpaEntity> findByTenantIdWithStatusFilter(
+            @Param("tenantId") String tenantId,
+            @Param("status") com.example.account.domain.status.AccountStatus status,
+            Pageable pageable);
+
+    /**
      * Returns ACTIVE accounts whose last successful login (or creation date when never logged in)
      * occurred before the given threshold. Used by AccountDormantScheduler to drive the
      * 365-day ACTIVE → DORMANT transition (retention.md §1.3, §1.4).

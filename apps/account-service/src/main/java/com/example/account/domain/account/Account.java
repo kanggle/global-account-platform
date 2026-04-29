@@ -228,6 +228,25 @@ public class Account {
         return new AccountDomainEvent("account.unlocked", payload);
     }
 
+    /**
+     * TASK-BE-231: Event emitted when the provisioning API replaces an account's role set.
+     */
+    public AccountDomainEvent buildRolesChangedEvent(java.util.List<String> roles,
+                                                      String actorType, String actorId,
+                                                      Instant occurredAt) {
+        Map<String, Object> payload = new HashMap<>(Map.of(
+                "accountId", id,
+                "tenantId", tenantId.value(),
+                "roles", roles,
+                "actorType", actorType,
+                "occurredAt", occurredAt.toString()
+        ));
+        if (actorId != null) {
+            payload.put("actorId", actorId);
+        }
+        return new AccountDomainEvent("account.roles.changed", payload);
+    }
+
     public AccountDomainEvent buildDeletedEvent(String reasonCode, String actorType,
                                                  String actorId, Instant deletedAt,
                                                  Instant gracePeriodEndsAt, boolean anonymized) {

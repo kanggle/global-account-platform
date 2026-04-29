@@ -1,8 +1,10 @@
 package com.example.account.domain.repository;
 
 import com.example.account.domain.account.Account;
+import com.example.account.domain.status.AccountStatus;
 import com.example.account.domain.tenant.TenantId;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -38,4 +40,21 @@ public interface AccountRepository {
      * Tenant-scoped existence check by email address.
      */
     boolean existsByEmail(TenantId tenantId, String email);
+
+    /**
+     * TASK-BE-231: Tenant-scoped paginated account list with optional status filter.
+     * Used by the internal provisioning API.
+     *
+     * @param tenantId the owning tenant (required)
+     * @param status   optional filter; {@code null} means no status filter
+     * @param page     zero-based page number
+     * @param size     page size
+     * @return page slice of accounts
+     */
+    ProvisioningPage<Account> findAllByTenantId(TenantId tenantId, AccountStatus status, int page, int size);
+
+    /**
+     * Minimal page result carrier used by provisioning list queries.
+     */
+    record ProvisioningPage<T>(List<T> content, long totalElements, int page, int size, int totalPages) {}
 }

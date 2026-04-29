@@ -50,12 +50,18 @@ public class ProfileJpaEntity {
     private Instant maskedAt;
 
     public static ProfileJpaEntity fromDomain(Profile profile) {
+        return fromDomain(profile, "fan-platform");
+    }
+
+    /**
+     * TASK-BE-231: overload that accepts an explicit tenantId for provisioned accounts.
+     * The single-arg variant retains {@code "fan-platform"} for backward compatibility
+     * with existing self-service signup flows.
+     */
+    public static ProfileJpaEntity fromDomain(Profile profile, String tenantId) {
         ProfileJpaEntity entity = new ProfileJpaEntity();
         entity.id = profile.getId();
-        // TASK-BE-228: tenant_id is required (NOT NULL, no DEFAULT after V0011).
-        // Profile domain object does not carry tenantId yet; use the single-tenant
-        // placeholder until TASK-BE-229 introduces dynamic tenant resolution.
-        entity.tenantId = "fan-platform";
+        entity.tenantId = tenantId;
         entity.accountId = profile.getAccountId();
         entity.displayName = profile.getDisplayName();
         entity.phoneNumber = profile.getPhoneNumber();

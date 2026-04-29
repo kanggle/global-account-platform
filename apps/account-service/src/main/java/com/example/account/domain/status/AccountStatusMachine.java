@@ -14,7 +14,9 @@ public class AccountStatusMachine {
                     AccountStatus.LOCKED, Set.of(
                             StatusChangeReason.ADMIN_LOCK,
                             StatusChangeReason.AUTO_DETECT,
-                            StatusChangeReason.PASSWORD_FAILURE_THRESHOLD
+                            StatusChangeReason.PASSWORD_FAILURE_THRESHOLD,
+                            // TASK-BE-231: provisioning operator lock
+                            StatusChangeReason.OPERATOR_PROVISIONING_STATUS_CHANGE
                     ),
                     AccountStatus.DORMANT, Set.of(
                             StatusChangeReason.DORMANT_365D
@@ -22,17 +24,23 @@ public class AccountStatusMachine {
                     AccountStatus.DELETED, Set.of(
                             StatusChangeReason.USER_REQUEST,
                             StatusChangeReason.ADMIN_DELETE,
-                            StatusChangeReason.REGULATED_DELETION
+                            StatusChangeReason.REGULATED_DELETION,
+                            // TASK-BE-231: provisioning operator delete
+                            StatusChangeReason.OPERATOR_PROVISIONING_STATUS_CHANGE
                     )
             ),
             AccountStatus.LOCKED, Map.of(
                     AccountStatus.ACTIVE, Set.of(
                             StatusChangeReason.ADMIN_UNLOCK,
-                            StatusChangeReason.USER_RECOVERY
+                            StatusChangeReason.USER_RECOVERY,
+                            // TASK-BE-231: provisioning operator unlock
+                            StatusChangeReason.OPERATOR_PROVISIONING_STATUS_CHANGE
                     ),
                     AccountStatus.DELETED, Set.of(
                             StatusChangeReason.ADMIN_DELETE,
-                            StatusChangeReason.REGULATED_DELETION
+                            StatusChangeReason.REGULATED_DELETION,
+                            // TASK-BE-231: provisioning operator delete
+                            StatusChangeReason.OPERATOR_PROVISIONING_STATUS_CHANGE
                     )
             ),
             AccountStatus.DORMANT, Map.of(

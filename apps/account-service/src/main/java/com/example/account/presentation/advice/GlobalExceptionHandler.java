@@ -5,6 +5,9 @@ import com.example.account.application.exception.AccountNotFoundException;
 import com.example.account.application.exception.EmailAlreadyVerifiedException;
 import com.example.account.application.exception.EmailVerificationTokenInvalidException;
 import com.example.account.application.exception.RateLimitedException;
+import com.example.account.application.exception.TenantNotFoundException;
+import com.example.account.application.exception.TenantScopeDeniedException;
+import com.example.account.application.exception.TenantSuspendedException;
 import com.example.account.application.port.AuthServicePort;
 import com.example.account.domain.status.StateTransitionException;
 import com.example.web.dto.ErrorResponse;
@@ -77,5 +80,27 @@ public class GlobalExceptionHandler extends CommonGlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ErrorResponse.of("AUTH_SERVICE_UNAVAILABLE",
                         "Authentication service is temporarily unavailable"));
+    }
+
+    // TASK-BE-231: provisioning API tenant-related exceptions
+
+    @ExceptionHandler(TenantScopeDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleTenantScopeDenied(TenantScopeDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("TENANT_SCOPE_DENIED", e.getMessage()));
+    }
+
+    @ExceptionHandler(TenantNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleTenantNotFound(TenantNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("TENANT_NOT_FOUND",
+                        "Tenant not found: " + e.getTenantId()));
+    }
+
+    @ExceptionHandler(TenantSuspendedException.class)
+    public ResponseEntity<ErrorResponse> handleTenantSuspended(TenantSuspendedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("TENANT_SUSPENDED",
+                        "Tenant is suspended: " + e.getTenantId()));
     }
 }

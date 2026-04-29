@@ -43,6 +43,14 @@ public class AccountEventPublisher extends BaseEventPublisher {
         save(account.getId(), account.buildDeletedEvent(reasonCode, actorType, actorId, deletedAt, gracePeriodEndsAt, false));
     }
 
+    /**
+     * TASK-BE-231: Published when the provisioning API replaces an account's role set.
+     */
+    public void publishRolesChanged(Account account, java.util.List<String> roles,
+                                    String actorType, String actorId, java.time.Instant occurredAt) {
+        save(account.getId(), account.buildRolesChangedEvent(roles, actorType, actorId, occurredAt));
+    }
+
     public void publishAccountDeletedAnonymized(Account account, String reasonCode,
                                                  String actorType, String actorId,
                                                  Instant deletedAt, Instant gracePeriodEndsAt) {
