@@ -15,6 +15,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,7 +33,8 @@ class MembershipPlanJpaRepositoryTest {
             .withDatabaseName("membership_db")
             .withUsername("test")
             .withPassword("test")
-            .withCommand("mysqld", "--log-bin-trust-function-creators=1");
+            .withCommand("mysqld", "--log-bin-trust-function-creators=1")
+            .withStartupTimeout(Duration.ofMinutes(3));
 
     @DynamicPropertySource
     static void overrideProps(DynamicPropertyRegistry registry) {
