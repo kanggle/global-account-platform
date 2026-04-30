@@ -229,10 +229,26 @@ Canonical pattern (see `libs/java-messaging/OutboxSchedulerConfig` +
   `setAwaitTerminationSeconds(5)`. The bean's lifetime is bound to the
   owning `ApplicationContext`, so context close terminates every
   scheduler thread.
-- Drive the poll loop programmatically via `@PostConstruct` /
+- Drive the poll loop programmatically via
+  `@EventListener(ApplicationReadyEvent.class)` /
   `scheduleWithFixedDelay` / `@PreDestroy` / `ScheduledFuture.cancel()`
-  instead of `@Scheduled`. `@PreDestroy` runs before the executor bean
-  is destroyed, so in-flight ticks unwind deterministically.
+  instead of `@Scheduled` or `@PostConstruct`.
+  - **Why `@EventListener` and not `@PostConstruct`**: `@PostConstruct`
+    fires while the `ApplicationContext` singleton lock is still held by
+    the main thread. The background polling thread that attempts to
+    access `transactionManager` then blocks on the same lock, creating a
+    `BeanCurrentlyInCreationException` race during simultaneous service
+    cold-start (TASK-BE-243 root cause). `@EventListener(ApplicationReadyEvent.class)`
+    guarantees that all beans are fully initialised before polling begins.
+  - **Idempotency guard required**: `start()` must guard against being
+    called more than once (e.g. parent/child context hierarchies can
+    publish `ApplicationReadyEvent` twice). Add
+    `private final AtomicBoolean started = new AtomicBoolean(false);`
+    and gate entry with `if (!started.compareAndSet(false, true)) { return; }`.
+    Once `stop()` is called the `started` flag is NOT reset — the
+    scheduler cannot be restarted within the same context lifecycle.
+  - `@PreDestroy` runs before the executor bean is destroyed, so
+    in-flight ticks unwind deterministically.
 - Gate the wiring with
   `@ConditionalOnProperty(name = "outbox.polling.enabled", havingValue
   = "true", matchIfMissing = true)` (or an equivalent per-scheduler

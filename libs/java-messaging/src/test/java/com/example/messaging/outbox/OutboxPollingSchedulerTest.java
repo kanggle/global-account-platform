@@ -27,6 +27,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -93,6 +94,18 @@ class OutboxPollingSchedulerTest {
         scheduler.start();
 
         verify(taskScheduler).scheduleWithFixedDelay(any(Runnable.class), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("TASK-BE-245: start() 를 두 번 호출해도 scheduleWithFixedDelay 는 정확히 한 번만 호출된다 (idempotency guard)")
+    void start_calledTwice_secondCallIsNoop() {
+        given(taskScheduler.scheduleWithFixedDelay(any(Runnable.class), any(Duration.class)))
+                .willAnswer(invocation -> scheduledFuture);
+
+        scheduler.start();
+        scheduler.start(); // second call must be silently ignored
+
+        verify(taskScheduler, times(1)).scheduleWithFixedDelay(any(Runnable.class), any(Duration.class));
     }
 
     @Test

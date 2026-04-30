@@ -22,11 +22,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * (e.g. to increment Micrometer counters) without adding Micrometer as a
  * compile-time dependency to this library.
  *
- * <h2>Lifecycle (TASK-BE-077)</h2>
+ * <h2>Lifecycle (TASK-BE-077, TASK-BE-243, TASK-BE-245)</h2>
  *
  * <p>Uses a dedicated {@link ThreadPoolTaskScheduler} ({@code outboxTaskScheduler})
  * whose lifetime is bound to the owning {@code ApplicationContext}. This prevents
  * the orphaned-thread / closing-pool issue described in PR #44 / TASK-BE-076.
+ *
+ * <p>{@link #start()} is triggered by {@link org.springframework.boot.context.event.ApplicationReadyEvent}
+ * (not {@code @PostConstruct}) to avoid a {@code BeanCurrentlyInCreationException}
+ * race when the background polling thread accesses {@code transactionManager} while
+ * the main thread still holds the singleton lock during cold-start (TASK-BE-243).
+ *
+ * <p>{@link #start()} is idempotent: if invoked more than once (e.g. by parent/child
+ * context hierarchies that each publish {@code ApplicationReadyEvent}) only the first
+ * call schedules polling; subsequent calls are silently ignored. {@link #stop()} does
+ * NOT reset the idempotency guard — once stopped, the scheduler cannot be restarted
+ * within the same context lifecycle (TASK-BE-245).
  */
 @Slf4j
 public class OutboxPollingScheduler {
@@ -41,6 +52,7 @@ public class OutboxPollingScheduler {
     @Value("${outbox.polling.interval-ms:1000}")
     private long intervalMs;
 
+    private final AtomicBoolean started = new AtomicBoolean(false);
     private final AtomicBoolean running = new AtomicBoolean(true);
     private ScheduledFuture<?> scheduledFuture;
 
@@ -67,6 +79,10 @@ public class OutboxPollingScheduler {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void start() {
+        if (!started.compareAndSet(false, true)) {
+            log.debug("OutboxPollingScheduler.start() called but already started; ignoring");
+            return;
+        }
         scheduledFuture = taskScheduler.scheduleWithFixedDelay(
                 this::pollAndPublish, Duration.ofMillis(intervalMs));
         log.info("OutboxPollingScheduler started: intervalMs={}", intervalMs);
