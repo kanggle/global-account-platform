@@ -33,5 +33,15 @@ subprojects {
     test {
         useJUnitPlatform()
         jvmArgs '-XX:+EnableDynamicAgentLoading'
+
+        // Forward Testcontainers-relevant env/system props into the forked test JVM.
+        // On Windows + Docker Desktop, named-pipe auto-detection can fail; developers
+        // set DOCKER_HOST=tcp://localhost:2375 (requires the "Expose daemon on tcp"
+        // option). See docs/guides/local-integration-testing.md.
+        def dockerHost = System.getenv('DOCKER_HOST') ?: System.getProperty('docker.host')
+        if (dockerHost) {
+            environment 'DOCKER_HOST', dockerHost
+            systemProperty 'docker.host', dockerHost
+        }
     }
 }

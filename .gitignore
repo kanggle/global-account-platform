@@ -3,6 +3,13 @@
 .env.*
 !.env.example
 
+# Cryptographic keys — production main resources only.
+# Test fixture keys under src/test/resources/keys/ remain tracked.
+apps/*/src/main/resources/keys/*.pem
+apps/*/src/main/resources/keys/*.key
+!apps/*/src/main/resources/keys/*.pem.example
+!apps/*/src/main/resources/keys/*.key.example
+
 # Local H2 database files
 /data/
 
@@ -11,7 +18,6 @@ node_modules/
 
 # Build outputs
 build/
-bin/
 dist/
 .gradle/
 .next/
@@ -25,6 +31,10 @@ dist/
 # OS
 Thumbs.db
 Desktop.ini
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
 
 # Claude Code local settings
 .claude/settings.local.json
