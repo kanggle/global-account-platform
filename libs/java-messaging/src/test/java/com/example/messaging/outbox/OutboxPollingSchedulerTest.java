@@ -27,17 +27,21 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
- * Unit tests for {@link OutboxPollingScheduler} lifecycle (TASK-BE-079) and
+ * Unit tests for {@link OutboxPollingScheduler} lifecycle (TASK-BE-079, TASK-BE-243) and
  * topic resolution (TASK-BE-120, indirect via {@code pollAndPublish}).
  *
  * <p>Verifies that:
  * <ul>
  *   <li>{@link OutboxPollingScheduler#start()} registers a fixed-delay task on
  *       the injected {@link ThreadPoolTaskScheduler}.</li>
+ *   <li>Polling does NOT start during bean construction — only after
+ *       {@link org.springframework.boot.context.event.ApplicationReadyEvent} is
+ *       received (regression guard for TASK-BE-243).</li>
  *   <li>{@link OutboxPollingScheduler#stop()} cancels the returned
  *       {@link ScheduledFuture}.</li>
  *   <li>Once stopped, {@link OutboxPollingScheduler#pollAndPublish()} returns
@@ -69,8 +73,20 @@ class OutboxPollingSchedulerTest {
         ReflectionTestUtils.setField(scheduler, "intervalMs", 1000L);
     }
 
+    // -----------------------------------------------------------------
+    // TASK-BE-243 regression: polling MUST NOT start during construction
+    // -----------------------------------------------------------------
+
     @Test
-    @DisplayName("start() 호출 시 taskScheduler.scheduleWithFixedDelay 로 폴링 태스크를 등록한다")
+    @DisplayName("TASK-BE-243: 빈 생성 시점(ApplicationReadyEvent 미발행)에는 taskScheduler 에 태스크를 등록하지 않는다")
+    void construction_withoutApplicationReadyEvent_doesNotStartPolling() {
+        // scheduler is already constructed in setUp() — ApplicationReadyEvent was never fired.
+        // taskScheduler must have received zero interactions from the constructor.
+        verifyNoInteractions(taskScheduler);
+    }
+
+    @Test
+    @DisplayName("TASK-BE-243: start() 는 ApplicationReadyEvent 핸들러로 동작하며 호출 시 폴링을 등록한다")
     void start_registersFixedDelayTask() {
         given(taskScheduler.scheduleWithFixedDelay(any(Runnable.class), any(Duration.class)))
                 .willAnswer(invocation -> scheduledFuture);
@@ -78,6 +94,18 @@ class OutboxPollingSchedulerTest {
         scheduler.start();
 
         verify(taskScheduler).scheduleWithFixedDelay(any(Runnable.class), any(Duration.class));
+    }
+
+    @Test
+    @DisplayName("TASK-BE-245: start() 를 두 번 호출해도 scheduleWithFixedDelay 는 정확히 한 번만 호출된다 (idempotency guard)")
+    void start_calledTwice_secondCallIsNoop() {
+        given(taskScheduler.scheduleWithFixedDelay(any(Runnable.class), any(Duration.class)))
+                .willAnswer(invocation -> scheduledFuture);
+
+        scheduler.start();
+        scheduler.start(); // second call must be silently ignored
+
+        verify(taskScheduler, times(1)).scheduleWithFixedDelay(any(Runnable.class), any(Duration.class));
     }
 
     @Test
