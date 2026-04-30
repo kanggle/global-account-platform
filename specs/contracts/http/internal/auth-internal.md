@@ -53,7 +53,7 @@ TASK-BE-063 Option A. 신규 계정이 저장된 직후, account-service 가 aut
 ```json
 {
   "code": "CREDENTIAL_ALREADY_EXISTS",
-  "message": "Credential already exists for accountId=...",
+  "message": "Credential already exists for this account",
   "timestamp": "2026-04-19T04:00:00Z"
 }
 ```
