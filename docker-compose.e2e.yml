@@ -133,6 +133,7 @@ services:
           "account.unlocked" "account.deleted"
           "session.revoked"
           "security.suspicious.detected" "security.auto.lock.triggered"
+          "security.auto.lock.pending"
           "admin.action.performed"
         )
         for t in "$${TOPICS[@]}"; do
