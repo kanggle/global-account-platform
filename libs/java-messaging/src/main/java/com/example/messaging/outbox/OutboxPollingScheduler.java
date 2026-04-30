@@ -1,9 +1,10 @@
 package com.example.messaging.outbox;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.lang.Nullable;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -55,7 +56,16 @@ public class OutboxPollingScheduler {
         this.failureHandler = failureHandler;
     }
 
-    @PostConstruct
+    /**
+     * Starts outbox polling after the application context is fully initialised.
+     *
+     * <p>Triggering from {@link ApplicationReadyEvent} (TASK-BE-243) instead of
+     * {@code @PostConstruct} prevents the race condition where the background
+     * {@code outbox-1} thread attempts to access {@code transactionManager} while
+     * the main thread still holds the {@code DataSourceAutoConfiguration} singleton
+     * lock, causing a {@code BeanCurrentlyInCreationException}.
+     */
+    @EventListener(ApplicationReadyEvent.class)
     public void start() {
         scheduledFuture = taskScheduler.scheduleWithFixedDelay(
                 this::pollAndPublish, Duration.ofMillis(intervalMs));
