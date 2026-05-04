@@ -80,18 +80,18 @@ jobs:
       - name: Build and check GAP backend (Docker-free)
         # GAP integration tests carry @Tag("integration") (either directly or
         # via AbstractIntegrationTest base) and are excluded from `:test` /
-        # `:check` by `projects/global-account-platform/build.gradle`. They
+        # `:check` by `build.gradle`. They
         # run in the dedicated `gap-integration-tests` job below. This step
         # therefore stays Docker-free.
         run: >-
           ./gradlew
-          :projects:global-account-platform:apps:auth-service:check
-          :projects:global-account-platform:apps:account-service:check
-          :projects:global-account-platform:apps:admin-service:check
-          :projects:global-account-platform:apps:community-service:check
-          :projects:global-account-platform:apps:gateway-service:check
-          :projects:global-account-platform:apps:membership-service:check
-          :projects:global-account-platform:apps:security-service:check
+          :apps:auth-service:check
+          :apps:account-service:check
+          :apps:admin-service:check
+          :apps:community-service:check
+          :apps:gateway-service:check
+          :apps:membership-service:check
+          :apps:security-service:check
           --no-daemon --stacktrace
 
       - name: Build and check fan-platform backend (Docker-free)
@@ -445,13 +445,13 @@ jobs:
       - name: Run GAP integration suites
         run: >-
           ./gradlew
-          :projects:global-account-platform:apps:auth-service:integrationTest
-          :projects:global-account-platform:apps:account-service:integrationTest
-          :projects:global-account-platform:apps:admin-service:integrationTest
-          :projects:global-account-platform:apps:community-service:integrationTest
-          :projects:global-account-platform:apps:gateway-service:integrationTest
-          :projects:global-account-platform:apps:membership-service:integrationTest
-          :projects:global-account-platform:apps:security-service:integrationTest
+          :apps:auth-service:integrationTest
+          :apps:account-service:integrationTest
+          :apps:admin-service:integrationTest
+          :apps:community-service:integrationTest
+          :apps:gateway-service:integrationTest
+          :apps:membership-service:integrationTest
+          :apps:security-service:integrationTest
           --no-daemon --stacktrace
 
       - name: Upload GAP integration test reports on failure
@@ -460,8 +460,8 @@ jobs:
         with:
           name: gap-integration-test-reports
           path: |
-            projects/global-account-platform/apps/*/build/reports/tests/integrationTest/
-            projects/global-account-platform/apps/*/build/test-results/integrationTest/
+            apps/*/build/reports/tests/integrationTest/
+            apps/*/build/test-results/integrationTest/
           retention-days: 7
 
   frontend-checks:
